@@ -211,6 +211,7 @@ static __always_inline int is_expired(struct block_entry *entry) {
 #ifdef ENABLE_RATE_LIMITING
 // Check and update rate limit for an IP
 // Returns 1 if rate limit exceeded, 0 otherwise
+// Uses read-modify-write pattern for portability across toolchains/kernels
 static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
     __u32 cfg_key = 0;
     struct rate_limit_config *cfg = bpf_map_lookup_elem(&xdp_rate_config, &cfg_key);
@@ -225,37 +226,49 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
     struct rate_limit_state *state = bpf_map_lookup_elem(&xdp_rate_limit, &src_ip);
     
     if (state) {
+        // Copy to local struct for safe read-modify-write
+        // (avoids non-portable __sync_fetch_and_add on map values)
+        struct rate_limit_state local = *state;
+        
         // Check if we're in a new window
-        if (now - state->window_start >= RL_WINDOW_NS) {
+        if (now - local.window_start >= RL_WINDOW_NS) {
             // Reset window
-            state->window_start = now;
-            state->packet_count = 1;
-            state->byte_count = pkt_len;
+            local.window_start = now;
+            local.packet_count = 1;
+            local.byte_count = pkt_len;
+            bpf_map_update_elem(&xdp_rate_limit, &src_ip, &local, BPF_EXIST);
             return 0;
         }
         
         // Check PPS limit
-        if (cfg->max_pps > 0 && state->packet_count >= cfg->max_pps) {
+        if (cfg->max_pps > 0 && local.packet_count >= cfg->max_pps) {
             // Optionally add to blocklist
             if (cfg->block_time_ns > 0) {
-                struct block_entry block = { .expires_ns = now + cfg->block_time_ns };
+                // Overflow check: cap at max value to prevent wrap-around
+                __u64 expires = now + cfg->block_time_ns;
+                if (expires < now) expires = (__u64)-1;  // Cap at ULLONG_MAX
+                struct block_entry block = { .expires_ns = expires };
                 bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
             }
             return 1;  // Rate limit exceeded
         }
         
         // Check BPS limit
-        if (cfg->max_bps > 0 && state->byte_count >= cfg->max_bps) {
+        if (cfg->max_bps > 0 && local.byte_count >= cfg->max_bps) {
             if (cfg->block_time_ns > 0) {
-                struct block_entry block = { .expires_ns = now + cfg->block_time_ns };
+                // Overflow check: cap at max value to prevent wrap-around
+                __u64 expires = now + cfg->block_time_ns;
+                if (expires < now) expires = (__u64)-1;  // Cap at ULLONG_MAX
+                struct block_entry block = { .expires_ns = expires };
                 bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
             }
             return 1;  // Rate limit exceeded
         }
         
-        // Update counters
-        __sync_fetch_and_add(&state->packet_count, 1);
-        __sync_fetch_and_add(&state->byte_count, pkt_len);
+        // Update counters and write back
+        local.packet_count += 1;
+        local.byte_count += pkt_len;
+        bpf_map_update_elem(&xdp_rate_limit, &src_ip, &local, BPF_EXIST);
     } else {
         // New IP - create state
         struct rate_limit_state new_state = {
@@ -272,10 +285,12 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
 
 #ifdef ENABLE_CIDR_BLOCKING
 // Check if IP is in a blocked CIDR range
+// Key layout: prefix_len in host order, addr in network byte order
+// Userspace must insert entries with the same convention
 static __always_inline int check_cidr_block(__u32 src_ip) {
     struct lpm_key_v4 key = {
         .prefix_len = 32,  // Full match first, LPM will find longest prefix
-        .addr = src_ip,
+        .addr = src_ip,    // Keep network byte order (same as userspace inserts)
     };
     
     struct block_entry *entry = bpf_map_lookup_elem(&xdp_cidr_blocklist, &key);
@@ -338,6 +353,13 @@ int xdp_firewall(struct xdp_md *ctx) {
         }
         
         if (ip->version != 4 || ip->ihl < 5) {
+            update_stats(STATS_ERRORS, pkt_len);
+            return XDP_PASS;
+        }
+        
+        // Validate full IP header length (including options when ihl > 5)
+        void *ip_end = (void *)ip + (ip->ihl * 4);
+        if (ip_end > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }

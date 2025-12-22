@@ -4,6 +4,7 @@ package remediation
 
 import (
 	"encoding/binary"
+	"errors"
 	"log"
 	"net"
 	"runtime"
@@ -56,7 +57,10 @@ type xdpStatsEntry struct{ Packets, Bytes uint64 }
 type rateLimitConfig struct{ MaxPPS, MaxBPS, BlockTimeNs uint64 }
 
 // lpmKeyV4 for CIDR keys
-type lpmKeyV4 struct{ PrefixLen, Addr uint32 }
+type lpmKeyV4 struct {
+	PrefixLen uint32
+	Addr      uint32
+}
 
 // xdpObjects holds loaded BPF objects
 type xdpObjects struct {
@@ -120,11 +124,7 @@ func monotonicNs() int64 {
 
 // isNotExist checks if error indicates key doesn't exist
 func isNotExist(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return s == "key does not exist" || s == "lookup: key does not exist"
+	return errors.Is(err, ebpf.ErrKeyNotExist)
 }
 
 // isExternalIP checks if IP is external (not private/loopback/link-local)
@@ -159,6 +159,8 @@ func blockIPv4(m *ebpf.Map, ip net.IP, expiresNs uint64) error {
 	if m == nil {
 		return errMapNotLoaded
 	}
+	// Use BigEndian to create the integer value that matches the
+	// network-byte-order integer (ip->saddr) used by the BPF program.
 	key := binary.BigEndian.Uint32(ip.To4())
 	return m.Put(key, blockEntry{ExpiresNs: expiresNs})
 }
@@ -210,8 +212,12 @@ func parseCIDRv4(cidr string) (lpmKeyV4, error) {
 	}
 	prefixLen, _ := ipNet.Mask.Size()
 	maskedIP := ipNet.IP.Mask(ipNet.Mask).To4()
+
+	// Convert to native endian (BigEndian used to match proper integer value)
+	addr := binary.BigEndian.Uint32(maskedIP)
+
 	return lpmKeyV4{
 		PrefixLen: uint32(prefixLen),
-		Addr:      binary.BigEndian.Uint32(maskedIP),
+		Addr:      addr,
 	}, nil
 }
