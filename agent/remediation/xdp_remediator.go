@@ -28,6 +28,7 @@ type XDPRemediator struct {
 	xdpLink           link.Link
 	attached, pinMaps bool
 	pinPath           string
+	OnBlock           BlockCallback // Called when an IP is blocked
 }
 
 // NewXDPRemediator creates a new XDP-based remediator
@@ -125,6 +126,9 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 		}
 	}
 	log.Printf("🚫 XDP blocked %s for %v", ip, duration)
+	if r.OnBlock != nil {
+		r.OnBlock(ip, ActionBlock, "XDP_BLOCK", duration)
+	}
 	return nil
 }
 

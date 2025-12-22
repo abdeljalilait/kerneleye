@@ -2,6 +2,7 @@ package remediation
 
 import (
 	"container/list"
+	"log"
 	"sync"
 	"time"
 )
@@ -73,6 +74,7 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	defer state.mu.Unlock()
 
 	if state.blocked {
+		log.Printf("⏭️  Analyzer: IP %s already blocked, skipping", ipStr)
 		return nil
 	}
 
@@ -113,6 +115,8 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 
 		if count > a.config.SynFloodThreshold {
 			state.blocked = true
+			log.Printf("🚨 Analyzer: SYN Flood detected from %s (%d SYNs in %v window) - BLOCKING",
+				ipStr, count, a.config.SynFloodWindow)
 			return &Decision{
 				IP:       event.SourceIP,
 				Action:   ActionBlock,
@@ -145,6 +149,8 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	if uniquePorts > a.config.PortScanThreshold {
 		// Return RateLimit but don't set blocked=true (hard block)
 		// Decision logic handles the action.
+		log.Printf("⚠️  Analyzer: Port scan detected from %s (%d unique ports in %v window) - RATE LIMITING",
+			ipStr, uniquePorts, a.config.PortScanWindow)
 		return &Decision{
 			IP:       event.SourceIP,
 			Action:   ActionRateLimit,
@@ -175,6 +181,7 @@ func (a *Analyzer) getOrCreateState(ip string) *ipState {
 			a.lru.Remove(ent)
 			victim := ent.Value.(*ipState)
 			delete(a.states, victim.ip)
+			log.Printf("🗑️  Analyzer: Evicted LRU state for IP %s (capacity: %d)", victim.ip, a.config.MaxStates)
 		}
 	}
 

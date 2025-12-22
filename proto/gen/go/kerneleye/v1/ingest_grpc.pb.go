@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IngestService_Heartbeat_FullMethodName     = "/kerneleye.v1.IngestService/Heartbeat"
-	IngestService_SubmitTraffic_FullMethodName = "/kerneleye.v1.IngestService/SubmitTraffic"
-	IngestService_Register_FullMethodName      = "/kerneleye.v1.IngestService/Register"
-	IngestService_GetStatus_FullMethodName     = "/kerneleye.v1.IngestService/GetStatus"
-	IngestService_GetBlockList_FullMethodName  = "/kerneleye.v1.IngestService/GetBlockList"
+	IngestService_Heartbeat_FullMethodName       = "/kerneleye.v1.IngestService/Heartbeat"
+	IngestService_SubmitTraffic_FullMethodName   = "/kerneleye.v1.IngestService/SubmitTraffic"
+	IngestService_Register_FullMethodName        = "/kerneleye.v1.IngestService/Register"
+	IngestService_GetStatus_FullMethodName       = "/kerneleye.v1.IngestService/GetStatus"
+	IngestService_GetBlockList_FullMethodName    = "/kerneleye.v1.IngestService/GetBlockList"
+	IngestService_ReportBlockedIP_FullMethodName = "/kerneleye.v1.IngestService/ReportBlockedIP"
 )
 
 // IngestServiceClient is the client API for IngestService service.
@@ -42,6 +43,8 @@ type IngestServiceClient interface {
 	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
 	// Agent requests blocking directives (Phase 2)
 	GetBlockList(ctx context.Context, in *BlockListRequest, opts ...grpc.CallOption) (*BlockListResponse, error)
+	// Agent reports blocked IP events
+	ReportBlockedIP(ctx context.Context, in *BlockedIPEvent, opts ...grpc.CallOption) (*BlockedIPResponse, error)
 }
 
 type ingestServiceClient struct {
@@ -102,6 +105,16 @@ func (c *ingestServiceClient) GetBlockList(ctx context.Context, in *BlockListReq
 	return out, nil
 }
 
+func (c *ingestServiceClient) ReportBlockedIP(ctx context.Context, in *BlockedIPEvent, opts ...grpc.CallOption) (*BlockedIPResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BlockedIPResponse)
+	err := c.cc.Invoke(ctx, IngestService_ReportBlockedIP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IngestServiceServer is the server API for IngestService service.
 // All implementations must embed UnimplementedIngestServiceServer
 // for forward compatibility.
@@ -118,6 +131,8 @@ type IngestServiceServer interface {
 	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
 	// Agent requests blocking directives (Phase 2)
 	GetBlockList(context.Context, *BlockListRequest) (*BlockListResponse, error)
+	// Agent reports blocked IP events
+	ReportBlockedIP(context.Context, *BlockedIPEvent) (*BlockedIPResponse, error)
 	mustEmbedUnimplementedIngestServiceServer()
 }
 
@@ -142,6 +157,9 @@ func (UnimplementedIngestServiceServer) GetStatus(context.Context, *GetStatusReq
 }
 func (UnimplementedIngestServiceServer) GetBlockList(context.Context, *BlockListRequest) (*BlockListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBlockList not implemented")
+}
+func (UnimplementedIngestServiceServer) ReportBlockedIP(context.Context, *BlockedIPEvent) (*BlockedIPResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportBlockedIP not implemented")
 }
 func (UnimplementedIngestServiceServer) mustEmbedUnimplementedIngestServiceServer() {}
 func (UnimplementedIngestServiceServer) testEmbeddedByValue()                       {}
@@ -254,6 +272,24 @@ func _IngestService_GetBlockList_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IngestService_ReportBlockedIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockedIPEvent)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IngestServiceServer).ReportBlockedIP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IngestService_ReportBlockedIP_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IngestServiceServer).ReportBlockedIP(ctx, req.(*BlockedIPEvent))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IngestService_ServiceDesc is the grpc.ServiceDesc for IngestService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -280,6 +316,10 @@ var IngestService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBlockList",
 			Handler:    _IngestService_GetBlockList_Handler,
+		},
+		{
+			MethodName: "ReportBlockedIP",
+			Handler:    _IngestService_ReportBlockedIP_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

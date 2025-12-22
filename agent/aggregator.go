@@ -241,3 +241,38 @@ func (a *Aggregator) Close() error {
 func (a *Aggregator) GetStats() map[string]*IPStats {
 	return a.stats.Snapshot()
 }
+
+// ReportBlockedIP sends a blocked IP event to the backend via gRPC
+func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reason string, duration time.Duration) {
+	if a.grpcClient == nil {
+		log.Printf("⚠️  gRPC client not initialized, cannot report blocked IP")
+		return
+	}
+
+	var blockAction pb.BlockAction
+	switch action {
+	case remediation.ActionBlock:
+		blockAction = pb.BlockAction_BLOCK_ACTION_BLOCK
+	case remediation.ActionRateLimit:
+		blockAction = pb.BlockAction_BLOCK_ACTION_RATE_LIMIT
+	default:
+		blockAction = pb.BlockAction_BLOCK_ACTION_ALLOW
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := a.grpcClient.ReportBlockedIP(ctx, &pb.BlockedIPEvent{
+		ApiKey:          a.apiKey,
+		ServerId:        a.cachedPublicIP, // Using public IP as server ID
+		IpAddress:       ip.String(),
+		Action:          blockAction,
+		DurationSeconds: uint32(duration.Seconds()),
+		Reason:          reason,
+	})
+	if err != nil {
+		log.Printf("❌ Failed to report blocked IP %s: %v", ip, err)
+		return
+	}
+	log.Printf("📡 Reported blocked IP %s (%s) to backend", ip, action)
+}

@@ -21,7 +21,8 @@ const (
 type CommandRunner func(name string, args ...string) error
 
 type IPSetRemediator struct {
-	Runner CommandRunner
+	Runner  CommandRunner
+	OnBlock BlockCallback // Called when an IP is blocked
 }
 
 func NewIPSetRemediator() *IPSetRemediator {
@@ -111,7 +112,13 @@ func (r *IPSetRemediator) Block(ip net.IP, duration time.Duration) error {
 	if ip.To4() == nil {
 		set = BlockSetV6
 	}
-	return r.Runner("ipset", "add", set, ip.String(), "timeout", strconv.Itoa(int(duration.Seconds())), "-exist")
+	if err := r.Runner("ipset", "add", set, ip.String(), "timeout", strconv.Itoa(int(duration.Seconds())), "-exist"); err != nil {
+		return err
+	}
+	if r.OnBlock != nil {
+		r.OnBlock(ip, ActionBlock, "IPSET_BLOCK", duration)
+	}
+	return nil
 }
 
 func (r *IPSetRemediator) RateLimit(ip net.IP, duration time.Duration) error {
@@ -128,7 +135,13 @@ func (r *IPSetRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 	if ip.To4() == nil {
 		set = RateLimitSetV6
 	}
-	return r.Runner("ipset", "add", set, ip.String(), "timeout", strconv.Itoa(int(duration.Seconds())), "-exist")
+	if err := r.Runner("ipset", "add", set, ip.String(), "timeout", strconv.Itoa(int(duration.Seconds())), "-exist"); err != nil {
+		return err
+	}
+	if r.OnBlock != nil {
+		r.OnBlock(ip, ActionRateLimit, "IPSET_RATE_LIMIT", duration)
+	}
+	return nil
 }
 
 func (r *IPSetRemediator) SyncBlocklist(ips []net.IP) error {

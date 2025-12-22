@@ -14,6 +14,7 @@ type HybridRemediator struct {
 	xdp        *XDPRemediator
 	iptables   *IPSetRemediator
 	xdpEnabled bool
+	OnBlock    BlockCallback // Called when an IP is blocked
 }
 
 // HybridConfig configures the hybrid remediator
@@ -62,6 +63,7 @@ func (h *HybridRemediator) Setup() error {
 // Block adds an IP to the blocklist using XDP (if available) or iptables
 func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 	var xdpErr, iptablesErr error
+	var reason string
 
 	// Try XDP first (faster)
 	if h.xdpEnabled && h.xdp != nil {
@@ -70,6 +72,10 @@ func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 			// XDP succeeded - also add to iptables for redundancy
 			// This ensures the block persists even if XDP is detached
 			h.iptables.Block(ip, duration)
+			reason = "XDP_BLOCK"
+			if h.OnBlock != nil {
+				h.OnBlock(ip, ActionBlock, reason, duration)
+			}
 			return nil
 		}
 		log.Printf("⚠️  XDP block failed, using iptables: %v", xdpErr)
@@ -81,13 +87,23 @@ func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 		return fmt.Errorf("all block methods failed: xdp=%v, iptables=%v", xdpErr, iptablesErr)
 	}
 
+	reason = "IPTABLES_BLOCK"
+	if h.OnBlock != nil {
+		h.OnBlock(ip, ActionBlock, reason, duration)
+	}
 	return nil
 }
 
 // RateLimit adds an IP to the rate-limit list (iptables only)
 func (h *HybridRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 	// XDP doesn't support rate limiting - always use iptables
-	return h.iptables.RateLimit(ip, duration)
+	if err := h.iptables.RateLimit(ip, duration); err != nil {
+		return err
+	}
+	if h.OnBlock != nil {
+		h.OnBlock(ip, ActionRateLimit, "RATE_LIMIT", duration)
+	}
+	return nil
 }
 
 // Teardown cleans up both XDP and iptables resources

@@ -76,6 +76,12 @@ func main() {
 		log.Fatalf("Failed to create aggregator: %v", err)
 	}
 	defer aggregator.Close()
+
+	// Wire the block callback to report blocked IPs via gRPC
+	if remediator != nil {
+		remediator.OnBlock = aggregator.ReportBlockedIP
+	}
+
 	aggregator.StartFlushTimer(10 * time.Second)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)

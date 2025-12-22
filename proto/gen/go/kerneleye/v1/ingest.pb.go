@@ -1192,6 +1192,142 @@ func (x *BlockDirective) GetReason() string {
 	return ""
 }
 
+type BlockedIPEvent struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ApiKey          string                 `protobuf:"bytes,1,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	ServerId        string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	IpAddress       string                 `protobuf:"bytes,3,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
+	Action          BlockAction            `protobuf:"varint,4,opt,name=action,proto3,enum=kerneleye.v1.BlockAction" json:"action,omitempty"`
+	DurationSeconds uint32                 `protobuf:"varint,5,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	BlockedAt       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=blocked_at,json=blockedAt,proto3" json:"blocked_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *BlockedIPEvent) Reset() {
+	*x = BlockedIPEvent{}
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockedIPEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockedIPEvent) ProtoMessage() {}
+
+func (x *BlockedIPEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockedIPEvent.ProtoReflect.Descriptor instead.
+func (*BlockedIPEvent) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *BlockedIPEvent) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+func (x *BlockedIPEvent) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BlockedIPEvent) GetIpAddress() string {
+	if x != nil {
+		return x.IpAddress
+	}
+	return ""
+}
+
+func (x *BlockedIPEvent) GetAction() BlockAction {
+	if x != nil {
+		return x.Action
+	}
+	return BlockAction_BLOCK_ACTION_ALLOW
+}
+
+func (x *BlockedIPEvent) GetDurationSeconds() uint32 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
+func (x *BlockedIPEvent) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *BlockedIPEvent) GetBlockedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.BlockedAt
+	}
+	return nil
+}
+
+type BlockedIPResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockedIPResponse) Reset() {
+	*x = BlockedIPResponse{}
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockedIPResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockedIPResponse) ProtoMessage() {}
+
+func (x *BlockedIPResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockedIPResponse.ProtoReflect.Descriptor instead.
+func (*BlockedIPResponse) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *BlockedIPResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_kerneleye_v1_ingest_proto protoreflect.FileDescriptor
 
 const file_kerneleye_v1_ingest_proto_rawDesc = "" +
@@ -1280,7 +1416,19 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\x06action\x18\x02 \x01(\x0e2\x19.kerneleye.v1.BlockActionR\x06action\x129\n" +
 	"\n" +
 	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason*W\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\x96\x02\n" +
+	"\x0eBlockedIPEvent\x12\x17\n" +
+	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12\x1b\n" +
+	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x1d\n" +
+	"\n" +
+	"ip_address\x18\x03 \x01(\tR\tipAddress\x121\n" +
+	"\x06action\x18\x04 \x01(\x0e2\x19.kerneleye.v1.BlockActionR\x06action\x12)\n" +
+	"\x10duration_seconds\x18\x05 \x01(\rR\x0fdurationSeconds\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x129\n" +
+	"\n" +
+	"blocked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tblockedAt\"-\n" +
+	"\x11BlockedIPResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess*W\n" +
 	"\bProtocol\x12\x14\n" +
 	"\x10PROTOCOL_UNKNOWN\x10\x00\x12\x10\n" +
 	"\fPROTOCOL_TCP\x10\x01\x12\x10\n" +
@@ -1297,13 +1445,14 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\vBlockAction\x12\x16\n" +
 	"\x12BLOCK_ACTION_ALLOW\x10\x00\x12\x16\n" +
 	"\x12BLOCK_ACTION_BLOCK\x10\x01\x12\x1b\n" +
-	"\x17BLOCK_ACTION_RATE_LIMIT\x10\x022\x93\x03\n" +
+	"\x17BLOCK_ACTION_RATE_LIMIT\x10\x022\xe5\x03\n" +
 	"\rIngestService\x12L\n" +
 	"\tHeartbeat\x12\x1e.kerneleye.v1.HeartbeatRequest\x1a\x1f.kerneleye.v1.HeartbeatResponse\x12J\n" +
 	"\rSubmitTraffic\x12\x1a.kerneleye.v1.TrafficBatch\x1a\x1d.kerneleye.v1.TrafficResponse\x12I\n" +
 	"\bRegister\x12\x1d.kerneleye.v1.RegisterRequest\x1a\x1e.kerneleye.v1.RegisterResponse\x12L\n" +
 	"\tGetStatus\x12\x1e.kerneleye.v1.GetStatusRequest\x1a\x1f.kerneleye.v1.GetStatusResponse\x12O\n" +
-	"\fGetBlockList\x12\x1e.kerneleye.v1.BlockListRequest\x1a\x1f.kerneleye.v1.BlockListResponseB<Z:github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1b\x06proto3"
+	"\fGetBlockList\x12\x1e.kerneleye.v1.BlockListRequest\x1a\x1f.kerneleye.v1.BlockListResponse\x12P\n" +
+	"\x0fReportBlockedIP\x12\x1c.kerneleye.v1.BlockedIPEvent\x1a\x1f.kerneleye.v1.BlockedIPResponseB<Z:github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1b\x06proto3"
 
 var (
 	file_kerneleye_v1_ingest_proto_rawDescOnce sync.Once
@@ -1318,7 +1467,7 @@ func file_kerneleye_v1_ingest_proto_rawDescGZIP() []byte {
 }
 
 var file_kerneleye_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_kerneleye_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_kerneleye_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_kerneleye_v1_ingest_proto_goTypes = []any{
 	(Protocol)(0),                 // 0: kerneleye.v1.Protocol
 	(Direction)(0),                // 1: kerneleye.v1.Direction
@@ -1338,38 +1487,44 @@ var file_kerneleye_v1_ingest_proto_goTypes = []any{
 	(*BlockListRequest)(nil),      // 15: kerneleye.v1.BlockListRequest
 	(*BlockListResponse)(nil),     // 16: kerneleye.v1.BlockListResponse
 	(*BlockDirective)(nil),        // 17: kerneleye.v1.BlockDirective
-	(*timestamppb.Timestamp)(nil), // 18: google.protobuf.Timestamp
+	(*BlockedIPEvent)(nil),        // 18: kerneleye.v1.BlockedIPEvent
+	(*BlockedIPResponse)(nil),     // 19: kerneleye.v1.BlockedIPResponse
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
 }
 var file_kerneleye_v1_ingest_proto_depIdxs = []int32{
 	10, // 0: kerneleye.v1.HeartbeatResponse.config:type_name -> kerneleye.v1.ConfigUpdate
-	18, // 1: kerneleye.v1.TrafficBatch.timestamp_start:type_name -> google.protobuf.Timestamp
-	18, // 2: kerneleye.v1.TrafficBatch.timestamp_end:type_name -> google.protobuf.Timestamp
+	20, // 1: kerneleye.v1.TrafficBatch.timestamp_start:type_name -> google.protobuf.Timestamp
+	20, // 2: kerneleye.v1.TrafficBatch.timestamp_end:type_name -> google.protobuf.Timestamp
 	12, // 3: kerneleye.v1.TrafficBatch.events:type_name -> kerneleye.v1.ConnectionEvent
 	0,  // 4: kerneleye.v1.ConnectionEvent.protocol:type_name -> kerneleye.v1.Protocol
-	18, // 5: kerneleye.v1.ConnectionEvent.first_seen:type_name -> google.protobuf.Timestamp
-	18, // 6: kerneleye.v1.ConnectionEvent.last_seen:type_name -> google.protobuf.Timestamp
+	20, // 5: kerneleye.v1.ConnectionEvent.first_seen:type_name -> google.protobuf.Timestamp
+	20, // 6: kerneleye.v1.ConnectionEvent.last_seen:type_name -> google.protobuf.Timestamp
 	1,  // 7: kerneleye.v1.ConnectionEvent.direction:type_name -> kerneleye.v1.Direction
 	14, // 8: kerneleye.v1.TrafficResponse.alerts:type_name -> kerneleye.v1.Alert
 	2,  // 9: kerneleye.v1.Alert.severity:type_name -> kerneleye.v1.Severity
-	18, // 10: kerneleye.v1.BlockListRequest.since:type_name -> google.protobuf.Timestamp
+	20, // 10: kerneleye.v1.BlockListRequest.since:type_name -> google.protobuf.Timestamp
 	17, // 11: kerneleye.v1.BlockListResponse.directives:type_name -> kerneleye.v1.BlockDirective
 	3,  // 12: kerneleye.v1.BlockDirective.action:type_name -> kerneleye.v1.BlockAction
-	18, // 13: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
-	8,  // 14: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
-	11, // 15: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
-	4,  // 16: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
-	6,  // 17: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
-	15, // 18: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
-	9,  // 19: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
-	13, // 20: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
-	5,  // 21: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
-	7,  // 22: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
-	16, // 23: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
-	19, // [19:24] is the sub-list for method output_type
-	14, // [14:19] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	20, // 13: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
+	3,  // 14: kerneleye.v1.BlockedIPEvent.action:type_name -> kerneleye.v1.BlockAction
+	20, // 15: kerneleye.v1.BlockedIPEvent.blocked_at:type_name -> google.protobuf.Timestamp
+	8,  // 16: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
+	11, // 17: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
+	4,  // 18: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
+	6,  // 19: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
+	15, // 20: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
+	18, // 21: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
+	9,  // 22: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
+	13, // 23: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
+	5,  // 24: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
+	7,  // 25: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
+	16, // 26: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
+	19, // 27: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
+	22, // [22:28] is the sub-list for method output_type
+	16, // [16:22] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_kerneleye_v1_ingest_proto_init() }
@@ -1385,7 +1540,7 @@ func file_kerneleye_v1_ingest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kerneleye_v1_ingest_proto_rawDesc), len(file_kerneleye_v1_ingest_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

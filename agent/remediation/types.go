@@ -31,6 +31,9 @@ type Decision struct {
 	Duration time.Duration
 }
 
+// BlockCallback is called when an IP is blocked or rate-limited
+type BlockCallback func(ip net.IP, action Action, reason string, duration time.Duration)
+
 // Remediator defines the interface for applying remediation actions
 type Remediator interface {
 	// Setup initializes the remediation system (e.g. creating ipsets and iptables chains)

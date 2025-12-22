@@ -1,19 +1,25 @@
 package main
 
 import (
+	"log"
 	"sync"
+	"time"
 )
+
+const DefaultMaxStatsItems = 50000 // Max unique IPs to track before dropping oldest
 
 // SafeStats is a thread-safe map for IP statistics with RWMutex for better read performance
 type SafeStats struct {
-	mu    sync.RWMutex
-	items map[string]*IPStats
+	mu       sync.RWMutex
+	items    map[string]*IPStats
+	maxItems int
 }
 
-// NewSafeStats creates a new SafeStats instance
+// NewSafeStats creates a new SafeStats instance with default max items
 func NewSafeStats() *SafeStats {
 	return &SafeStats{
-		items: make(map[string]*IPStats),
+		items:    make(map[string]*IPStats),
+		maxItems: DefaultMaxStatsItems,
 	}
 }
 
@@ -33,12 +39,31 @@ func (s *SafeStats) Set(ip string, stats *IPStats) {
 }
 
 // GetOrCreate returns existing stats or creates new ones atomically
+// Enforces maxItems limit by evicting oldest entry if at capacity
 func (s *SafeStats) GetOrCreate(ip string, creator func() *IPStats) *IPStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if stats, ok := s.items[ip]; ok {
 		return stats
 	}
+
+	// Enforce capacity limit
+	if len(s.items) >= s.maxItems {
+		// Find and evict oldest entry (simple O(n) eviction)
+		var oldestIP string
+		var oldestTime = time.Now()
+		for k, v := range s.items {
+			if v.FirstSeen.Before(oldestTime) {
+				oldestTime = v.FirstSeen
+				oldestIP = k
+			}
+		}
+		if oldestIP != "" {
+			delete(s.items, oldestIP)
+			log.Printf("🗑️  SafeStats: Evicted oldest IP %s (at capacity: %d)", oldestIP, s.maxItems)
+		}
+	}
+
 	stats := creator()
 	s.items[ip] = stats
 	return stats

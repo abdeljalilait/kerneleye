@@ -22,6 +22,9 @@ service IngestService {
   
   // Agent requests blocking directives (Phase 2)
   rpc GetBlockList(BlockListRequest) returns (BlockListResponse);
+
+  // Agent reports blocked IP events
+  rpc ReportBlockedIP(BlockedIPEvent) returns (BlockedIPResponse);
 }
 
 message RegisterRequest {
@@ -182,4 +185,22 @@ enum BlockAction {
   BLOCK_ACTION_ALLOW = 0;
   BLOCK_ACTION_BLOCK = 1;
   BLOCK_ACTION_RATE_LIMIT = 2; // Future
+}
+
+// ============================================
+// Agent Blocked IP Reporting
+// ============================================
+
+message BlockedIPEvent {
+  string api_key = 1;
+  string server_id = 2;
+  string ip_address = 3;
+  BlockAction action = 4;
+  uint32 duration_seconds = 5;
+  string reason = 6;
+  google.protobuf.Timestamp blocked_at = 7;
+}
+
+message BlockedIPResponse {
+  bool success = 1;
 }
