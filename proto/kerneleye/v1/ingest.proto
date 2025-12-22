@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+package kerneleye.v1;
+
+option go_package = "github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1";
+
+import "google/protobuf/timestamp.proto";
+
+// IngestService handles agent communication
+service IngestService {
+  // Agent sends heartbeat every 30s
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  
+  // Agent pushes aggregated traffic stats
+  rpc SubmitTraffic(TrafficBatch) returns (TrafficResponse);
+
+  // Agent requests registration
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Agent polls for approval status
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  
+  // Agent requests blocking directives (Phase 2)
+  rpc GetBlockList(BlockListRequest) returns (BlockListResponse);
+}
+
+message RegisterRequest {
+  string user_id = 1;
+  string hostname = 2;
+  string ip_address = 3;  // Agent's public IP address
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+  string client_token = 3;
+  string status = 4;
+}
+
+message GetStatusRequest {
+  string client_token = 1;
+}
+
+message GetStatusResponse {
+  string status = 1;
+  string api_key = 2;
+}
+
+// ============================================
+// Heartbeat - Keep-Alive & Health Checks
+// ============================================
+
+message HeartbeatRequest {
+  string api_key = 1;
+  string hostname = 2;
+  string agent_version = 3;
+  string ip_address = 4;  // Agent's detected public IP address
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+  
+  // Server can push config updates
+  optional ConfigUpdate config = 3;
+}
+
+message ConfigUpdate {
+  optional uint32 flush_interval_seconds = 1;
+  optional bool enable_udp_monitoring = 2;
+  optional bool enable_blocking = 3; // Phase 2
+}
+
+// ============================================
+// Traffic Submission - Main Data Flow
+// ============================================
+
+message TrafficBatch {
+  string api_key = 1;
+  string server_id = 2; // UUID assigned on registration
+  
+  google.protobuf.Timestamp timestamp_start = 3;
+  google.protobuf.Timestamp timestamp_end = 4;
+  
+  repeated ConnectionEvent events = 5;
+  
+  // Batch-level metadata
+  uint64 total_events = 6;
+  uint32 aggregation_window_seconds = 7;
+}
+
+message ConnectionEvent {
+  string source_ip = 1;
+  uint32 destination_port = 2;
+  Protocol protocol = 3;
+  
+  // Aggregated metrics for this IP in the window
+  uint32 syn_count = 4;
+  uint32 ack_count = 5;
+  uint32 failed_handshakes = 6;
+  
+  // Bytes transferred (estimated from packet counts)
+  uint64 bytes_in = 7;
+  uint64 bytes_out = 8;
+  
+  // First and last seen in this window
+  google.protobuf.Timestamp first_seen = 9;
+  google.protobuf.Timestamp last_seen = 10;
+  
+  // Number of unique ports accessed (scanning indicator)
+  uint32 unique_ports_count = 11;
+  repeated uint32 ports_accessed = 12; // Limited to top 10
+  
+  // Traffic direction
+  Direction direction = 13;
+  
+  // Destination endpoint IP (for proper source/destination display)
+  string destination_ip = 14;
+}
+
+enum Protocol {
+  PROTOCOL_UNKNOWN = 0;
+  PROTOCOL_TCP = 1;
+  PROTOCOL_UDP = 2;
+  PROTOCOL_ICMP = 3;
+}
+
+enum Direction {
+  DIRECTION_UNKNOWN = 0;
+  DIRECTION_INBOUND = 1;  // Someone connecting to us
+  DIRECTION_OUTBOUND = 2; // We connecting to someone
+}
+
+message TrafficResponse {
+  bool success = 1;
+  string message = 2;
+  
+  // Number of events accepted
+  uint64 events_processed = 3;
+  
+  // Immediate alerts to show in agent logs
+  repeated Alert alerts = 4;
+}
+
+message Alert {
+  string ip_address = 1;
+  uint32 threat_score = 2;
+  string reason = 3; // e.g., "Port scanning detected"
+  Severity severity = 4;
+}
+
+enum Severity {
+  SEVERITY_INFO = 0;
+  SEVERITY_WARNING = 1;
+  SEVERITY_CRITICAL = 2;
+}
+
+// ============================================
+// Blocking (Phase 2 Feature)
+// ============================================
+
+message BlockListRequest {
+  string api_key = 1;
+  string server_id = 2;
+  
+  // Request IPs to block since last fetch
+  google.protobuf.Timestamp since = 3;
+}
+
+message BlockListResponse {
+  repeated BlockDirective directives = 1;
+}
+
+message BlockDirective {
+  string ip_address = 1;
+  BlockAction action = 2;
+  google.protobuf.Timestamp expires_at = 3; // Auto-unblock time
+  string reason = 4;
+}
+
+enum BlockAction {
+  BLOCK_ACTION_ALLOW = 0;
+  BLOCK_ACTION_BLOCK = 1;
+  BLOCK_ACTION_RATE_LIMIT = 2; // Future
+}

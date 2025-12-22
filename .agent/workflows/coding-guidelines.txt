@@ -1,0 +1,32 @@
+# KernelEye Coding Guidelines
+
+## File Size Limits
+
+**IMPORTANT: Do not exceed 200 lines of code per file.**
+
+When creating or modifying files:
+
+- If a file is approaching 200 lines, split it into smaller, focused modules
+- Use helper files, separate modules, or extract functionality
+- Each file should have a single, clear responsibility
+
+## Examples of How to Split
+
+### Go Backend
+
+- Split handlers by resource (e.g., `server_handlers.go`, `user_handlers.go`, `traffic_handlers.go`)
+- Extract helpers into separate files (e.g., `helpers.go`, `validation.go`)
+- Keep middleware in dedicated files
+
+### React/TypeScript Dashboard
+
+- One component per file
+- Extract hooks into `/hooks` directory
+- Keep utility functions in `/utils` or `/lib`
+- Split large components into smaller sub-components
+
+### General Rules
+
+- Prefer many small files over few large files
+- Name files descriptively based on their single responsibility
+- Group related files in directories when they exceed 3-4 files

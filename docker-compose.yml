@@ -1,0 +1,67 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: kerneleye-db
+    environment:
+      POSTGRES_DB: kerneleye
+      POSTGRES_USER: kerneleye
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kerneleye']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kerneleye-api
+    environment:
+      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD:-changeme}@postgres:5432/kerneleye?sslmode=disable
+      PORT: 8080
+      CORS_ORIGINS: http://localhost:3000,https://app.kerneleye.io
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+    ports:
+      - '8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Frontend Dashboard
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: kerneleye-dashboard
+    environment:
+      VITE_API_URL: http://localhost:8080/api/v1
+    ports:
+      - '3000:80'
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Redis (Optional - for caching in production)
+  redis:
+    image: redis:7-alpine
+    container_name: kerneleye-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+  redis_data:
