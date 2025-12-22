@@ -50,7 +50,7 @@ type IPMetrics struct {
 // ThreatScore represents the calculated score and classification
 type ThreatScore struct {
 	Score           int
-	NormalizedScore float64 // 0-100 normalized score
+	FinalScoreFloat float64 // 0-100 normalized score (float precision)
 	Level           ThreatLevel
 	Reasons         []string
 	Timestamp       time.Time
@@ -77,7 +77,7 @@ const (
 
 // NewThreatScorer creates a scorer with production-tuned defaults
 func NewThreatScorer() *ThreatScorer {
-	return &ThreatScorer{
+	ts := &ThreatScorer{
 		// Weights
 		SYNRateWeight:         10.0,
 		UniquePortsWeight:     2.0,
@@ -97,6 +97,13 @@ func NewThreatScorer() *ThreatScorer {
 		// Minimum 10 seconds of observation before scoring
 		MinWindowDuration: 10 * time.Second,
 	}
+
+	// Safety guard: Ensure AutoBlock never below Malicious
+	if ts.AutoBlockThreshold < ts.MaliciousThreshold {
+		ts.AutoBlockThreshold = ts.MaliciousThreshold
+	}
+
+	return ts
 }
 
 // CalculateScore applies rate-normalized scoring with false positive reduction
@@ -111,6 +118,13 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 		windowDuration = 1.0
 	}
 
+	// Clamp and Sanitize PreviousScore input (trust boundary check)
+	if metrics.PreviousScore > 100 {
+		metrics.PreviousScore = 100
+	} else if metrics.PreviousScore < 0 {
+		metrics.PreviousScore = 0
+	}
+
 	// Calculate rate-normalized components
 	synRate := float64(metrics.SYNCount) / windowDuration
 	failedRate := float64(metrics.FailedHandshakes) / windowDuration
@@ -120,7 +134,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	synComponent := ts.calculateSYNScore(synRate, metrics)
 
 	// Port scanning detection (non-linear scaling)
-	portComponent := ts.calculatePortScore(metrics.UniquePorts, connectionRate)
+	portComponent := ts.calculatePortScore(metrics.UniquePorts, connectionRate, windowDuration)
 
 	// Failed connection detection (rate-based)
 	failedComponent := ts.calculateFailedScore(failedRate, metrics)
@@ -128,9 +142,12 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	// Connection burst detection (adaptive threshold)
 	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration)
 
-	// RST storm detection
-	if metrics.RSTCount > metrics.EstablishedConnections*2 && metrics.RSTCount > 5 {
-		burstComponent += 3.0
+	// RST storm detection (refined to avoid noise)
+	if metrics.RSTCount > 5 {
+		if metrics.EstablishedConnections == 0 ||
+			metrics.RSTCount > metrics.EstablishedConnections*2 {
+			burstComponent += 3.0
+		}
 	}
 
 	// Combine components with weights
@@ -139,12 +156,21 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 		(failedComponent * ts.FailedHandshakeWeight) +
 		burstComponent
 
-	// Service Port Whitelisting (Reduction)
+	// Service Port Whitelisting (Ratio-based Reduction)
+	serviceHits := 0
 	for _, port := range metrics.ServicePorts {
 		// Common service ports (HTTP, HTTPS, SSH, DNS, etc.)
 		if port == 80 || port == 443 || port == 22 || port == 53 {
-			rawScore *= 0.8 // 20% reduction for known service ports
-			break           // Only apply once
+			serviceHits++
+		}
+	}
+
+	// Only apply reduction if significant portion of traffic is to known services
+	// Prevents "token legit traffic" abuse (hitting port 80 once then scanning 500 ports)
+	if serviceHits > 0 && metrics.UniquePorts > 0 {
+		// If half or more of the unique ports touched are common services, reduce score
+		if serviceHits >= metrics.UniquePorts/2 {
+			rawScore *= 0.8 // 20% reduction
 		}
 	}
 
@@ -168,11 +194,11 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	level := ts.classifyThreat(finalScore, confidence)
 
 	// Generate detailed reasons
-	reasons := ts.generateReasons(metrics, synRate, failedRate, connectionRate, windowDuration)
+	reasons := ts.generateReasons(metrics, synRate, failedRate, connectionRate, windowDuration, confidence)
 
 	return ThreatScore{
 		Score:           finalScore,
-		NormalizedScore: adjustedScore,
+		FinalScoreFloat: adjustedScore,
 		Level:           level,
 		Reasons:         reasons,
 		Timestamp:       time.Now(),
@@ -209,8 +235,9 @@ func (ts *ThreatScorer) calculateSYNScore(synRate float64, metrics IPMetrics) fl
 		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
 		// Normal traffic: ~50% SYN, ~50% ACK
 		// SYN flood: >80% SYN
-		if synRatio < 0.65 {
-			// Balanced SYN/ACK ratio = likely legitimate
+		// Avoid penalizing lossy networks (retransmits) unless we see failures
+		if synRatio < 0.65 && metrics.FailedHandshakes < 3 {
+			// Balanced SYN/ACK ratio or low failure count = likely legitimate
 			return 0
 		}
 	}
@@ -230,21 +257,31 @@ func (ts *ThreatScorer) calculateSYNScore(synRate float64, metrics IPMetrics) fl
 }
 
 // calculatePortScore with context awareness
-func (ts *ThreatScorer) calculatePortScore(uniquePorts int, connectionRate float64) float64 {
+func (ts *ThreatScorer) calculatePortScore(uniquePorts int, connectionRate float64, duration float64) float64 {
 	if uniquePorts < 5 {
 		return 0 // Very few ports = likely legitimate
 	}
 
+	// Use ports/sec to avoid penalizing long-running legit traffic (e.g. P2P or just busy server)
+	portsPerSec := float64(uniquePorts) / duration
+
 	// Port scanning typically has high port diversity with low connection rate per port
 	portsPerConnection := float64(uniquePorts) / (connectionRate + 1)
 
+	// Improve logic: Require sufficient Rate OR high absolute count + suspicious ratio
 	if portsPerConnection > 0.8 && uniquePorts > 10 {
-		// High port diversity = scanning
-		excess := float64(uniquePorts - ts.PortScanThreshold)
-		if excess > 0 {
-			return 5.0 + math.Sqrt(excess)
+		// Only trigger if ports are being accessed relatively quickly
+		// Dynamic threshold based on window duration
+		dynamicThreshold := math.Max(0.5, 5.0/duration)
+
+		if portsPerSec > dynamicThreshold {
+			// High port diversity = scanning
+			excess := float64(uniquePorts - ts.PortScanThreshold)
+			if excess > 0 {
+				return 5.0 + math.Sqrt(excess)
+			}
+			return float64(uniquePorts) / 5.0
 		}
-		return float64(uniquePorts) / 5.0
 	}
 
 	// Concentrated traffic to few ports = likely legitimate
@@ -318,15 +355,19 @@ func (ts *ThreatScorer) classifyThreat(score int, confidence float64) ThreatLeve
 }
 
 // generateReasons creates detailed, actionable explanations
-func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, connRate, duration float64) []string {
+func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, connRate, duration, confidence float64) []string {
 	reasons := []string{}
+	prefix := ""
+	if confidence < 0.5 {
+		prefix = "(Low Confidence) "
+	}
 
 	// Port scanning with specifics
 	if metrics.UniquePorts > ts.PortScanThreshold {
 		portsPerSec := float64(metrics.UniquePorts) / duration
 		reasons = append(reasons,
-			fmt.Sprintf("Port scanning detected: %d unique ports (%.1f ports/sec)",
-				metrics.UniquePorts, portsPerSec))
+			fmt.Sprintf("%sPort scanning detected: %d unique ports (%.1f ports/sec)",
+				prefix, metrics.UniquePorts, portsPerSec))
 	}
 
 	// SYN flood with ratio
@@ -335,8 +376,8 @@ func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, 
 		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
 		if synRatio > 0.75 && synRate > ts.SuspiciousSYNRate {
 			reasons = append(reasons,
-				fmt.Sprintf("Possible SYN flood: %.1f SYN/sec with %.0f%% SYN ratio",
-					synRate, synRatio*100))
+				fmt.Sprintf("%sPossible SYN flood: %.1f SYN/sec with %.0f%% SYN ratio",
+					prefix, synRate, synRatio*100))
 		}
 	}
 
