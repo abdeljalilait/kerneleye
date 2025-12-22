@@ -44,6 +44,7 @@ type IPMetrics struct {
 	// Additional context
 	EstablishedConnections int   // Successfully completed connections
 	ServicePorts           []int // Ports the IP is legitimately connecting to
+	PreviousScore          int   // Score from previous window for decay
 }
 
 // ThreatScore represents the calculated score and classification
@@ -127,17 +128,41 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	// Connection burst detection (adaptive threshold)
 	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration)
 
+	// RST storm detection
+	if metrics.RSTCount > metrics.EstablishedConnections*2 && metrics.RSTCount > 5 {
+		burstComponent += 3.0
+	}
+
 	// Combine components with weights
 	rawScore := (synComponent * ts.SYNRateWeight) +
 		(portComponent * ts.UniquePortsWeight) +
 		(failedComponent * ts.FailedHandshakeWeight) +
 		burstComponent
 
+	// Service Port Whitelisting (Reduction)
+	for _, port := range metrics.ServicePorts {
+		// Common service ports (HTTP, HTTPS, SSH, DNS, etc.)
+		if port == 80 || port == 443 || port == 22 || port == 53 {
+			rawScore *= 0.8 // 20% reduction for known service ports
+			break           // Only apply once
+		}
+	}
+
 	// Apply confidence penalty for short observation windows
 	adjustedScore := rawScore * confidence
 
-	// Cap the score
-	finalScore := int(math.Min(adjustedScore, 100))
+	// Apply decay if previous score exists
+	if metrics.PreviousScore > 0 {
+		// CrowdSec-style decay: blend previous and current
+		// This provides memory between windows
+		adjustedScore = (float64(metrics.PreviousScore) * 0.7) + (adjustedScore * 0.3)
+	}
+
+	// Cap the score and normalize explicit
+	if adjustedScore > 100 {
+		adjustedScore = 100
+	}
+	finalScore := int(adjustedScore)
 
 	// Determine threat level with hysteresis
 	level := ts.classifyThreat(finalScore, confidence)
@@ -168,8 +193,12 @@ func (ts *ThreatScorer) calculateConfidence(duration float64) float64 {
 	if duration >= minDuration {
 		return 1.0
 	}
-	// Linear ramp-up to minimum duration
-	return duration / minDuration
+	// Linear ramp-up to minimum duration, clamped to min 0.1 to avoid div-by-zero
+	conf := duration / minDuration
+	if conf < 0.1 {
+		return 0.1
+	}
+	return conf
 }
 
 // calculateSYNScore with non-linear scaling for attack detection
@@ -238,6 +267,11 @@ func (ts *ThreatScorer) calculateFailedScore(failedRate float64, metrics IPMetri
 			return 0
 		}
 
+		// Absolute failure check for slow brute force
+		if failedRate > 5.0 && failureRatio > 0.6 {
+			return 5.0 + (failedRate - ts.FailedHandshakeRate)
+		}
+
 		// High failure rate with no successes = scanning
 		if failureRatio > 0.9 {
 			return 5.0 + (failedRate - ts.FailedHandshakeRate)
@@ -249,6 +283,11 @@ func (ts *ThreatScorer) calculateFailedScore(failedRate float64, metrics IPMetri
 
 // calculateBurstScore detects abnormal connection bursts
 func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64) float64 {
+	// Strict check for short-term bursts
+	if duration < 10.0 && rate > 20.0 {
+		return 5.0
+	}
+
 	// Allow higher rates for longer observation windows (sustained traffic = likely legitimate)
 	adaptiveThreshold := 10.0 * math.Max(1.0, duration/60.0)
 
@@ -261,6 +300,11 @@ func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64) floa
 
 // classifyThreat with confidence-aware thresholds
 func (ts *ThreatScorer) classifyThreat(score int, confidence float64) ThreatLevel {
+	// Guard against division by zero (though calculateConfidence now clamps to 0.1)
+	if confidence < 0.1 {
+		return ThreatLevelNormal
+	}
+
 	// Require higher scores for low-confidence classifications
 	maliciousThreshold := int(float64(ts.MaliciousThreshold) / confidence)
 	suspiciousThreshold := int(float64(ts.SuspiciousThreshold) / confidence)
