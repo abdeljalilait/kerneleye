@@ -127,15 +127,6 @@ Score = (syn_rate × 2) + (unique_ports × 3) + (failed_connections × 5)
 | **IPSet Block**    | iptables + ipset          | ~1µs   |
 | **CIDR Block**     | Network range blocking    | ~100ns |
 
-## 💰 Pricing
-
-| Plan           | Price  | Servers    | Features                     |
-| -------------- | ------ | ---------- | ---------------------------- |
-| **Free Trial** | $0     | 1 server   | 7 days, alerts only          |
-| **Starter**    | $5/mo  | 3 servers  | Traffic insights, CSV export |
-| **Pro**        | $15/mo | 10 servers | Auto-blocking, API access    |
-| **Team**       | $29/mo | 50 servers | Webhooks, Slack integration  |
-
 ## 🚀 Quick Start
 
 ### 1. Clone & Setup
