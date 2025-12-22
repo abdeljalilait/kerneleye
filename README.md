@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="dashboard/logo_with_text.png" alt="KernelEye Logo" width="400">
+</p>
+
 # KernelEye 👁️
 
 > **Traffic Intelligence & Lightweight Protection for Small Fleets**
