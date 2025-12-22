@@ -1,36 +1,79 @@
-# Development Quick Start
+# Development Guide
+
+Complete development workflow for KernelEye.
 
 ## Prerequisites
 
-- Docker & Docker Compose
-- Go 1.21+ (for agent development)
-- Node.js 18+ (for dashboard development)
-- Linux with kernel 5.8+ (for agent)
+| Component    | Required For     | Version       |
+| ------------ | ---------------- | ------------- |
+| Docker       | PostgreSQL       | Latest        |
+| Go           | Backend & Agent  | 1.21+         |
+| Node.js      | Dashboard        | 18+           |
+| clang/llvm   | eBPF compilation | 14+           |
+| bpftool      | eBPF development | Latest        |
+| Linux Kernel | Agent            | 5.8+ with BTF |
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Agent (Linux)                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ XDP Firewall│  │eBPF Probes  │  │    Remediation      │  │
+│  │ (xdp_*.c)   │  │(traffic_*.c)│  │    (Go)             │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│                           │                                  │
+│                           │ gRPC                             │
+└───────────────────────────┼──────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     Backend (Go)                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ gRPC Server │  │ HTTP/REST   │  │  WebSocket          │  │
+│  │ (handlers)  │  │ (handlers)  │  │  (live stream)      │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│                           │                                  │
+│                           │ SQL                              │
+└───────────────────────────┼──────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PostgreSQL                               │
+│  users | servers | traffic | threats | api_keys             │
+└─────────────────────────────────────────────────────────────┘
+                            ▲
+                            │ REST + WebSocket
+┌───────────────────────────┴──────────────────────────────────┐
+│                    Dashboard (React)                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │
+│  │ React Query │  │ Components  │  │  WebSocket Context  │   │
+│  │ (caching)   │  │ (UI)        │  │  (live updates)     │   │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘   │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ## Local Development Setup
 
-### 1. Clone and Setup
+### 1. Clone & Configure
 
 ```bash
-git clone <repository>
+git clone https://github.com/abdeljalilait/kerneleye.git
 cd kerneleye
 cp .env.example .env
 ```
 
-### 2. Start Infrastructure
+### 2. Start PostgreSQL
 
 ```bash
-# Start PostgreSQL
 docker-compose up -d postgres
-
-# Wait for database to be ready
 sleep 5
 
-# Run migrations
-docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < backend/migrations/001_initial_schema.sql
+# Run all migrations
+for f in backend/migrations/*.sql; do
+  docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < "$f"
+done
 ```
 
-### 3. Start Backend API
+### 3. Start Backend
 
 ```bash
 cd backend
@@ -38,7 +81,11 @@ go mod download
 go run cmd/api/main.go
 ```
 
-The API will be available at `http://localhost:8080`
+Endpoints:
+
+- HTTP API: `http://localhost:8080`
+- gRPC: `localhost:50051`
+- WebSocket: `ws://localhost:8080/api/v1/ws`
 
 ### 4. Start Dashboard
 
@@ -48,118 +95,247 @@ npm install
 npm run dev
 ```
 
-The dashboard will be available at `http://localhost:3000`
+Dashboard: `http://localhost:3000`
 
-### 5. Test Agent (Linux only)
+### 5. Start Agent (Linux)
 
 ```bash
 cd agent
 
-# Generate vmlinux.h (one-time setup)
+# Generate kernel headers (one-time)
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
 
-# Generate eBPF code
-go generate
+# Generate Go bindings
+go generate ./...
 
-# Build and run (requires root)
+# Build
 go build -o kerneleye-agent
+
+# Run (requires root)
 sudo ./kerneleye-agent
 ```
 
-## Production Deployment
+## Component Development
 
-### Using Docker Compose
+### Agent Development
+
+#### eBPF Programs
+
+Located in `agent/ebpf/`:
+
+| File              | Purpose                       |
+| ----------------- | ----------------------------- |
+| `traffic_probe.c` | TCP/UDP connection monitoring |
+| `xdp_firewall.c`  | XDP packet filtering          |
+
+After modifying `.c` files:
 
 ```bash
-# Set production environment variables
-cp .env.example .env
-# Edit .env with production values
-
-# Start all services
-docker-compose up -d
-
-# Check logs
-docker-compose logs -f
+go generate ./...
+go build -o kerneleye-agent
 ```
 
-### Manual Deployment
+#### Remediation System
 
-See [docs/deployment.md](docs/deployment.md) for detailed deployment instructions.
+Located in `agent/remediation/`:
+
+| File                   | Purpose                 |
+| ---------------------- | ----------------------- |
+| `analyzer.go`          | Threat detection logic  |
+| `xdp_remediator.go`    | XDP-based blocking      |
+| `remediator.go`        | IPSet/iptables blocking |
+| `hybrid_remediator.go` | Combined approach       |
+
+Run tests:
+
+```bash
+go test ./remediation/... -v
+```
+
+### Backend Development
+
+#### Database Queries (sqlc)
+
+After modifying `backend/internal/database/queries/queries.sql`:
+
+```bash
+cd backend
+sqlc generate
+```
+
+#### Adding Migrations
+
+```bash
+# Create new migration
+touch backend/migrations/010_your_change.sql
+
+# Apply
+docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < backend/migrations/010_your_change.sql
+```
+
+#### Protobuf Changes
+
+After modifying `proto/kerneleye/v1/ingest.proto`:
+
+```bash
+cd proto
+buf generate
+```
+
+### Dashboard Development
+
+#### Key Files
+
+| Path                               | Purpose             |
+| ---------------------------------- | ------------------- |
+| `src/hooks/useQueries.ts`          | React Query hooks   |
+| `src/context/WebSocketContext.tsx` | Live stream         |
+| `src/components/LiveStream.tsx`    | Real-time feed      |
+| `src/pages/ServerDetail.tsx`       | Server traffic view |
+
+#### Adding API Calls
+
+All API calls use React Query. Add hooks in `useQueries.ts`:
+
+```typescript
+export function useNewFeature() {
+  return useQuery({
+    queryKey: ['feature'],
+    queryFn: () => apiClient.get('/api/v1/feature'),
+  });
+}
+```
 
 ## Testing
 
-Generate test traffic to see the system in action:
+### Agent Tests
 
 ```bash
-# Terminal 1: Run agent
 cd agent
-sudo ./kerneleye-agent
-
-# Terminal 2: Generate connections (port scan simulation)
-for port in {1..50}; do 
-  nc -zv localhost $port 2>&1 | grep -q "succeeded" && echo "Port $port open"
-done
+go test ./... -v
+go test ./remediation/... -v -race  # With race detector
 ```
 
-Check the agent logs and dashboard to see threat scores appear!
+### Backend Tests
 
-## Architecture
-
-```
-┌──────────────┐     gRPC/HTTPS     ┌──────────────┐
-│ Go Agent     │ ─────────────────> │ Backend API  │
-│ (eBPF)       │                    │ (Go/Fiber)   │
-└──────────────┘                    └──────┬───────┘
-                                           │
-                                           ▼
-                                    ┌──────────────┐
-                                    │ PostgreSQL   │
-                                    └──────────────┘
-                                           ▲
-                                           │
-┌──────────────┐     REST API       ┌──────┴───────┐
-│ Dashboard    │ ─────────────────> │ Backend API  │
-│ (React)      │                    └──────────────┘
-└──────────────┘
+```bash
+cd backend
+go test ./... -v
 ```
 
-## Troubleshooting
+### Integration Testing
 
-### Agent Issues
+Generate test traffic:
 
-**"Failed to load eBPF objects"**
-- Check kernel version: `uname -r` (need 5.8+)
-- Verify BTF: `ls /sys/kernel/btf/vmlinux`
-- Run as root: `sudo ./kerneleye-agent`
+```bash
+# Port scan
+nmap -p 1-100 localhost
 
-**"No such symbol: inet_csk_accept"**
-- Your kernel might not export this symbol
-- Check available symbols: `sudo cat /proc/kallsyms | grep inet_csk`
+# SYN flood (requires hping3)
+sudo hping3 -S -p 80 --flood localhost
 
-### Backend Issues
+# Normal connections
+for i in {1..10}; do curl localhost; done
+```
 
-**"Database connection failed"**
-- Ensure PostgreSQL is running: `docker-compose ps`
-- Check connection string in `.env`
-- Run migrations: see step 2 above
+## Code Quality
 
-### Dashboard Issues
+### Go
 
-**"API connection failed"**
-- Ensure backend is running on port 8080
-- Check CORS settings in backend `.env`
-- Verify `VITE_API_URL` in dashboard
+```bash
+# Format
+gofmt -w .
 
-## Next Steps
+# Lint
+golangci-lint run
 
-1. **Enable UDP monitoring** - Uncomment UDP probe in agent
-2. **Add real-time updates** - Implement WebSocket for live dashboard
-3. **Deploy agents** - Install on production servers
-4. **Configure alerts** - Set up email/Slack notifications
-5. **Phase 2 features** - Implement auto-blocking
+# Vet
+go vet ./...
+```
+
+### TypeScript
+
+```bash
+cd dashboard
+npm run lint
+npm run typecheck
+```
+
+## Debugging
+
+### eBPF Programs
+
+```bash
+# List loaded programs
+sudo bpftool prog list
+
+# View XDP maps
+sudo bpftool map dump name blocked_ips
+sudo bpftool map dump name rate_limits
+
+# Trace eBPF output
+sudo cat /sys/kernel/debug/tracing/trace_pipe
+```
+
+### Backend
+
+```bash
+# Enable debug logging
+export LOG_LEVEL=debug
+go run cmd/api/main.go
+```
+
+### WebSocket
+
+Open browser DevTools → Network → WS tab to inspect live stream messages.
+
+## Production Build
+
+### Backend
+
+```bash
+cd backend
+CGO_ENABLED=0 go build -o api cmd/api/main.go
+```
+
+### Dashboard
+
+```bash
+cd dashboard
+npm run build
+# Output in dist/
+```
+
+### Agent
+
+```bash
+cd agent
+go generate ./...
+CGO_ENABLED=0 go build -o kerneleye-agent .
+```
+
+## Common Issues
+
+### "Failed to load eBPF"
+
+- Check kernel: `uname -r` (need 5.8+)
+- Check BTF: `ls /sys/kernel/btf/vmlinux`
+- Run as root
+
+### "sqlc: command not found"
+
+```bash
+go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+```
+
+### "buf: command not found"
+
+```bash
+go install github.com/bufbuild/buf/cmd/buf@latest
+```
 
 ## Support
 
-- Documentation: [docs/](docs/)
+- Documentation: [docs/](.)
 - Issues: GitHub Issues
 - Email: support@kerneleye.io

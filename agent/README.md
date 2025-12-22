@@ -1,22 +1,93 @@
 # KernelEye Agent
 
-The lightweight eBPF-based monitoring agent for KernelEye.
+The lightweight eBPF-based monitoring and remediation agent for KernelEye.
 
 ## What It Does
 
-- Monitors TCP connections at the kernel level using eBPF
-- Aggregates network metadata (no payload inspection)
-- Sends batched statistics to KernelEye API every 10 seconds
-- Detects port scanning, SYN floods, and failed handshakes
+- **Real-time Traffic Monitoring** - eBPF-based TCP/UDP connection tracking
+- **Bandwidth Tracking** - TC hooks for ingress/egress bytes per IP
+- **Traffic Direction Detection** - Distinguishes inbound vs outbound connections
+- **XDP Firewall** - Ultra-fast packet filtering before network stack
+- **Intelligent Remediation** - Automatic threat blocking and rate limiting
+- **Threat Analysis** - Configurable detection rules with scoring
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         KERNEL                              │
+│                                                             │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────┐   │
+│  │ XDP Firewall │   │ Traffic Probe│   │    TC Hooks    │   │
+│  │              │   │              │   │                │   │
+│  │ • IP Blocking│   │ • kprobes    │   │ • Ingress BW   │   │
+│  │ • Rate Limit │   │ • TCP state  │   │ • Egress BW    │   │
+│  │ • CIDR Block │   │ • UDP events │   │ • Per-IP stats │   │
+│  └──────┬───────┘   └──────┬───────┘   └───────┬────────┘   │
+│         │                  │                   │            │
+└─────────┼──────────────────┼───────────────────┼────────────┘
+          │                  │                   │
+          │    Ring Buffer   │   Ring Buffer     │  eBPF Maps
+          ▼                  ▼                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       USERSPACE                             │
+│                                                             │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────┐   │
+│  │   Analyzer   │   │  Aggregator  │   │   gRPC Client  │   │
+│  │              │   │              │   │                │   │
+│  │ • Scoring    │   │ • Per-IP     │   │ • Batch send   │   │
+│  │ • Detection  │──▶│  statistics  │──▶│ • TLS secured  │   │
+│  │ • Decisions  │   │ • Windowing  │   │ • Heartbeat    │   │
+│  └──────────────┘   └──────────────┘   └────────────────┘   │
+│         │                                      │            │
+│         ▼                                      ▼            │
+│  ┌──────────────┐                    ┌────────────────┐     │
+│  │ Remediator   │                    │  Backend API   │     │
+│  │              │                    │  (SaaS)        │     │
+│  │ • XDP block  │                    └────────────────┘     │
+│  │ • IPSet block│                                           │
+│  │ • Rate limit │                                           │
+│  └──────────────┘                                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Components
+
+### eBPF Programs
+
+| File                   | Type                | Purpose                       |
+| ---------------------- | ------------------- | ----------------------------- |
+| `ebpf/traffic_probe.c` | kprobes/tracepoints | TCP/UDP connection monitoring |
+| `ebpf/xdp_firewall.c`  | XDP                 | Ultra-fast packet filtering   |
+
+### Remediation System
+
+| Component                          | Description                                  |
+| ---------------------------------- | -------------------------------------------- |
+| `remediation/analyzer.go`          | Threat analysis with configurable thresholds |
+| `remediation/xdp_remediator.go`    | XDP-based IP blocking (fastest)              |
+| `remediation/remediator.go`        | IPSet/iptables-based blocking                |
+| `remediation/hybrid_remediator.go` | Combines XDP + IPSet for defense in depth    |
+
+### Detection Capabilities
+
+| Threat              | Detection Method                | Action                |
+| ------------------- | ------------------------------- | --------------------- |
+| **Port Scanning**   | Unique ports per IP > threshold | Block                 |
+| **SYN Flood**       | High SYN rate + low ACK         | XDP Drop + Rate Limit |
+| **Brute Force**     | Failed connections > threshold  | Block                 |
+| **Bandwidth Abuse** | Bytes in/out exceeds limit      | Rate Limit            |
 
 ## Prerequisites
 
 ### System Requirements
+
 - **Linux Kernel**: 5.8+ (with BTF support)
 - **Architecture**: x86_64, ARM64
-- **Permissions**: root (for eBPF loading)
+- **Permissions**: root (for eBPF/XDP loading)
 
 ### Build Dependencies
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
@@ -24,25 +95,26 @@ sudo apt-get install -y \
     clang \
     llvm \
     libbpf-dev \
-    linux-headers-$(uname -r)
+    linux-headers-$(uname -r) \
+    bpftool
 
 # Fedora/RHEL
 sudo dnf install -y \
     clang \
     llvm \
     libbpf-devel \
-    kernel-devel
+    kernel-devel \
+    bpftool
 
 # Arch Linux
-sudo pacman -S clang llvm libbpf linux-headers
+sudo pacman -S clang llvm libbpf linux-headers bpftool
 ```
 
 ## Building
 
-### 1. Generate vmlinux.h (Kernel Type Definitions)
+### 1. Generate vmlinux.h
 
 ```bash
-# This extracts kernel type definitions for CO-RE
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
 ```
 
@@ -53,8 +125,6 @@ go mod download
 go generate ./...
 ```
 
-This creates `bpf_bpfel.go` and `bpf_bpfel.o` from the C code.
-
 ### 3. Build the Agent
 
 ```bash
@@ -63,24 +133,22 @@ go build -o kerneleye-agent .
 
 ## Running
 
-### Local Development (Demo Mode)
+### Development Mode
 
 ```bash
-# Run without API key (local logging only)
+# Run with local logging
 sudo ./kerneleye-agent
 ```
 
 ### Production Mode
 
 ```bash
-# Set API key from KernelEye dashboard
 export KERNELEYE_API_KEY="ke_your_api_key_here"
 export KERNELEYE_SERVER="api.kerneleye.io:443"
-
 sudo ./kerneleye-agent
 ```
 
-### As a Systemd Service
+### Systemd Service
 
 ```bash
 # Copy binary
@@ -93,100 +161,112 @@ echo "KERNELEYE_API_KEY=ke_your_api_key" | sudo tee /etc/kerneleye/config
 # Install service
 sudo cp systemd/kerneleye-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable kerneleye-agent
-sudo systemctl start kerneleye-agent
+sudo systemctl enable --now kerneleye-agent
+```
 
-# Check status
-sudo systemctl status kerneleye-agent
-sudo journalctl -u kerneleye-agent -f
+## Configuration
+
+### Environment Variables
+
+| Variable                   | Default          | Description            |
+| -------------------------- | ---------------- | ---------------------- |
+| `KERNELEYE_API_KEY`        | `demo-key`       | API key from dashboard |
+| `KERNELEYE_SERVER`         | `localhost:8080` | Backend server address |
+| `KERNELEYE_FLUSH_INTERVAL` | `10s`            | Data send interval     |
+| `KERNELEYE_LOG_LEVEL`      | `info`           | Log verbosity          |
+
+### Analyzer Config
+
+The threat analyzer can be tuned in code:
+
+```go
+config := remediation.AnalyzerConfig{
+    SynFloodThreshold:       1000, // SYN/min for flood detection
+    PortScanThreshold:       20,   // Unique ports for scan detection
+    FailedConnThreshold:     50,   // Failed connections for brute force
+    RateLimitWindowSeconds:  60,   // Analysis window
+    BlockDurationMinutes:    30,   // How long to block threats
+}
 ```
 
 ## Testing
 
-Generate some traffic to test detection:
+### Generate Test Traffic
 
 ```bash
-# In terminal 1: Run the agent
-sudo ./kerneleye-agent
+# Port scan (triggers alert)
+nmap -p 1-100 localhost
 
-# In terminal 2: Generate connections
-# Normal connection
+# SYN flood simulation
+hping3 -S -p 80 --flood localhost
+
+# Normal traffic
 curl http://localhost
-
-# Port scan simulation (will trigger alerts)
-for port in {1..100}; do nc -zv localhost $port 2>&1 | grep -q "succeeded" && echo "Port $port open"; done
 ```
 
-You should see suspicious activity logged with threat scores > 20.
+### Verify XDP Firewall
 
-## Configuration
+```bash
+# Check loaded XDP programs
+ip link show
 
-Environment variables:
+# View blocked IPs
+sudo bpftool map dump name blocked_ips
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KERNELEYE_API_KEY` | `demo-key` | Your API key from dashboard |
-| `KERNELEYE_SERVER` | `api.kerneleye.io:443` | Backend server address |
-| `KERNELEYE_FLUSH_INTERVAL` | `10s` | How often to send data |
-| `KERNELEYE_LOG_LEVEL` | `info` | Logging level |
+# Check rate limits
+sudo bpftool map dump name rate_limits
+```
+
+## Data Privacy
+
+**Never Captured:**
+
+- ❌ Packet payloads
+- ❌ HTTP headers/body
+- ❌ Credentials
+- ❌ Application data
+
+**Only Captured:**
+
+- ✅ IP addresses (source/destination)
+- ✅ Ports and protocols
+- ✅ Connection flags (SYN/ACK)
+- ✅ Packet counts & bytes
+- ✅ Traffic direction
 
 ## Troubleshooting
 
 ### "Failed to load eBPF objects"
 
-- **Check kernel version**: `uname -r` (need 5.8+)
-- **Check BTF support**: `ls /sys/kernel/btf/vmlinux`
-- **Check permissions**: Must run as root
+```bash
+# Check kernel version (need 5.8+)
+uname -r
 
-### "Failed to attach kretprobe"
+# Check BTF support
+ls /sys/kernel/btf/vmlinux
 
-- Kernel might not export the symbol. Try:
-  ```bash
-  sudo cat /proc/kallsyms | grep inet_csk_accept
-  ```
-
-### High CPU Usage
-
-- Check flush interval - very short intervals cause overhead
-- Ensure you're batching events properly
-
-## Data Privacy
-
-The agent **NEVER** captures:
-- Packet payloads
-- HTTP headers
-- Credentials
-- Application data
-
-It **ONLY** captures:
-- IP addresses
-- Port numbers
-- Protocol types
-- Connection flags
-- Packet counts
-
-## Architecture
-
+# Run as root
+sudo ./kerneleye-agent
 ```
-┌─────────────────┐
-│   eBPF Hooks    │
-│  (Kernel Space) │
-└────────┬────────┘
-         │ Ring Buffer
-         ▼
-┌─────────────────┐
-│   Go Agent      │
-│  (User Space)   │
-│                 │
-│  - Aggregator   │──┐
-│  - Scorer       │  │ Every 10s
-│  - gRPC Client  │  │
-└─────────────────┘  │
-                     ▼
-              ┌──────────────┐
-              │  API Server  │
-              └──────────────┘
+
+### "Failed to attach XDP"
+
+```bash
+# Check network interface
+ip link show
+
+# Remove existing XDP program
+sudo ip link set dev eth0 xdp off
+
+# Check for conflicts
+sudo bpftool prog list
 ```
+
+### "High CPU usage"
+
+- Increase flush interval
+- Check if XDP is properly offloaded
+- Review analyzer thresholds
 
 ## License
 

@@ -4,52 +4,56 @@ Welcome! This guide will get you up and running with KernelEye in under 10 minut
 
 ## What You're Building
 
-KernelEye is a **lightweight network threat detection platform** that:
-- Monitors traffic at the kernel level using eBPF (no log parsing!)
+KernelEye is a **kernel-level network security platform** that:
+
+- Monitors traffic using eBPF (no log parsing!)
+- Detects threats with XDP firewall (fastest possible filtering)
 - Scores IPs based on suspicious behavior (port scanning, SYN floods, etc.)
-- Provides a beautiful dashboard to visualize threats
-- Is **10x simpler** than CrowdSec
+- Provides real-time remediation (blocking, rate limiting)
+- Shows live traffic in a beautiful dashboard
 
 ## 📋 Prerequisites
 
 ### Required
+
 - **Docker & Docker Compose** - For running PostgreSQL
-- **Linux** (for agent only) - Kernel 5.8+ with BTF support
+- **Go 1.21+** - For backend and agent
+- **Node.js 18+** - For dashboard
 
-### Optional (for development)
-- **Go 1.21+** - To run backend/agent
-- **Node.js 18+** - To run dashboard
-- **bpftool, clang, llvm** - To build eBPF agent
+### For Agent (Linux Only)
 
-## 🎬 Quickest Start (Docker)
+- **Linux Kernel 5.8+** with BTF support
+- **clang, llvm, bpftool** - For eBPF compilation
+- **Root privileges** - For loading eBPF/XDP programs
+
+## 🎬 Quick Start
+
+### 1. Clone & Setup
 
 ```bash
-# 1. Clone and setup
-git clone <your-repo>
+git clone https://github.com/abdeljalilait/kerneleye.git
 cd kerneleye
 cp .env.example .env
-
-# 2. Run the automated setup
 chmod +x setup.sh
 ./setup.sh
-
-# 3. Start all services
-docker-compose up -d
-
-# 4. Open the dashboard
-open http://localhost:3000
 ```
 
-**That's it!** You now have:
-- ✅ PostgreSQL running
-- ✅ Backend API on port 8080
-- ✅ Dashboard on port 3000
+### 2. Start Infrastructure
 
-## 🧪 Development Mode (Recommended)
+```bash
+# Start PostgreSQL
+docker-compose up -d postgres
 
-For active development, run services separately:
+# Wait for database
+sleep 5
 
-### Terminal 1: Backend
+# Run migrations
+for f in backend/migrations/*.sql; do
+  docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < "$f"
+done
+```
+
+### 3. Start Backend
 
 ```bash
 cd backend
@@ -58,12 +62,14 @@ go run cmd/api/main.go
 ```
 
 Output:
+
 ```
 ✅ Database connected
 🚀 KernelEye API listening on port 8080
+📡 gRPC server listening on port 50051
 ```
 
-### Terminal 2: Dashboard
+### 4. Start Dashboard
 
 ```bash
 cd dashboard
@@ -72,19 +78,22 @@ npm run dev
 ```
 
 Output:
+
 ```
-VITE ready in 500 ms
-➜  Local:   http://localhost:3000/
+VITE ready in 500ms
+➜  Local: http://localhost:3000/
 ```
 
-### Terminal 3: Agent (Linux only)
+### 5. Start Agent (Linux Only)
 
 ```bash
 cd agent
 
-# One-time setup
+# One-time: Generate kernel headers
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
-go generate
+
+# Generate eBPF bindings
+go generate ./...
 
 # Build and run
 go build -o kerneleye-agent
@@ -92,51 +101,61 @@ sudo ./kerneleye-agent
 ```
 
 Output:
+
 ```
 ╔════════════════════════════════════════╗
-║   KernelEye Agent v0.1.0 (MVP)         ║
+║   KernelEye Agent v1.0                 ║
 ╚════════════════════════════════════════╝
-Monitoring: TCP connections (IPv4)
+✅ eBPF probes attached
+✅ XDP firewall loaded
+✅ TC hooks attached
+📊 Monitoring: TCP, UDP, Bandwidth
 ```
 
 ## 🎯 Testing the System
 
-### 1. Login to Dashboard
+### Login to Dashboard
 
-Open http://localhost:3000 and login with:
+Open http://localhost:3000 and login:
+
 - **Email**: `demo@kerneleye.io`
 - **Password**: `demo`
 
-### 2. Generate Test Traffic
-
-Simulate a port scan (this will trigger alerts!):
+### Generate Test Traffic
 
 ```bash
-# Generate 50 connection attempts to different ports
+# Port scan (will trigger alerts)
+nmap -p 1-50 localhost
+
+# Or manual scan
 for port in {1..50}; do
   nc -zv localhost $port 2>/dev/null &
 done
-
-# Or use nmap if installed
-nmap -p 1-100 localhost
 ```
 
-### 3. Watch the Magic ✨
+### Watch the Results
 
-- **Agent Terminal**: See connection events being captured
-- **Dashboard**: Watch threat scores appear in real-time
-- **Alerts**: IPs with score > 20 will generate alerts
+- **Agent Terminal**: Connection events captured
+- **Dashboard Live Stream**: Real-time traffic feed
+- **Threats Page**: IPs with high threat scores
+- **Server Detail**: Per-IP statistics with bandwidth
 
 Expected threat score for port scan: **~150** (Malicious 🚨)
 
 ## 📊 Understanding the Dashboard
 
 ### Overview Page
-- **KPI Cards**: Server count, active threats, blocked requests, traffic rate
+
+- **KPI Cards**: Server count, active threats, blocked IPs, traffic rate
 - **Traffic Chart**: Hourly connection volume
-- **Server Status**: All monitored agents
-- **Top Threats**: IPs with highest scores
-- **Live Stream**: Real-time event feed
+- **Live Stream**: Real-time WebSocket event feed
+
+### Server Detail
+
+- **Expandable IP rows**: Click to see per-port breakdown
+- **Traffic direction**: Inbound ⬇️ vs Outbound ⬆️
+- **Bandwidth tracking**: Bytes in/out per IP
+- **Threat indicators**: Score-based coloring
 
 ### Threat Scoring
 
@@ -144,8 +163,8 @@ Expected threat score for port scan: **~150** (Malicious 🚨)
 Formula: (SYN × 2) + (Unique Ports × 3) + (Failed Handshakes × 5)
 
 Example - Port Scan:
-  - 50 SYN packets = 50 × 2 = 100
-  - 50 unique ports = 50 × 3 = 150
+  - 50 SYN packets = 100
+  - 50 unique ports = 150
   - Total Score = 250 (Malicious!)
 
 Levels:
@@ -154,182 +173,82 @@ Levels:
   > 40  → Malicious 🚨
 ```
 
-## 🔧 Common Issues
+## 🛡️ Remediation System
+
+KernelEye can automatically block threats:
+
+| Layer      | Speed | Method                      |
+| ---------- | ----- | --------------------------- |
+| **XDP**    | ~50ns | Drops packets at NIC driver |
+| **IPSet**  | ~1µs  | iptables + ipset rules      |
+| **Hybrid** | Both  | Defense in depth            |
+
+### Blocking Modes
+
+- **Manual**: Block IPs via dashboard
+- **Automatic**: Analyzer blocks threats above threshold
+- **Rate Limit**: Slow down suspicious IPs without blocking
+
+## 🔧 Troubleshooting
 
 ### "Database connection failed"
 
 ```bash
-# Check if PostgreSQL is running
-docker-compose ps
-
-# Restart if needed
+docker-compose ps          # Check PostgreSQL
+docker-compose logs postgres # View logs
 docker-compose restart postgres
-
-# Check logs
-docker-compose logs postgres
 ```
 
 ### "Failed to load eBPF objects"
 
 ```bash
-# Check kernel version (need 5.8+)
-uname -r
-
-# Check BTF support
-ls /sys/kernel/btf/vmlinux
-
-# Make sure you're root
-sudo ./kerneleye-agent
+uname -r                    # Need 5.8+
+ls /sys/kernel/btf/vmlinux  # Need BTF
+sudo ./kerneleye-agent      # Need root
 ```
 
-### "Agent can't connect to API"
+### "XDP attach failed"
 
 ```bash
-# Make sure backend is running
-curl http://localhost:8080/health
-
-# Check environment variables
-cat .env | grep KERNELEYE_SERVER
-
-# Should be: localhost:8080 for local dev
+ip link show                # Check interfaces
+sudo ip link set eth0 xdp off  # Remove existing XDP
 ```
 
 ### Dashboard shows "No data"
 
 ```bash
-# 1. Check backend is running
-curl http://localhost:8080/api/v1/stats/overview
-
-# 2. Check you're logged in
-# Look for 'kerneleye_token' in browser localStorage
-
-# 3. Check browser console for errors
-# Press F12 → Console tab
+curl http://localhost:8080/health  # Check backend
+# Verify agent is running and sending data
 ```
 
 ## 📂 Project Structure
 
 ```
 kerneleye/
-├── agent/          # eBPF monitoring agent (Go)
-├── backend/        # API server (Go/Fiber)
-├── dashboard/      # Web UI (React/TypeScript)
-├── proto/          # gRPC/Protobuf definitions
-├── docs/           # Documentation
-└── setup.sh        # Automated setup script
+├── agent/              # eBPF monitoring agent
+│   ├── ebpf/           # eBPF C programs
+│   └── remediation/    # Threat mitigation
+├── backend/            # Go API server
+│   ├── internal/api/   # HTTP/gRPC handlers
+│   └── migrations/     # Database schema
+├── dashboard/          # React frontend
+│   └── src/            # Components & pages
+└── proto/              # Protobuf definitions
 ```
-
-## 🎨 Customization
-
-### Change Threat Score Weights
-
-Edit [backend/internal/scoring/scorer.go](../backend/internal/scoring/scorer.go):
-
-```go
-func NewThreatScorer() *ThreatScorer {
-	return &ThreatScorer{
-		SYNWeight:             2,  // ← Change this
-		UniquePortsWeight:     3,  // ← Change this
-		FailedHandshakeWeight: 5,  // ← Change this
-	}
-}
-```
-
-### Change Flush Interval (Agent)
-
-Edit [agent/main.go](../agent/main.go):
-
-```go
-aggregator.StartFlushTimer(10 * time.Second)  // ← Change interval
-```
-
-### Add More eBPF Hooks
-
-Edit [agent/ebpf/traffic_probe.c](../agent/ebpf/traffic_probe.c) and add new `SEC()` functions.
 
 ## 🚀 Next Steps
 
-### Phase 1 (MVP) - Complete! ✅
-- [x] eBPF TCP monitoring
-- [x] Threat scoring
-- [x] Dashboard with visualizations
-- [x] Alert generation
-
-### Phase 2 - Your Next Tasks
-- [ ] Enable UDP monitoring (code is there, just uncomment!)
-- [ ] Add real-time WebSocket updates
-- [ ] Implement auto-blocking (iptables integration)
-- [ ] Add email/Slack notifications
-- [ ] Deploy to production server
-
-### Production Deployment
-
-See [docs/deployment.md](deployment.md) for:
-- AWS/DigitalOcean setup
-- SSL certificate configuration
-- Monitoring & logging
-- Backup strategies
-
-## 💡 Architecture Recap
-
-```
-┌─────────────────┐
-│  Customer Host  │
-│                 │
-│  ┌───────────┐  │
-│  │ eBPF Agent│  │  Captures TCP/UDP at kernel level
-│  └─────┬─────┘  │  Aggregates per-IP statistics
-│        │        │
-└────────┼────────┘
-         │ gRPC (every 10s)
-         ▼
-┌─────────────────────┐
-│   Backend API       │  Scores threats
-│   (Go/Fiber)        │  Stores events
-└─────────┬───────────┘  Generates alerts
-          │
-          ▼
-    ┌──────────┐
-    │PostgreSQL│
-    └──────────┘
-          ▲
-          │ REST API
-          │
-    ┌─────┴──────┐
-    │ Dashboard  │  Visualizes threats
-    │  (React)   │  Manages servers
-    └────────────┘
-```
+1. **Deploy to production** - See [docs/deployment.md](deployment.md)
+2. **Configure alerts** - Set up email/Slack notifications
+3. **Tune thresholds** - Adjust analyzer settings
+4. **Enable auto-blocking** - Configure remediation policies
 
 ## 📚 Additional Resources
 
-- [Development Guide](development.md) - Full development setup
-- [API Documentation](api.md) - Endpoint reference (TODO)
-- [Agent Architecture](agent.md) - eBPF internals (TODO)
-- [Database Schema](../backend/migrations/001_initial_schema.sql)
-
-## 🤝 Getting Help
-
-- **Documentation**: Check [docs/](.)
-- **Issues**: GitHub Issues
-- **Community**: Discord (coming soon)
-- **Email**: support@kerneleye.io
-
-## 🎉 Success Checklist
-
-After setup, verify:
-
-- [ ] Dashboard loads at http://localhost:3000
-- [ ] Can login with demo@kerneleye.io
-- [ ] Backend responds to http://localhost:8080/health
-- [ ] PostgreSQL is running (`docker-compose ps`)
-- [ ] Agent captures connections (if on Linux)
-- [ ] Port scan generates alerts in dashboard
-
-**All checked?** You're ready to rock! 🚀
+- [Development Guide](development.md) - Full dev workflow
+- [Agent Architecture](../agent/README.md) - eBPF internals
+- [Database Schema](../backend/migrations/) - PostgreSQL structure
 
 ---
 
 **Built with ❤️ for indie hackers and small teams**
-
-Made simple. Made secure. Made for you.
