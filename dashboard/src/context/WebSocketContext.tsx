@@ -14,6 +14,25 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | undefined>(undefined)
 
+  const getWsUrl = (): string => {
+    // Check for runtime config (set by entrypoint script)
+    const runtimeConfig = (window as any).KERNELEYE_CONFIG;
+    if (runtimeConfig?.WS_URL) {
+      return runtimeConfig.WS_URL;
+    }
+    
+    // Fallback to build-time env
+    if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith('http')) {
+      const url = new URL(import.meta.env.VITE_API_URL);
+      const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${wsProtocol}//${url.host}/ws`;
+    }
+    
+    // Default to current host
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws`;
+  };
+
   const connect = () => {
     // If already connected or connecting, don't start another one
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
@@ -21,16 +40,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     const token = localStorage.getItem('kerneleye_token')
-    let wsUrl: string;
-
-    if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith('http')) {
-      const url = new URL(import.meta.env.VITE_API_URL);
-      const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      wsUrl = `${wsProtocol}//${url.host}/api/v1/ws`;
-    } else {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      wsUrl = `${protocol}//${window.location.host}/api/v1/ws`;
-    }
+    let wsUrl = getWsUrl();
 
     if (token) {
         wsUrl += `?token=${token}`

@@ -1,6 +1,6 @@
 import { useParams, Link } from '@tanstack/react-router'
 import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Statistic, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Cpu, HardDrive, Clock, MapPin, Wifi } from 'lucide-react'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Cpu, Clock, MapPin, Wifi } from 'lucide-react'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerTraffic, useDeleteServer } from '../hooks/useQueries'
 import { useWebSocket } from '../context/WebSocketContext'

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Button, Row, Col, Typography, Alert, Spin, Card, Space, Badge, Tabs } from 'antd'
+import { Button, Row, Col, Typography, Alert, Spin, Card, Space, Badge } from 'antd'
 import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle } from 'lucide-react'
 import ServersList from '../components/ServersList'
 import AddAgentModal from '../components/AddAgentModal'

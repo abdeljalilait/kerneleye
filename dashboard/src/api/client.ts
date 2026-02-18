@@ -1,6 +1,16 @@
+// Get API URL from runtime config (injected by nginx) or fallback to build-time env
+const getApiUrl = (): string => {
+  // Check for runtime config (set by entrypoint script)
+  if (typeof window !== 'undefined' && (window as any).KERNELEYE_CONFIG?.API_URL) {
+    return (window as any).KERNELEYE_CONFIG.API_URL;
+  }
+  // Fallback to build-time environment variable
+  return import.meta.env.VITE_API_URL || '/api/v1';
+};
+
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const API_BASE_URL = getApiUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
