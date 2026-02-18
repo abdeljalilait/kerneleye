@@ -22,8 +22,8 @@ services:
   backend:
     image: registry.hakiware.com/kerneleye/backend:latest
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     container_name: kerneleye-api
     environment:
       DATABASE_URL: postgres://kerneleye:${DB_PASSWORD:-changeme}@postgres:5432/kerneleye?sslmode=disable
