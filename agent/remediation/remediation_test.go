@@ -169,7 +169,7 @@ func TestSetup_DockerUserChain(t *testing.T) {
 	// Verify we tried to insert jump rule into DOCKER-USER
 	foundDockerJump := false
 	for _, cmd := range calls {
-		if cmd == "iptables -I DOCKER-USER -j KERNEL_EYE" {
+		if cmd == "iptables -I DOCKER-USER 1 -j KERNEL_EYE" {
 			foundDockerJump = true
 			break
 		}
@@ -180,13 +180,33 @@ func TestSetup_DockerUserChain(t *testing.T) {
 
 	// Now Test Teardown
 	calls = nil // reset
+	
+	// Update mock for Teardown: simulate rule EXISTS so deletion is attempted
+	remediator.Runner = func(name string, args ...string) error {
+		cmd := name + " " + strings.Join(args, " ")
+		calls = append(calls, cmd)
+		
+		// Simulate chain exists
+		if name == "iptables" && args[0] == "-L" {
+			return nil
+		}
+		
+		// During teardown, simulate rule EXISTS (so it will try to delete)
+		// but return error on delete to simulate successful deletion (test mock limitation)
+		if name == "iptables" && args[0] == "-C" {
+			return nil // rule exists
+		}
+		
+		return nil
+	}
+	
 	if err := remediator.Teardown(); err != nil {
 		t.Fatalf("Teardown failed: %v", err)
 	}
 	// Verify we tried to remove jump rule from DOCKER-USER
 	foundDockerRemove := false
 	for _, cmd := range calls {
-		if cmd == "iptables -D DOCKER-USER -j KERNEL_EYE" {
+		if strings.HasPrefix(cmd, "iptables -D DOCKER-USER -j KERNEL_EYE") {
 			foundDockerRemove = true
 			break
 		}
@@ -256,12 +276,22 @@ func TestSyncBlocklist(t *testing.T) {
 		t.Error("Did not find swap command")
 	}
 
-	// 4. Destroy (deferred, so it should be last or near end)
-	// mockRunner just appends, defer executes at end of function.
-	// The `SyncBlocklist` function returned, so defer SHOULD have executed.
-	lastCmd := cmds[len(cmds)-1]
-	if !strings.Contains(lastCmd, "destroy kernel_eye_block_temp") {
-		t.Errorf("Expected destroy temp as last command, got: %v", lastCmd)
+	// 4. Destroy both temp sets (order may vary)
+	foundDestroyV4 := false
+	foundDestroyV6 := false
+	for _, cmd := range cmds {
+		if strings.Contains(cmd, "destroy kernel_eye_block_temp") {
+			foundDestroyV4 = true
+		}
+		if strings.Contains(cmd, "destroy kernel_eye_block_v6_temp") {
+			foundDestroyV6 = true
+		}
+	}
+	if !foundDestroyV4 {
+		t.Error("Did not find destroy command for v4 temp set")
+	}
+	if !foundDestroyV6 {
+		t.Error("Did not find destroy command for v6 temp set")
 	}
 }
 

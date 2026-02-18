@@ -1,11 +1,13 @@
 package remediation
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,7 +24,7 @@ type CommandRunner func(name string, args ...string) error
 
 type IPSetRemediator struct {
 	Runner  CommandRunner
-	OnBlock BlockCallback // Called when an IP is blocked
+	OnBlock BlockCallback // Called when an IP is blocked or rate-limited
 }
 
 func NewIPSetRemediator() *IPSetRemediator {
@@ -49,22 +51,16 @@ func (r *IPSetRemediator) Setup() error {
 	}
 
 	// Create iptables chain
+	// Try to create chain. If it already exists, that's fine - we'll flush it.
 	if err := r.Runner("iptables", "-N", ChainName); err != nil {
-		// Only ignore "Chain already exists" error
-		// Note: CombinedOutput usually includes stderr.
-		// Exact string depends on iptables version, typically "Chain already exists".
-		// For robustness, we can try to flush it. If that succeeds, it existed.
-		// Alternatively, just log debug if it fails, but don't return error.
-		// A cleaner way in Setup:
-		// 1. Create (-N). If fail, Flush (-F).
-		if errFlush := r.Runner("iptables", "-F", ChainName); errFlush != nil {
-			// If flush failed, implies chain might not exist or other error.
-			// But if -N failed, it might exist.
-			// Let's rely on the previous -N error for logging but continue.
+		// Check if error is because chain already exists
+		if !isAlreadyExistsError(err) {
+			return fmt.Errorf("failed to create chain %s: %w", ChainName, err)
 		}
+		log.Printf("🔄 Chain %s already exists", ChainName)
 	}
 
-	// Ensure jump rule from INPUT to KERNEL_EYE exists
+	// Ensure jump rules exist (idempotent - checks before inserting)
 	if err := r.ensureJumpRule("INPUT", ChainName); err != nil {
 		return fmt.Errorf("failed to ensure INPUT jump rule: %w", err)
 	}
@@ -79,9 +75,13 @@ func (r *IPSetRemediator) Setup() error {
 		}
 	}
 
-	// Flush chain
-	r.Runner("iptables", "-F", ChainName)
+	// Flush chain to ensure clean state (removes any existing rules)
+	// This prevents rule accumulation if Setup() is called multiple times
+	if err := r.Runner("iptables", "-F", ChainName); err != nil {
+		return fmt.Errorf("failed to flush chain %s: %w", ChainName, err)
+	}
 
+	// Add rules to clean chain
 	// Block rules
 	if err := r.Runner("iptables", "-A", ChainName, "-m", "set", "--match-set", BlockSet, "src", "-j", "DROP"); err != nil {
 		return fmt.Errorf("failed to add block rule: %w", err)
@@ -145,72 +145,144 @@ func (r *IPSetRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 }
 
 func (r *IPSetRemediator) SyncBlocklist(ips []net.IP) error {
-	// Atomic swap implementation:
-	// 1. Create temporary set
-	// 2. Populate temporary set
-	// 3. Swap with active set
-	// 4. Destroy temporary set
+	// Atomic swap implementation for both IPv4 and IPv6:
+	// 1. Create temporary sets for v4 and v6
+	// 2. Populate temporary sets
+	// 3. Swap with active sets
+	// 4. Destroy old sets (now referenced by temp names)
 
-	tempSet := BlockSet + "_temp"
-	// Create temp set with same parameters as BlockSet
-	if err := r.Runner("ipset", "create", tempSet, "hash:ip", "timeout", "3600", "-exist"); err != nil {
-		return fmt.Errorf("failed to create temp ipset: %w", err)
+	tempSetV4 := BlockSet + "_temp"
+	tempSetV6 := BlockSetV6 + "_temp"
+
+	// Create temp sets with same parameters as BlockSets
+	if err := r.Runner("ipset", "create", tempSetV4, "hash:ip", "timeout", "3600", "-exist"); err != nil {
+		return fmt.Errorf("failed to create temp ipset v4: %w", err)
+	}
+	if err := r.Runner("ipset", "create", tempSetV6, "hash:ip", "family", "inet6", "timeout", "3600", "-exist"); err != nil {
+		// Clean up v4 temp set if v6 creation fails
+		_ = r.Runner("ipset", "destroy", tempSetV4)
+		return fmt.Errorf("failed to create temp ipset v6: %w", err)
 	}
 
-	// Helper to cleanup temp set on error
-	defer r.Runner("ipset", "destroy", tempSet)
+	// Helper to cleanup temp sets on error (before swap)
+	// After swap, tempSet names point to old data, which we DO want to destroy
+	cleanupOnError := func() {
+		_ = r.Runner("ipset", "destroy", tempSetV4)
+		_ = r.Runner("ipset", "destroy", tempSetV6)
+	}
+	swapSucceeded := false
+	defer func() {
+		if !swapSucceeded {
+			// Only cleanup if swap didn't happen
+			cleanupOnError()
+		}
+		// If swap succeeded, tempSet names now refer to the OLD sets,
+		// so we destroy them to clean up (done below)
+	}()
 
-	// Populate temp set
-	// Note: For very large lists, 'restore' mode would be faster, but direct execution is safer for now without changing CommandRunner interface.
+	// Populate temp sets
+	v4Count, v6Count := 0, 0
+	skippedCount := 0
 	for _, ip := range ips {
 		if err := r.validateIP(ip); err != nil {
-			continue // Skip invalid IPs
+			log.Printf("⚠️  Skipping invalid IP in sync: %v", err)
+			skippedCount++
+			continue
 		}
 
 		if !r.isExternalIP(ip) {
+			skippedCount++
 			continue // Skip non-external IPs
 		}
 
-		// Add to IPv4 temp set (assuming mixed list, we might need separate syncs or sets,
-		// but currently BlockSet is v4. Handling v6 in sync requires v6 temp set too.
-		// For simplicity/MVP, we'll just handle v4 in this pass or assume caller separates them?
-		// The current Block() method splits by v4/v6. Sync needs to ideally do the same.
-		// Let's implement v4 sync for BlockSet and v6 for BlockSetV6 if we want full correctness.
-		// For now, let's just handle IPv4 as the primary requirement usually implies.
 		if ip.To4() != nil {
-			if err := r.Runner("ipset", "add", tempSet, ip.String(), "timeout", "3600", "-exist"); err != nil {
-				log.Printf("⚠️ Failed to add IP %s to temp set: %v", ip, err)
+			// IPv4
+			if err := r.Runner("ipset", "add", tempSetV4, ip.String(), "timeout", "3600", "-exist"); err != nil {
+				log.Printf("⚠️  Failed to add IP %s to temp v4 set: %v", ip, err)
+			} else {
+				v4Count++
+			}
+		} else {
+			// IPv6
+			if err := r.Runner("ipset", "add", tempSetV6, ip.String(), "timeout", "3600", "-exist"); err != nil {
+				log.Printf("⚠️  Failed to add IP %s to temp v6 set: %v", ip, err)
+			} else {
+				v6Count++
 			}
 		}
 	}
 
-	// Atomic Swap
-	if err := r.Runner("ipset", "swap", tempSet, BlockSet); err != nil {
-		return fmt.Errorf("failed to swap ipsets: %w", err)
+	log.Printf("📊 SyncBlocklist: %d IPv4, %d IPv6 added (%d skipped)", v4Count, v6Count, skippedCount)
+
+	// Atomic Swap for IPv4
+	if err := r.Runner("ipset", "swap", tempSetV4, BlockSet); err != nil {
+		return fmt.Errorf("failed to swap v4 ipsets: %w", err)
 	}
 
-	// Release reference to temp set so defer destroy works on the OLD set (which is now named tempSet)
-	// ipset swap swaps the NAMES. So 'tempSet' name now points to the OLD set.
-	// The defer will destroy 'tempSet' (the old set).
+	// Atomic Swap for IPv6
+	if err := r.Runner("ipset", "swap", tempSetV6, BlockSetV6); err != nil {
+		// Note: v4 has already been swapped. This is a partial failure state.
+		// The old v6 set is still active, but v4 has the new data.
+		// For now, we just return the error. A more robust implementation might
+		// attempt to swap back v4 or track this state.
+		return fmt.Errorf("failed to swap v6 ipsets (v4 swap succeeded): %w", err)
+	}
+
+	// Swaps succeeded - tempSet names now point to the OLD sets
+	swapSucceeded = true
+
+	// Destroy the old sets (now referenced by temp names)
+	// Ignore errors here as these are best-effort cleanup
+	if err := r.Runner("ipset", "destroy", tempSetV4); err != nil {
+		log.Printf("⚠️  Failed to destroy old v4 set (was %s): %v", tempSetV4, err)
+	}
+	if err := r.Runner("ipset", "destroy", tempSetV6); err != nil {
+		log.Printf("⚠️  Failed to destroy old v6 set (was %s): %v", tempSetV6, err)
+	}
 
 	return nil
 }
 
 func (r *IPSetRemediator) Teardown() error {
-	// Clean up iptables chain
-	// Clean up iptables chain
-	r.Runner("iptables", "-D", "INPUT", "-j", ChainName)
-	if r.chainExists(DockerChain) {
-		r.Runner("iptables", "-D", DockerChain, "-j", ChainName)
-	}
-	r.Runner("iptables", "-F", ChainName)
-	r.Runner("iptables", "-X", ChainName)
+	var errs []error
 
-	// Destroy ipsets
-	r.Runner("ipset", "destroy", BlockSet)
-	r.Runner("ipset", "destroy", RateLimitSet)
-	r.Runner("ipset", "destroy", BlockSetV6)
-	r.Runner("ipset", "destroy", RateLimitSetV6)
+	// Clean up iptables jump rules (may be multiple if duplicates exist)
+	// Keep deleting until no more rules found (max 10 iterations to prevent infinite loops)
+	for i := 0; i < 10 && r.jumpRuleExists("INPUT", ChainName); i++ {
+		if err := r.Runner("iptables", "-D", "INPUT", "-j", ChainName); err != nil {
+			errs = append(errs, fmt.Errorf("failed to delete INPUT jump rule: %w", err))
+			break // Stop trying if deletion fails
+		}
+	}
+
+	if r.chainExists(DockerChain) {
+		for i := 0; i < 10 && r.jumpRuleExists(DockerChain, ChainName); i++ {
+			if err := r.Runner("iptables", "-D", DockerChain, "-j", ChainName); err != nil {
+				errs = append(errs, fmt.Errorf("failed to delete DOCKER-USER jump rule: %w", err))
+				break
+			}
+		}
+	}
+
+	// Flush and delete chain
+	if err := r.Runner("iptables", "-F", ChainName); err != nil {
+		errs = append(errs, fmt.Errorf("failed to flush chain %s: %w", ChainName, err))
+	}
+	if err := r.Runner("iptables", "-X", ChainName); err != nil {
+		errs = append(errs, fmt.Errorf("failed to delete chain %s: %w", ChainName, err))
+	}
+
+	// Destroy ipsets (best effort - ignore errors as they may not exist)
+	for _, set := range []string{BlockSet, RateLimitSet, BlockSetV6, RateLimitSetV6} {
+		if err := r.Runner("ipset", "destroy", set); err != nil {
+			// Only log, don't fail - sets may not exist or may still be referenced
+			log.Printf("⚠️  Failed to destroy ipset %s: %v", set, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("teardown completed with %d errors: %v", len(errs), errors.Join(errs...))
+	}
 	return nil
 }
 
@@ -218,16 +290,19 @@ func (r *IPSetRemediator) validateIP(ip net.IP) error {
 	if ip == nil {
 		return fmt.Errorf("invalid nil IP")
 	}
-	// Basic string representation check is handled by ip.String() which is safe
-	// But we want to ensure it's a valid IP structure
-	if len(ip) == 0 {
-		return fmt.Errorf("empty IP")
+	// net.IP is a []byte. Valid IPs are 4 or 16 bytes.
+	if len(ip) != 4 && len(ip) != 16 {
+		return fmt.Errorf("invalid IP length: %d (expected 4 or 16)", len(ip))
 	}
 	return nil
 }
 
 func (r *IPSetRemediator) isExternalIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return false
+	}
+	// Also check for unspecified (0.0.0.0) and multicast
+	if ip.IsUnspecified() || ip.IsMulticast() {
 		return false
 	}
 	return true
@@ -244,12 +319,20 @@ func runCommand(name string, args ...string) error {
 func (r *IPSetRemediator) ensureJumpRule(fromChain, toChain string) error {
 	// Check if jump rule exists
 	if err := r.Runner("iptables", "-C", fromChain, "-j", toChain); err != nil {
-		// If check failed, try to insert
-		if err := r.Runner("iptables", "-I", fromChain, "-j", toChain); err != nil {
-			return err
+		// If check failed, try to insert at position 1
+		if err := r.Runner("iptables", "-I", fromChain, "1", "-j", toChain); err != nil {
+			return fmt.Errorf("failed to insert jump rule from %s to %s: %w", fromChain, toChain, err)
 		}
+		log.Printf("✅ Added jump rule: %s -> %s", fromChain, toChain)
 	}
 	return nil
+}
+
+func (r *IPSetRemediator) jumpRuleExists(fromChain, toChain string) bool {
+	// Check if a specific jump rule exists
+	// iptables -C fromChain -j toChain
+	err := r.Runner("iptables", "-C", fromChain, "-j", toChain)
+	return err == nil
 }
 
 func (r *IPSetRemediator) chainExists(chain string) bool {
@@ -258,4 +341,14 @@ func (r *IPSetRemediator) chainExists(chain string) bool {
 	// We ignore output.
 	err := r.Runner("iptables", "-L", chain, "-n")
 	return err == nil
+}
+
+// isAlreadyExistsError checks if an error indicates the chain already exists
+func isAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "Chain already exists") ||
+		strings.Contains(errStr, "File exists")
 }

@@ -63,7 +63,7 @@ func detectDefaultInterface() string {
 
 func printBanner(cfg AgentConfig) {
 	log.Println("╔════════════════════════════════════════╗")
-	log.Println("║   KernelEye Agent v0.2.0 (XDP)         ║")
+	log.Printf("║   KernelEye Agent v%-19s ║\n", Version)
 	log.Println("╚════════════════════════════════════════╝")
 	log.Printf("API Key: %s...%s\n", cfg.APIKey[:4], cfg.APIKey[len(cfg.APIKey)-4:])
 	log.Printf("Server: %s\n", cfg.ServerHost)

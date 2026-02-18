@@ -1,53 +1,54 @@
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation, Link } from '@tanstack/react-router'
-import { ProLayout, PageContainer } from '@ant-design/pro-components'
-import { Shield, Activity, Server, AlertTriangle, Bell, LogOut } from 'lucide-react'
-import { Button, Avatar, Dropdown, Badge } from 'antd'
+import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography, Divider } from 'antd'
+import { 
+  Shield, 
+  Activity, 
+  Server, 
+  AlertTriangle, 
+  Bell, 
+  LogOut, 
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  User
+} from 'lucide-react'
 import type { MenuProps } from 'antd'
+import { useQueryClient } from '@tanstack/react-query'
+import { useWebSocket } from '../context/WebSocketContext'
+
+const { Sider, Header, Content } = Layout
+const { Text } = Typography
 
 const menuItems = [
   {
-    path: '/dashboard',
-    name: 'Overview',
-    icon: <Activity size={16} />,
+    key: '/dashboard',
+    icon: <Activity size={18} />,
+    label: 'Overview',
   },
   {
-    path: '/dashboard/servers',
-    name: 'Servers',
-    icon: <Server size={16} />,
+    key: '/dashboard/servers',
+    icon: <Server size={18} />,
+    label: 'Servers',
   },
   {
-    path: '/dashboard/threats',
-    name: 'Threats',
-    icon: <Shield size={16} />,
+    key: '/dashboard/threats',
+    icon: <Shield size={18} />,
+    label: 'Threats',
   },
   {
-    path: '/dashboard/alerts',
-    name: 'Alerts',
-    icon: <AlertTriangle size={16} />,
+    key: '/dashboard/alerts',
+    icon: <AlertTriangle size={18} />,
+    label: 'Alerts',
   },
 ]
-
-import { useQueryClient } from '@tanstack/react-query'
-import { useWebSocket } from '../context/WebSocketContext'
 
 export default function Dashboard() {
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const queryClient = useQueryClient()
   const { lastMessage } = useWebSocket()
-
-  // Determine the selected menu key based on current path
-  // This fixes the issue where Overview (/dashboard) is always highlighted
-  const getSelectedKey = () => {
-    const pathname = location.pathname
-    // Check for exact match first, then prefix match for child routes
-    const matched = menuItems.find(item => 
-      pathname === item.path || 
-      (item.path !== '/dashboard' && pathname.startsWith(item.path))
-    )
-    return matched?.path || '/dashboard'
-  }
 
   // React to WebSocket messages
   useEffect(() => {
@@ -65,11 +66,18 @@ export default function Dashboard() {
         queryClient.invalidateQueries({ queryKey: ['alerts'] })
         break
       case 'new_traffic':
-        // For individual traffic, we might want to invalidate specific server traffic or stats
-        // queryClient.invalidateQueries({ queryKey: ['serverTraffic'] })
         break
     }
   }, [lastMessage, queryClient])
+
+  const getSelectedKey = () => {
+    const pathname = location.pathname
+    const matched = menuItems.find(item => 
+      pathname === item.key || 
+      (item.key !== '/dashboard' && pathname.startsWith(item.key))
+    )
+    return matched?.key || '/dashboard'
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('kerneleye_token')
@@ -77,6 +85,19 @@ export default function Dashboard() {
   }
 
   const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'profile',
+      label: 'Profile',
+      icon: <User size={14} />,
+    },
+    {
+      key: 'settings',
+      label: 'Settings',
+      icon: <Settings size={14} />,
+    },
+    {
+      type: 'divider',
+    },
     {
       key: 'logout',
       label: 'Logout',
@@ -87,83 +108,298 @@ export default function Dashboard() {
   ]
 
   return (
-    <ProLayout
-      title="KernelEye"
-      logo={
-        <div style={{ 
-          width: 32, 
-          height: 32, 
-          background: '#4f46e5', 
-          borderRadius: 8, 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center' 
-        }}>
-          <Shield size={18} color="white" />
-        </div>
-      }
-      layout="mix"
-      siderWidth={220}
-      collapsed={collapsed}
-      onCollapse={setCollapsed}
-      fixSiderbar
-      fixedHeader
-      route={{
-        path: '/dashboard',
-        routes: menuItems.map(item => ({
-          path: item.path,
-          name: item.name,
-          icon: item.icon,
-        })),
-      }}
-      location={{ pathname: location.pathname }}
-      menuProps={{
-        selectedKeys: [getSelectedKey()],
-      }}
-      menuItemRender={(item, dom) => (
-        <Link to={item.path || '/dashboard'}>{dom}</Link>
-      )}
-      actionsRender={() => [
-        <Badge key="notifications" count={0} size="small">
-          <Button type="text" icon={<Bell size={18} />} />
-        </Badge>,
-        <Dropdown key="user" menu={{ items: userMenuItems }} placement="bottomRight">
-          <Avatar 
-            style={{ backgroundColor: '#4f46e5', cursor: 'pointer' }} 
-            size="small"
-          >
-            U
-          </Avatar>
-        </Dropdown>,
-      ]}
-      token={{
-        header: {
-          colorBgHeader: '#141414',
-          colorTextMenu: '#dfdfdf',
-          colorTextMenuSelected: '#fff',
-          colorBgMenuItemHover: 'rgba(255,255,255,0.1)',
-          colorBgMenuItemSelected: 'rgba(79, 70, 229, 0.5)',
-        },
-        sider: {
-          colorMenuBackground: '#141414',
-          colorTextMenu: '#dfdfdf',
-          colorTextMenuSelected: '#fff',
-          colorBgMenuItemHover: 'rgba(255,255,255,0.1)',
-          colorBgMenuItemSelected: 'rgba(79, 70, 229, 0.5)',
-          colorTextMenuTitle: '#fff',
-        },
-        pageContainer: {
-          colorBgPageContainer: '#0a0a0a',
-        },
-      }}
-      bgLayoutImgList={[]}
-    >
-      <PageContainer
-        header={{ title: false, breadcrumb: {} }}
-        style={{ minHeight: '100vh' }}
+    <Layout style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+      {/* Sidebar */}
+      <Sider
+        trigger={null}
+        collapsible
+        collapsed={collapsed}
+        collapsedWidth={80}
+        width={260}
+        style={{
+          background: 'var(--glass-bg)',
+          backdropFilter: 'blur(20px)',
+          borderRight: '1px solid var(--glass-border)',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 100,
+          boxShadow: '4px 0 24px rgba(0, 0, 0, 0.3)',
+        }}
       >
-        <Outlet />
-      </PageContainer>
-    </ProLayout>
+        {/* Logo */}
+        <div 
+          style={{ 
+            height: 80, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            padding: collapsed ? 0 : '0 24px',
+            gap: 12,
+            borderBottom: '1px solid var(--glass-border)',
+          }}
+        >
+          <div 
+            style={{ 
+              width: 44, 
+              height: 44, 
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              borderRadius: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
+              flexShrink: 0,
+            }}
+          >
+            <Shield size={24} color="white" />
+          </div>
+          {!collapsed && (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Text strong style={{ fontSize: 20, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                KernelEye
+              </Text>
+              <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', letterSpacing: '0.1em' }}>
+                SECURITY MONITOR
+              </Text>
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <div style={{ padding: '16px 12px' }}>
+          <Text 
+            style={{ 
+              fontSize: 11, 
+              color: 'var(--text-tertiary)', 
+              letterSpacing: '0.1em',
+              marginLeft: collapsed ? 0 : 12,
+              marginBottom: 8,
+              display: collapsed ? 'none' : 'block',
+              fontWeight: 600,
+            }}
+          >
+            NAVIGATION
+          </Text>
+          <Menu
+            mode="inline"
+            selectedKeys={[getSelectedKey()]}
+            inlineCollapsed={collapsed}
+            style={{
+              background: 'transparent',
+              border: 'none',
+            }}
+            items={menuItems.map(item => ({
+              key: item.key,
+              icon: item.icon,
+              label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
+            }))}
+          />
+        </div>
+
+        {/* Collapse Button */}
+        <div 
+          style={{ 
+            position: 'absolute',
+            bottom: 80,
+            left: 0,
+            right: 0,
+            padding: '0 16px',
+            display: 'flex',
+            justifyContent: 'center',
+          }}
+        >
+          <Button
+            type="text"
+            icon={collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            onClick={() => setCollapsed(!collapsed)}
+            style={{
+              color: 'var(--text-tertiary)',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 8,
+              width: collapsed ? 40 : '100%',
+              height: 36,
+            }}
+          >
+            {!collapsed && <span style={{ marginLeft: 8 }}>Collapse</span>}
+          </Button>
+        </div>
+
+        {/* User Section */}
+        <div 
+          style={{ 
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: '16px',
+            borderTop: '1px solid var(--glass-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            gap: 12,
+          }}
+        >
+          <Dropdown menu={{ items: userMenuItems }} placement="topRight" arrow>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+              <Badge
+                dot
+                color="var(--success)"
+                offset={[-4, 32]}
+              >
+                <Avatar
+                  style={{
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    width: 40,
+                    height: 40,
+                  }}
+                >
+                  <User size={18} />
+                </Avatar>
+              </Badge>
+              {!collapsed && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <Text strong style={{ color: 'var(--text-primary)', fontSize: 14, lineHeight: 1.3 }}>
+                    Administrator
+                  </Text>
+                  <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.3 }}>
+                    Online
+                  </Text>
+                </div>
+              )}
+            </div>
+          </Dropdown>
+        </div>
+      </Sider>
+
+      {/* Main Layout */}
+      <Layout 
+        style={{ 
+          marginLeft: collapsed ? 80 : 260,
+          transition: 'margin-left 0.3s ease',
+          background: 'var(--bg-primary)',
+          minHeight: '100vh',
+        }}
+      >
+        {/* Header */}
+        <Header
+          style={{
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(20px)',
+            borderBottom: '1px solid var(--glass-border)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 99,
+            height: 80,
+            padding: '0 32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          {/* Breadcrumb / Page Title */}
+          <div>
+            <Text style={{ 
+              fontSize: 12, 
+              color: 'var(--text-tertiary)', 
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+            }}>
+              Dashboard
+            </Text>
+            <Text strong style={{ 
+              fontSize: 20, 
+              color: 'var(--text-primary)', 
+              display: 'block',
+              marginTop: 2,
+            }}>
+              {menuItems.find(item => item.key === getSelectedKey())?.label || 'Overview'}
+            </Text>
+          </div>
+
+          {/* Right Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* Notification Bell */}
+            <Badge count={0} size="small" style={{ background: 'var(--accent-rose)' }}>
+              <Button
+                type="text"
+                icon={<Bell size={20} />}
+                style={{
+                  color: 'var(--text-secondary)',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              />
+            </Badge>
+
+            {/* Status Indicator */}
+            <div 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 8,
+                padding: '8px 16px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                borderRadius: 20,
+                border: '1px solid rgba(16, 185, 129, 0.2)',
+              }}
+            >
+              <span 
+                className="status-indicator status-online animate-pulse" 
+                style={{ width: 8, height: 8 }}
+              />
+              <Text style={{ color: 'var(--success)', fontSize: 13, fontWeight: 500 }}>
+                System Active
+              </Text>
+            </div>
+          </div>
+        </Header>
+
+        {/* Main Content */}
+        <Content
+          style={{
+            padding: '32px',
+            background: 'var(--bg-primary)',
+            position: 'relative',
+          }}
+        >
+          {/* Background Effects */}
+          <div 
+            style={{
+              position: 'fixed',
+              top: '10%',
+              right: '5%',
+              width: 400,
+              height: 400,
+              background: 'radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%)',
+              pointerEvents: 'none',
+              zIndex: 0,
+            }}
+          />
+          <div 
+            style={{
+              position: 'fixed',
+              bottom: '10%',
+              left: collapsed ? '15%' : '25%',
+              width: 300,
+              height: 300,
+              background: 'radial-gradient(circle, rgba(6, 182, 212, 0.06) 0%, transparent 70%)',
+              pointerEvents: 'none',
+              zIndex: 0,
+            }}
+          />
+
+          {/* Content Outlet */}
+          <div style={{ position: 'relative', zIndex: 1, maxWidth: 1600, margin: '0 auto' }}>
+            <Outlet />
+          </div>
+        </Content>
+      </Layout>
+    </Layout>
   )
 }

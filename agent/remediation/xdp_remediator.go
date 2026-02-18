@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 )
+
+// DefaultXDPObjectPath is the default path to the XDP eBPF object file.
+// This can be overridden via XDPConfig or by setting KERNELEYE_XDP_PATH env var.
+const DefaultXDPObjectPath = "/usr/local/lib/kerneleye/xdp_firewall_bpfel.o"
 
 var (
 	errNotAttached  = errors.New("XDP not attached")
@@ -28,16 +35,19 @@ type XDPRemediator struct {
 	xdpLink           link.Link
 	attached, pinMaps bool
 	pinPath           string
+	objectPath        string // Path to the eBPF object file
 	OnBlock           BlockCallback // Called when an IP is blocked
+
+	mu sync.RWMutex // Protects all mutable fields
 }
 
 // NewXDPRemediator creates a new XDP-based remediator
 func NewXDPRemediator(interfaceName string) *XDPRemediator {
 	return &XDPRemediator{
 		interfaceName: interfaceName,
-		mode:          XDPModeDRV,
 		pinMaps:       true,
 		pinPath:       DefaultXDPMapPinPath,
+		objectPath:    "", // Will be auto-detected
 	}
 }
 
@@ -49,20 +59,24 @@ func NewXDPRemediatorWithConfig(cfg XDPConfig) *XDPRemediator {
 	}
 	return &XDPRemediator{
 		interfaceName: cfg.InterfaceName,
-		mode:          XDPModeDRV,
 		pinMaps:       cfg.PinMaps,
 		pinPath:       pinPath,
+		objectPath:    cfg.ObjectPath,
 	}
 }
 
 // Setup loads and attaches the XDP program
 func (r *XDPRemediator) Setup() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	iface, err := net.InterfaceByName(r.interfaceName)
 	if err != nil {
 		return fmt.Errorf("interface %s not found: %w", r.interfaceName, err)
 	}
 
-	spec, err := ebpf.LoadCollectionSpec("ebpf/xdp_firewall_bpfel.o")
+	// Use embedded binary instead of relative path
+	spec, err := r.loadXDPFirewallSpec()
 	if err != nil {
 		return fmt.Errorf("failed to load XDP spec: %w", err)
 	}
@@ -91,6 +105,8 @@ func (r *XDPRemediator) Setup() error {
 			r.cleanup()
 			return fmt.Errorf("XDP attach failed: %w", err)
 		}
+	} else {
+		r.mode = XDPModeDRV
 	}
 
 	r.attached = true
@@ -98,8 +114,53 @@ func (r *XDPRemediator) Setup() error {
 	return nil
 }
 
+// loadXDPFirewallSpec loads the XDP program spec from the configured path.
+// It checks the following in order:
+// 1. Configured objectPath if set
+// 2. KERNELEYE_XDP_PATH environment variable
+// 3. DefaultXDPObjectPath
+// 4. Relative path "ebpf/xdp_firewall_bpfel.o" (for development)
+func (r *XDPRemediator) loadXDPFirewallSpec() (*ebpf.CollectionSpec, error) {
+	// Determine path to use
+	path := r.objectPath
+	if path == "" {
+		path = os.Getenv("KERNELEYE_XDP_PATH")
+	}
+	if path == "" {
+		// Try default system path first
+		if _, err := os.Stat(DefaultXDPObjectPath); err == nil {
+			path = DefaultXDPObjectPath
+		} else {
+			// Fall back to relative path for development
+			// Get the directory of the executable to make this more reliable
+			if ex, err := os.Executable(); err == nil {
+				// Try relative to executable directory
+				execDir := filepath.Dir(ex)
+				relPath := filepath.Join(execDir, "ebpf", "xdp_firewall_bpfel.o")
+				if _, err := os.Stat(relPath); err == nil {
+					path = relPath
+				}
+			}
+		}
+	}
+	if path == "" {
+		// Last resort: try current working directory relative path
+		path = "ebpf/xdp_firewall_bpfel.o"
+	}
+
+	// Load from file
+	spec, err := ebpf.LoadCollectionSpec(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load XDP spec from %s: %w", path, err)
+	}
+	return spec, nil
+}
+
 // Block adds an IP to the XDP blocklist
 func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if !r.attached {
 		return errNotAttached
 	}
@@ -111,6 +172,7 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 		return nil
 	}
 
+	// Use monotonic clock (CLOCK_BOOTTIME) which aligns with bpf_ktime_get_ns()
 	var expiresNs uint64
 	if duration > 0 {
 		expiresNs = uint64(monotonicNs() + duration.Nanoseconds())
@@ -134,6 +196,9 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 
 // BlockCIDR adds a CIDR range to the blocklist
 func (r *XDPRemediator) BlockCIDR(cidr string, duration time.Duration) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if !r.attached {
 		return errNotAttached
 	}
@@ -158,8 +223,18 @@ func (r *XDPRemediator) BlockCIDR(cidr string, duration time.Duration) error {
 	return nil
 }
 
+// rateLimitState mirrors the BPF struct for xdp_rate_limit map
+type rateLimitState struct {
+	WindowStart uint64 // Start of current window (ns since boot)
+	PacketCount uint64 // Packets in current window
+	ByteCount   uint64 // Bytes in current window
+}
+
 // SetRateLimit configures global rate limiting
 func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.Duration) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if !r.attached {
 		return errNotAttached
 	}
@@ -172,7 +247,7 @@ func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.D
 		return fmt.Errorf("set rate limit: %w", err)
 	}
 
-	// Clear existing state
+	// Clear existing state (holding mutex prevents races with Block/Unblock)
 	if r.objs.XdpRateLimit != nil {
 		r.clearRateLimitState()
 	}
@@ -185,7 +260,7 @@ func (r *XDPRemediator) clearRateLimitState() {
 		return
 	}
 	var key uint32
-	var val struct{}
+	var val rateLimitState // Use correct value type instead of empty struct
 	iter := r.objs.XdpRateLimit.Iterate()
 	keys := make([]uint32, 0, 1000)
 	for iter.Next(&key, &val) {
@@ -199,18 +274,40 @@ func (r *XDPRemediator) clearRateLimitState() {
 // RateLimit per-IP - not supported, use iptables
 func (r *XDPRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 	log.Printf("⚠️  XDP: Per-IP rate limiting not supported for %s", ip)
-	return nil
+	// Return error instead of silently succeeding
+	return fmt.Errorf("%w: XDP does not support per-IP rate limiting, use IPSetRemediator", errRLDisabled)
 }
 
 // Teardown detaches XDP
 func (r *XDPRemediator) Teardown() error {
-	r.cleanup()
-	log.Printf("✅ XDP detached from %s", r.interfaceName)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	wasAttached := r.attached
+	var errs []error
+
+	// Capture any errors from cleanup
+	if err := r.cleanupWithErrors(); err != nil {
+		errs = append(errs, err)
+	}
+
+	if wasAttached {
+		log.Printf("✅ XDP detached from %s", r.interfaceName)
+	} else {
+		log.Printf("ℹ️  XDP was not attached to %s", r.interfaceName)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("XDP teardown completed with errors: %v", errors.Join(errs...))
+	}
 	return nil
 }
 
 // GetStats returns packet statistics
 func (r *XDPRemediator) GetStats() (XDPStats, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if !r.attached || r.objs == nil {
 		return XDPStats{}, errNotAttached
 	}
@@ -218,16 +315,35 @@ func (r *XDPRemediator) GetStats() (XDPStats, error) {
 }
 
 // IsAttached returns attachment status
-func (r *XDPRemediator) IsAttached() bool { return r.attached }
+func (r *XDPRemediator) IsAttached() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.attached
+}
 
 // Mode returns current XDP mode
-func (r *XDPRemediator) Mode() XDPMode { return r.mode }
+func (r *XDPRemediator) Mode() XDPMode {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.mode
+}
 
 // Unblock removes IP from blocklist
 func (r *XDPRemediator) Unblock(ip net.IP) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if !r.attached {
 		return errNotAttached
 	}
+	// Add validation that was missing
+	if err := validateIP(ip); err != nil {
+		return err
+	}
+	// Note: We don't check isExternalIP for Unblock to allow unblocking
+	// IPs that may have been blocked before the external check was added,
+	// or IPs that changed classification due to configuration changes.
+
 	if ip4 := ip.To4(); ip4 != nil {
 		if err := unblockIPv4(r.objs.XdpBlocklist, ip); err != nil {
 			return err
@@ -243,6 +359,9 @@ func (r *XDPRemediator) Unblock(ip net.IP) error {
 
 // UnblockCIDR removes CIDR from blocklist
 func (r *XDPRemediator) UnblockCIDR(cidr string) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if !r.attached {
 		return errNotAttached
 	}
@@ -261,18 +380,35 @@ func (r *XDPRemediator) UnblockCIDR(cidr string) error {
 }
 
 func (r *XDPRemediator) cleanup() {
+	_ = r.cleanupWithErrors()
+}
+
+func (r *XDPRemediator) cleanupWithErrors() error {
+	var errs []error
+
 	if r.xdpLink != nil {
-		r.xdpLink.Close()
+		if err := r.xdpLink.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close XDP link: %w", err))
+		}
 		r.xdpLink = nil
 	}
 	if r.objs != nil {
-		r.unpinAndClose()
+		if err := r.unpinAndClose(); err != nil {
+			errs = append(errs, err)
+		}
 		r.objs = nil
 	}
 	r.attached = false
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
-func (r *XDPRemediator) unpinAndClose() {
+func (r *XDPRemediator) unpinAndClose() error {
+	var errs []error
+
 	maps := []*ebpf.Map{
 		r.objs.XdpBlocklist, r.objs.XdpBlocklistV6, r.objs.XdpStats,
 		r.objs.XdpCidrBlocklist, r.objs.XdpRateLimit, r.objs.XdpRateConfig,
@@ -280,12 +416,23 @@ func (r *XDPRemediator) unpinAndClose() {
 	for _, m := range maps {
 		if m != nil {
 			if r.pinMaps {
-				m.Unpin()
+				if err := m.Unpin(); err != nil {
+					errs = append(errs, fmt.Errorf("failed to unpin map: %w", err))
+				}
 			}
-			m.Close()
+			if err := m.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("failed to close map: %w", err))
+			}
 		}
 	}
 	if r.objs.XdpFirewall != nil {
-		r.objs.XdpFirewall.Close()
+		if err := r.objs.XdpFirewall.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close XDP program: %w", err))
+		}
 	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("cleanup errors: %w", errors.Join(errs...))
+	}
+	return nil
 }

@@ -3,6 +3,7 @@
 # eBPF generated files
 agent/bpf_*.go
 agent/bpf_*.o
+agent/xdp_*.o
 agent/ebpf/vmlinux.h
 
 # Go
@@ -64,3 +65,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Data
+backend/geoip/

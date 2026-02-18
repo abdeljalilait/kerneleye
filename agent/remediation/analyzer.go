@@ -2,6 +2,7 @@ package remediation
 
 import (
 	"container/list"
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -28,17 +29,47 @@ func DefaultAnalyzerConfig() AnalyzerConfig {
 }
 
 type ipState struct {
-	ip     string
-	syns   []time.Time // Fixed-size ring buffer
-	synIdx int         // Next insertion index
-	synLen int         // Current number of items (up to cap)
+	ip          string
+	syns        []time.Time // Fixed-size ring buffer
+	synIdx      int         // Next insertion index
+	synLen      int         // Current number of items (up to cap)
 
 	ports map[uint16]time.Time
 
-	blocked bool
-	mu      sync.RWMutex
+	blocked     bool
+	rateLimited bool      // Prevents port scan re-triggering
+	lastLimited time.Time // When rate limit was applied (for expiration)
+
+	mu sync.RWMutex
 }
 
+// getLastActivity returns the most recent timestamp from syns or ports
+func (s *ipState) getLastActivity(now time.Time) time.Time {
+	latest := time.Time{}
+
+	// Check SYN entries
+	for i := 0; i < s.synLen; i++ {
+		if t := s.syns[i]; !t.IsZero() && t.After(latest) {
+			latest = t
+		}
+	}
+
+	// Check port entries
+	for _, t := range s.ports {
+		if t.After(latest) {
+			latest = t
+		}
+	}
+
+	// If no activity found, return zero time (will be evicted)
+	return latest
+}
+
+// Analyzer evaluates traffic events and returns remediation decisions.
+//
+// Lock ordering: always acquire a.mu before any ipState.mu.
+// Never hold ipState.mu while acquiring a.mu — this would invert the
+// ordering and risk deadlock.
 type Analyzer struct {
 	config AnalyzerConfig
 
@@ -74,21 +105,13 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	defer state.mu.Unlock()
 
 	if state.blocked {
-		log.Printf("⏭️  Analyzer: IP %s already blocked, skipping", ipStr)
+		// IP already blocked, skip processing silently
 		return nil
 	}
 
 	// Check SYN Flood
 	if event.Protocol == 6 && (event.Flags&0x02 != 0) {
-		// Add to ring buffer
-		// Threshold + 1 to detect > Threshold
-		targetLen := a.config.SynFloodThreshold + 1
-		if len(state.syns) < targetLen {
-			if state.syns == nil {
-				state.syns = make([]time.Time, targetLen)
-			}
-		}
-
+		// Add to ring buffer (pre-allocated in getOrCreateState to SynFloodThreshold+1)
 		state.syns[state.synIdx] = now
 		state.synIdx = (state.synIdx + 1) % len(state.syns)
 		if state.synLen < len(state.syns) {
@@ -96,13 +119,9 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 		}
 
 		// Check count in window
-		// Iterate all valid items in ring
+		// Iterate all valid items in ring (index order doesn't matter for counting)
 		count := 0
 		for i := 0; i < state.synLen; i++ {
-			// Calculate actual index: (synIdx - 1 - i + len) % len ?
-			// Easier: just iterate internal slice? No, it's a ring, order doesn't strictly matter for "count in window"
-			// if we just check ALL valid entries.
-			// But efficient way:
 			t := state.syns[i]
 			if t.IsZero() {
 				continue
@@ -147,16 +166,22 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	// We can remove the bulk prune block if we prune every time.
 
 	if uniquePorts > a.config.PortScanThreshold {
-		// Return RateLimit but don't set blocked=true (hard block)
-		// Decision logic handles the action.
-		log.Printf("⚠️  Analyzer: Port scan detected from %s (%d unique ports in %v window) - RATE LIMITING",
-			ipStr, uniquePorts, a.config.PortScanWindow)
-		return &Decision{
-			IP:       event.SourceIP,
-			Action:   ActionRateLimit,
-			Reason:   "Port Scan Detected",
-			Duration: 10 * time.Minute,
+		// RateLimit but don't hard block
+		// Set rateLimited to prevent re-triggering on every packet
+		if !state.rateLimited {
+			state.rateLimited = true
+			state.lastLimited = now
+			log.Printf("⚠️  Analyzer: Port scan detected from %s (%d unique ports in %v window) - RATE LIMITING",
+				ipStr, uniquePorts, a.config.PortScanWindow)
+			return &Decision{
+				IP:       event.SourceIP,
+				Action:   ActionRateLimit,
+				Reason:   "Port Scan Detected",
+				Duration: 10 * time.Minute,
+			}
 		}
+		// Already rate limited, skip generating duplicate decisions
+		return nil
 	}
 
 	return nil
@@ -195,22 +220,73 @@ func (a *Analyzer) getOrCreateState(ip string) *ipState {
 	return newState
 }
 
-// CleanupRoutine - now safer with copy-on-write strategy or just safe iteration
-// Since we have LRU, maybe we don't strictly need a "cleanup routine" for memory safety (MaxStates handles it).
-// But we might want to expire old states to free slots for new active ones if cache is full of old data (LRU handles this too).
-// However, the reviewer mentioned "Race Condition in State Cleanup" and suggested "Use read-write locks with copy-on-write".
-// If we rely on LRU, explicit time-based pruning is less critical for OOM, but good for correctness (don't track IP forever).
-// Let's implement a gentle pruner.
-func (a *Analyzer) CleanupRoutine(interval time.Duration) {
+// CleanupRoutine starts a background goroutine that periodically prunes stale IP states.
+// The goroutine can be stopped by canceling the provided context.
+func (a *Analyzer) CleanupRoutine(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
-		for range ticker.C {
-			a.prune()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.prune()
+			case <-ctx.Done():
+				log.Println("Analyzer: cleanup routine stopped")
+				return
+			}
 		}
 	}()
 }
 
+// prune removes IP states that have been inactive for longer than the eviction age.
+// This frees up slots in the LRU cache for new active IPs.
 func (a *Analyzer) prune() {
-	// Rely on LRU eviction (MaxStates) for memory management.
-	// Explicit pruning of "old" states is less critical when we have a hard limit on count.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	now := time.Now()
+	evictionAge := 10 * time.Minute
+
+	// Iterate from back (LRU) to front
+	for elem := a.lru.Back(); elem != nil; {
+		prev := elem.Prev()
+		state := elem.Value.(*ipState)
+
+		state.mu.RLock()
+		lastActivity := state.getLastActivity(now)
+		blocked := state.blocked
+		rateLimited := state.rateLimited
+		lastLimited := state.lastLimited
+		state.mu.RUnlock()
+
+		// Determine if state should be evicted
+		shouldEvict := false
+
+		// Evict if inactive for too long
+		if !lastActivity.IsZero() && now.Sub(lastActivity) > evictionAge {
+			shouldEvict = true
+		}
+
+		// Evict rate-limited entries after their duration expires
+		if rateLimited && now.Sub(lastLimited) > 10*time.Minute {
+			shouldEvict = true
+		}
+
+		// Note: Blocked entries are kept longer (1 hour block duration)
+		if blocked && now.Sub(lastActivity) > time.Hour {
+			shouldEvict = true
+		}
+
+		if shouldEvict {
+			a.lru.Remove(elem)
+			delete(a.states, state.ip)
+			log.Printf("🗑️  Analyzer: Pruned stale state for IP %s (inactive for %v)",
+				state.ip, now.Sub(lastActivity))
+		}
+		// Note: we do NOT break early here. Blocked/rate-limited entries
+		// disrupt strict LRU ordering, so we must scan the entire list.
+		// With a 10k max capacity, a full scan every 5 minutes is negligible.
+
+		elem = prev
+	}
 }

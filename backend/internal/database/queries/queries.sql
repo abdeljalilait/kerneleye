@@ -158,3 +158,60 @@ WHERE server_id = $1;
 -- name: DeleteServer :exec
 DELETE FROM servers
 WHERE id = $1 AND user_id = $2;
+
+-- ============================================
+-- Subscription Queries
+-- ============================================
+
+-- name: ListActivePlans :many
+SELECT * FROM subscription_plans
+WHERE is_active = TRUE
+ORDER BY price_cents ASC;
+
+-- name: GetPlanByName :one
+SELECT * FROM subscription_plans
+WHERE name = $1;
+
+-- name: GetPlanByPolarProductID :one
+SELECT * FROM subscription_plans
+WHERE polar_product_id = $1;
+
+-- name: UpdateUserSubscription :exec
+UPDATE users
+SET plan = $2,
+    polar_subscription_id = $3,
+    subscription_status = $4,
+    subscription_current_period_start = $5,
+    subscription_current_period_end = $6,
+    subscription_cancel_at_period_end = $7,
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: CreateSubscriptionEvent :one
+INSERT INTO subscription_events (
+    user_id, polar_event_id, event_type, payload, processed, processed_at
+) VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: CountServersByUser :one
+SELECT COUNT(*)::int FROM servers
+WHERE user_id = $1;
+
+-- name: GetUserSubscriptionStatus :one
+SELECT 
+    u.id,
+    u.email,
+    u.plan,
+    u.max_servers,
+    u.subscription_status,
+    u.subscription_current_period_start,
+    u.subscription_current_period_end,
+    u.subscription_cancel_at_period_end,
+    u.trial_ends_at,
+    p.display_name as plan_display_name,
+    p.data_retention_days,
+    p.features,
+    (SELECT COUNT(*) FROM servers WHERE user_id = u.id) as current_server_count
+FROM users u
+LEFT JOIN subscription_plans p ON u.plan = p.name
+WHERE u.id = $1;

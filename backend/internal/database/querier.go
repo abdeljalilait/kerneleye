@@ -11,12 +11,16 @@ import (
 )
 
 type Querier interface {
+	CountServersByUser(ctx context.Context, userID pgtype.UUID) (int32, error)
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
 	CreateServer(ctx context.Context, arg CreateServerParams) (Server, error)
 	CreateServerPending(ctx context.Context, arg CreateServerPendingParams) (Server, error)
 	CreateServerWithAPIKey(ctx context.Context, arg CreateServerWithAPIKeyParams) (Server, error)
+	CreateSubscriptionEvent(ctx context.Context, arg CreateSubscriptionEventParams) (SubscriptionEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteServer(ctx context.Context, arg DeleteServerParams) error
+	GetPlanByName(ctx context.Context, name string) (SubscriptionPlan, error)
+	GetPlanByPolarProductID(ctx context.Context, polarProductID pgtype.Text) (SubscriptionPlan, error)
 	GetServerByAPIKey(ctx context.Context, apiKey pgtype.Text) (Server, error)
 	GetServerByClientToken(ctx context.Context, clientToken pgtype.Text) (Server, error)
 	GetServerByID(ctx context.Context, id pgtype.UUID) (Server, error)
@@ -27,6 +31,11 @@ type Querier interface {
 	GetStatsServerCounts(ctx context.Context, userID pgtype.UUID) (GetStatsServerCountsRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
+	GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error)
+	// ============================================
+	// Subscription Queries
+	// ============================================
+	ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]Alert, error)
 	ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]Server, error)
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
@@ -34,6 +43,7 @@ type Querier interface {
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
+	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
 	UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error)
 }
 

@@ -12,6 +12,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countServersByUser = `-- name: CountServersByUser :one
+SELECT COUNT(*)::int FROM servers
+WHERE user_id = $1
+`
+
+func (q *Queries) CountServersByUser(ctx context.Context, userID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countServersByUser, userID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createAlert = `-- name: CreateAlert :one
 INSERT INTO alerts (
     server_id, source_ip, threat_score, reason, 
@@ -162,10 +174,50 @@ func (q *Queries) CreateServerWithAPIKey(ctx context.Context, arg CreateServerWi
 	return i, err
 }
 
+const createSubscriptionEvent = `-- name: CreateSubscriptionEvent :one
+INSERT INTO subscription_events (
+    user_id, polar_event_id, event_type, payload, processed, processed_at
+) VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, user_id, polar_event_id, event_type, payload, processed, processed_at, error_message, created_at
+`
+
+type CreateSubscriptionEventParams struct {
+	UserID       pgtype.UUID        `json:"user_id"`
+	PolarEventID pgtype.Text        `json:"polar_event_id"`
+	EventType    string             `json:"event_type"`
+	Payload      []byte             `json:"payload"`
+	Processed    pgtype.Bool        `json:"processed"`
+	ProcessedAt  pgtype.Timestamptz `json:"processed_at"`
+}
+
+func (q *Queries) CreateSubscriptionEvent(ctx context.Context, arg CreateSubscriptionEventParams) (SubscriptionEvent, error) {
+	row := q.db.QueryRow(ctx, createSubscriptionEvent,
+		arg.UserID,
+		arg.PolarEventID,
+		arg.EventType,
+		arg.Payload,
+		arg.Processed,
+		arg.ProcessedAt,
+	)
+	var i SubscriptionEvent
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PolarEventID,
+		&i.EventType,
+		&i.Payload,
+		&i.Processed,
+		&i.ProcessedAt,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, plan)
 VALUES ($1, $2, $3)
-RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at
+RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at
 `
 
 type CreateUserParams struct {
@@ -186,6 +238,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
 	)
 	return i, err
 }
@@ -203,6 +262,64 @@ type DeleteServerParams struct {
 func (q *Queries) DeleteServer(ctx context.Context, arg DeleteServerParams) error {
 	_, err := q.db.Exec(ctx, deleteServer, arg.ID, arg.UserID)
 	return err
+}
+
+const getPlanByName = `-- name: GetPlanByName :one
+SELECT id, name, display_name, description, price_cents, currency, billing_interval, max_servers, data_retention_days, features, polar_product_id, polar_price_id, is_active, is_default, created_at, updated_at FROM subscription_plans
+WHERE name = $1
+`
+
+func (q *Queries) GetPlanByName(ctx context.Context, name string) (SubscriptionPlan, error) {
+	row := q.db.QueryRow(ctx, getPlanByName, name)
+	var i SubscriptionPlan
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DisplayName,
+		&i.Description,
+		&i.PriceCents,
+		&i.Currency,
+		&i.BillingInterval,
+		&i.MaxServers,
+		&i.DataRetentionDays,
+		&i.Features,
+		&i.PolarProductID,
+		&i.PolarPriceID,
+		&i.IsActive,
+		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlanByPolarProductID = `-- name: GetPlanByPolarProductID :one
+SELECT id, name, display_name, description, price_cents, currency, billing_interval, max_servers, data_retention_days, features, polar_product_id, polar_price_id, is_active, is_default, created_at, updated_at FROM subscription_plans
+WHERE polar_product_id = $1
+`
+
+func (q *Queries) GetPlanByPolarProductID(ctx context.Context, polarProductID pgtype.Text) (SubscriptionPlan, error) {
+	row := q.db.QueryRow(ctx, getPlanByPolarProductID, polarProductID)
+	var i SubscriptionPlan
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DisplayName,
+		&i.Description,
+		&i.PriceCents,
+		&i.Currency,
+		&i.BillingInterval,
+		&i.MaxServers,
+		&i.DataRetentionDays,
+		&i.Features,
+		&i.PolarProductID,
+		&i.PolarPriceID,
+		&i.IsActive,
+		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getServerByAPIKey = `-- name: GetServerByAPIKey :one
@@ -407,7 +524,7 @@ func (q *Queries) GetStatsServerCounts(ctx context.Context, userID pgtype.UUID) 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at FROM users
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at FROM users
 WHERE email = $1
 `
 
@@ -423,12 +540,19 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at FROM users
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at FROM users
 WHERE id = $1
 `
 
@@ -444,8 +568,119 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
 	)
 	return i, err
+}
+
+const getUserSubscriptionStatus = `-- name: GetUserSubscriptionStatus :one
+SELECT 
+    u.id,
+    u.email,
+    u.plan,
+    u.max_servers,
+    u.subscription_status,
+    u.subscription_current_period_start,
+    u.subscription_current_period_end,
+    u.subscription_cancel_at_period_end,
+    u.trial_ends_at,
+    p.display_name as plan_display_name,
+    p.data_retention_days,
+    p.features,
+    (SELECT COUNT(*) FROM servers WHERE user_id = u.id) as current_server_count
+FROM users u
+LEFT JOIN subscription_plans p ON u.plan = p.name
+WHERE u.id = $1
+`
+
+type GetUserSubscriptionStatusRow struct {
+	ID                             pgtype.UUID        `json:"id"`
+	Email                          string             `json:"email"`
+	Plan                           string             `json:"plan"`
+	MaxServers                     int32              `json:"max_servers"`
+	SubscriptionStatus             pgtype.Text        `json:"subscription_status"`
+	SubscriptionCurrentPeriodStart pgtype.Timestamptz `json:"subscription_current_period_start"`
+	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
+	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
+	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
+	PlanDisplayName                pgtype.Text        `json:"plan_display_name"`
+	DataRetentionDays              pgtype.Int4        `json:"data_retention_days"`
+	Features                       []byte             `json:"features"`
+	CurrentServerCount             int64              `json:"current_server_count"`
+}
+
+func (q *Queries) GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error) {
+	row := q.db.QueryRow(ctx, getUserSubscriptionStatus, id)
+	var i GetUserSubscriptionStatusRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Plan,
+		&i.MaxServers,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
+		&i.PlanDisplayName,
+		&i.DataRetentionDays,
+		&i.Features,
+		&i.CurrentServerCount,
+	)
+	return i, err
+}
+
+const listActivePlans = `-- name: ListActivePlans :many
+
+SELECT id, name, display_name, description, price_cents, currency, billing_interval, max_servers, data_retention_days, features, polar_product_id, polar_price_id, is_active, is_default, created_at, updated_at FROM subscription_plans
+WHERE is_active = TRUE
+ORDER BY price_cents ASC
+`
+
+// ============================================
+// Subscription Queries
+// ============================================
+func (q *Queries) ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error) {
+	rows, err := q.db.Query(ctx, listActivePlans)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SubscriptionPlan{}
+	for rows.Next() {
+		var i SubscriptionPlan
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.PriceCents,
+			&i.Currency,
+			&i.BillingInterval,
+			&i.MaxServers,
+			&i.DataRetentionDays,
+			&i.Features,
+			&i.PolarProductID,
+			&i.PolarPriceID,
+			&i.IsActive,
+			&i.IsDefault,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAlerts = `-- name: ListAlerts :many
@@ -721,6 +956,41 @@ type UpdateServerStatusParams struct {
 
 func (q *Queries) UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error {
 	_, err := q.db.Exec(ctx, updateServerStatus, arg.ID, arg.Status)
+	return err
+}
+
+const updateUserSubscription = `-- name: UpdateUserSubscription :exec
+UPDATE users
+SET plan = $2,
+    polar_subscription_id = $3,
+    subscription_status = $4,
+    subscription_current_period_start = $5,
+    subscription_current_period_end = $6,
+    subscription_cancel_at_period_end = $7,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateUserSubscriptionParams struct {
+	ID                             pgtype.UUID        `json:"id"`
+	Plan                           string             `json:"plan"`
+	PolarSubscriptionID            pgtype.Text        `json:"polar_subscription_id"`
+	SubscriptionStatus             pgtype.Text        `json:"subscription_status"`
+	SubscriptionCurrentPeriodStart pgtype.Timestamptz `json:"subscription_current_period_start"`
+	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
+	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
+}
+
+func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, updateUserSubscription,
+		arg.ID,
+		arg.Plan,
+		arg.PolarSubscriptionID,
+		arg.SubscriptionStatus,
+		arg.SubscriptionCurrentPeriodStart,
+		arg.SubscriptionCurrentPeriodEnd,
+		arg.SubscriptionCancelAtPeriodEnd,
+	)
 	return err
 }
 

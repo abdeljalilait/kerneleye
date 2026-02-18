@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/cilium/ebpf"
@@ -78,6 +79,7 @@ type XDPConfig struct {
 	InterfaceName string
 	PinMaps       bool
 	PinPath       string
+	ObjectPath    string // Path to xdp_firewall_bpfel.o (optional, auto-detected if empty)
 }
 
 // aggregateStats reads per-CPU stats and aggregates them
@@ -124,7 +126,16 @@ func monotonicNs() int64 {
 
 // isNotExist checks if error indicates key doesn't exist
 func isNotExist(err error) bool {
-	return errors.Is(err, ebpf.ErrKeyNotExist)
+	if err == nil {
+		return false
+	}
+	// Check for the wrapped error first
+	if errors.Is(err, ebpf.ErrKeyNotExist) {
+		return true
+	}
+	// Also check for common error string patterns (for compatibility)
+	errStr := err.Error()
+	return strings.Contains(errStr, "key does not exist") || strings.Contains(errStr, "no such file")
 }
 
 // isExternalIP checks if IP is external (not private/loopback/link-local)

@@ -1,6 +1,6 @@
 import { useParams, Link } from '@tanstack/react-router'
-import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Statistic, Descriptions, Badge, Popconfirm, App, Tooltip } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw } from 'lucide-react'
+import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Statistic, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar } from 'antd'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Cpu, HardDrive, Clock, MapPin, Wifi } from 'lucide-react'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerTraffic, useDeleteServer } from '../hooks/useQueries'
 import { useWebSocket } from '../context/WebSocketContext'
@@ -32,7 +32,6 @@ interface TrafficEvent {
   created_at: string
 }
 
-// Port-centric traffic data - ports in foreground with expandable IP details
 interface PortTraffic {
   key: string
   port: number
@@ -64,28 +63,20 @@ export default function ServerDetail() {
   const loading = serverLoading || statsLoading || trafficLoading
   const error = serverError ? (serverError as any).response?.data?.error || 'Failed to load server data' : ''
 
-  // Listen for WebSocket updates for this server
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'new_traffic' && id) {
-      // Check if the traffic event is for this server
       const payload = lastMessage.data as any
       if (payload?.server_id === id) {
-        // Refetch traffic and stats when new traffic comes in
         refetchTraffic()
         refetchStats()
       }
     }
   }, [lastMessage, id, refetchTraffic, refetchStats])
 
-  // Manual refresh handler
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      await Promise.all([
-        refetchServer(),
-        refetchStats(),
-        refetchTraffic()
-      ])
+      await Promise.all([refetchServer(), refetchStats(), refetchTraffic()])
       message.success('Data refreshed')
     } catch {
       message.error('Failed to refresh')
@@ -99,7 +90,7 @@ export default function ServerDetail() {
     deleteMutation.mutate(id, {
       onSuccess: () => {
         message.success('Server deleted successfully')
-        window.history.back() // Simple back or navigate to /dashboard/servers
+        window.history.back()
       },
       onError: () => {
         message.error('Failed to delete server')
@@ -115,10 +106,8 @@ export default function ServerDetail() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
-  // Group traffic by port for expandable rows - ports in foreground
   const portTraffic = useMemo((): PortTraffic[] => {
     if (!traffic) return []
-    
     const groups = new Map<string, PortTraffic>()
     
     for (const event of (traffic as TrafficEvent[])) {
@@ -158,23 +147,38 @@ export default function ServerDetail() {
       }
     }
     
-    // Sort by last_seen descending
     return Array.from(groups.values()).sort(
       (a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime()
     )
   }, [traffic])
 
-
-  const getThreatTag = (level: string) => {
-    const colors: Record<string, string> = {
-      normal: 'green',
-      suspicious: 'orange',
-      malicious: 'red',
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case 'active':
+        return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', text: 'ONLINE' }
+      case 'offline':
+        return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)', text: 'OFFLINE' }
+      case 'pending':
+        return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', text: 'PENDING' }
+      default:
+        return { color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)', text: 'UNKNOWN' }
     }
-    return <Tag color={colors[level] || 'default'}>{level}</Tag>
   }
 
-  // Columns for the main table - one row per port
+  const getThreatTag = (level: string) => {
+    const configs: Record<string, { color: string; bg: string }> = {
+      normal: { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+      suspicious: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+      malicious: { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+    }
+    const config = configs[level] || configs.normal
+    return (
+      <Tag style={{ background: config.bg, color: config.color, border: 'none', fontWeight: 600 }}>
+        {level.toUpperCase()}
+      </Tag>
+    )
+  }
+
   const portColumns: ColumnsType<PortTraffic> = [
     {
       title: 'Port',
@@ -182,53 +186,59 @@ export default function ServerDetail() {
       key: 'port',
       width: 80,
       sorter: (a, b) => a.port - b.port,
+      render: (port) => <Text strong style={{ fontFamily: 'monospace', color: 'var(--primary-400)' }}>{port}</Text>,
     },
     {
       title: 'Protocol',
       dataIndex: 'protocol',
       key: 'protocol',
       width: 100,
-      render: (proto) => <Tag>{proto}</Tag>,
+      render: (proto) => <Tag style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>{proto}</Tag>,
     },
     {
       title: 'Sources',
       dataIndex: 'unique_ips',
       key: 'sources',
-      width: 80,
-      render: (count) => <Tag color="blue">{count} IP{count > 1 ? 's' : ''}</Tag>,
+      width: 100,
+      render: (count) => (
+        <Tag color="blue" style={{ background: 'rgba(59, 130, 246, 0.15)', border: 'none' }}>
+          {count} IP{count > 1 ? 's' : ''}
+        </Tag>
+      ),
     },
     {
       title: 'Bytes In',
       dataIndex: 'total_bytes_in',
       key: 'bytes_in',
-      width: 100,
-      render: (bytes) => formatBytes(bytes || 0),
+      width: 110,
+      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
       sorter: (a, b) => a.total_bytes_in - b.total_bytes_in,
     },
     {
       title: 'Bytes Out',
       dataIndex: 'total_bytes_out',
       key: 'bytes_out',
-      width: 100,
-      render: (bytes) => formatBytes(bytes || 0),
+      width: 110,
+      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
       sorter: (a, b) => a.total_bytes_out - b.total_bytes_out,
     },
     {
       title: 'Hits',
       dataIndex: 'total_hits',
       key: 'hits',
-      width: 60,
+      width: 80,
       sorter: (a, b) => a.total_hits - b.total_hits,
+      render: (hits) => <Text strong style={{ color: 'var(--text-primary)' }}>{hits.toLocaleString()}</Text>,
     },
     {
       title: 'SYN/ACK',
       key: 'syn_ack',
-      width: 90,
+      width: 100,
       render: (_, record) => (
         <Text type="secondary">
-          <Text style={{ color: record.total_syn > 10 ? '#ff4d4f' : undefined }}>{record.total_syn}</Text>
-          {' / '}
-          <Text>{record.total_ack}</Text>
+          <Text style={{ color: record.total_syn > 10 ? '#ef4444' : 'var(--text-secondary)' }}>{record.total_syn}</Text>
+          <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
+          <Text style={{ color: 'var(--text-secondary)' }}>{record.total_ack}</Text>
         </Text>
       ),
     },
@@ -236,11 +246,16 @@ export default function ServerDetail() {
       title: 'Max Score',
       dataIndex: 'max_threat_score',
       key: 'score',
-      width: 80,
+      width: 100,
       render: (score) => (
-        <Text style={{ color: score > 50 ? '#ff4d4f' : score > 20 ? '#faad14' : '#52c41a' }}>
-          {score}
-        </Text>
+        <Progress 
+          percent={score} 
+          size="small" 
+          showInfo={false}
+          strokeColor={score > 50 ? '#ef4444' : score > 20 ? '#f59e0b' : '#10b981'}
+          trailColor="rgba(255, 255, 255, 0.05)"
+          style={{ width: 60 }}
+        />
       ),
       sorter: (a, b) => a.max_threat_score - b.max_threat_score,
     },
@@ -248,37 +263,32 @@ export default function ServerDetail() {
       title: 'Level',
       dataIndex: 'max_threat_level',
       key: 'level',
-      width: 90,
+      width: 100,
       render: (level) => getThreatTag(level),
     },
     {
       title: 'Last Seen',
       dataIndex: 'last_seen',
       key: 'time',
-      render: (date) => new Date(date).toLocaleString(),
-      width: 160,
+      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{new Date(date).toLocaleString()}</Text>,
+      width: 170,
       sorter: (a, b) => new Date(a.last_seen).getTime() - new Date(b.last_seen).getTime(),
       defaultSortOrder: 'descend',
     },
   ]
 
-  // Columns for the expanded (child) rows - one row per source IP
   const sourceColumns: ColumnsType<TrafficEvent> = [
     {
       title: 'Remote IP',
       key: 'remote_ip',
       width: 150,
       render: (_: unknown, record: TrafficEvent) => {
-        // For inbound: source_ip is the remote caller
-        // For outbound: destination_ip is the remote server we connected to
-        const remoteIP = record.direction === 'outbound' 
-          ? (record.destination_ip || record.source_ip) 
-          : record.source_ip
+        const remoteIP = record.direction === 'outbound' ? (record.destination_ip || record.source_ip) : record.source_ip
         const isYou = server?.ip_address && remoteIP === server.ip_address
         return (
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Text code style={{ fontSize: 13 }}>{remoteIP}</Text>
-            {isYou && <Tag color="purple" style={{ margin: 0 }}>YOU</Tag>}
+            <Text code style={{ fontSize: 13, background: 'var(--bg-tertiary)' }}>{remoteIP}</Text>
+            {isYou && <Tag color="purple" style={{ margin: 0, fontSize: 10 }}>YOU</Tag>}
           </span>
         )
       },
@@ -287,11 +297,11 @@ export default function ServerDetail() {
       title: 'Dir',
       dataIndex: 'direction',
       key: 'direction',
-      width: 70,
+      width: 80,
       render: (dir: string) => (
         dir === 'outbound' 
-          ? <Tag color="blue">↑ OUT</Tag>
-          : <Tag color="green">↓ IN</Tag>
+          ? <Tag style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: 'none' }}>↑ OUT</Tag>
+          : <Tag style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none' }}>↓ IN</Tag>
       ),
     },
     {
@@ -299,11 +309,13 @@ export default function ServerDetail() {
       key: 'location',
       width: 150,
       render: (_, record) => (
-        <span>
-          {record.country && <Text>{record.country}</Text>}
-          {record.city && <Text type="secondary"> / {record.city}</Text>}
-          {!record.country && <Text type="secondary">-</Text>}
-        </span>
+        <Space size={4}>
+          <MapPin size={12} style={{ opacity: 0.5 }} />
+          <span>
+            {record.country ? <Text style={{ color: 'var(--text-secondary)' }}>{record.country}</Text> : <Text type="secondary">-</Text>}
+            {record.city && <Text type="secondary"> / {record.city}</Text>}
+          </span>
+        </Space>
       ),
     },
     {
@@ -311,14 +323,14 @@ export default function ServerDetail() {
       dataIndex: 'bytes_in',
       key: 'bytes_in',
       width: 100,
-      render: (bytes) => formatBytes(bytes || 0),
+      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
     },
     {
       title: 'Bytes Out',
       dataIndex: 'bytes_out',
       key: 'bytes_out',
       width: 100,
-      render: (bytes) => formatBytes(bytes || 0),
+      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
     },
     {
       title: 'SYN/ACK',
@@ -326,8 +338,8 @@ export default function ServerDetail() {
       width: 90,
       render: (_, record) => (
         <span>
-          <Text style={{ color: record.syn_count > 10 ? '#ff4d4f' : undefined }}>{record.syn_count}</Text>
-          {' / '}
+          <Text style={{ color: record.syn_count > 10 ? '#ef4444' : 'var(--text-secondary)' }}>{record.syn_count}</Text>
+          <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
           {record.ack_count}
         </span>
       ),
@@ -336,15 +348,15 @@ export default function ServerDetail() {
       title: 'Hits',
       dataIndex: 'hit_count',
       key: 'hits',
-      width: 60,
+      width: 70,
     },
     {
       title: 'Score',
       dataIndex: 'threat_score',
       key: 'score',
-      width: 60,
+      width: 70,
       render: (score) => (
-        <Text style={{ color: score > 50 ? '#ff4d4f' : score > 20 ? '#faad14' : '#52c41a' }}>
+        <Text style={{ color: score > 50 ? '#ef4444' : score > 20 ? '#f59e0b' : '#10b981', fontWeight: 600 }}>
           {score}
         </Text>
       ),
@@ -354,11 +366,10 @@ export default function ServerDetail() {
       dataIndex: 'last_seen',
       key: 'last_seen',
       width: 160,
-      render: (date) => new Date(date).toLocaleString(),
+      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{new Date(date).toLocaleString()}</Text>,
     },
   ]
 
-  // Render expanded row content with source IP details
   const expandedRowRender = (record: PortTraffic) => (
     <Table
       columns={sourceColumns}
@@ -372,156 +383,334 @@ export default function ServerDetail() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
         <Spin size="large" />
       </div>
     )
   }
 
   if (error) {
-    return <Alert message="Error" description={error} type="error" showIcon />
+    return (
+      <Alert 
+        message="Error" 
+        description={error} 
+        type="error" 
+        showIcon 
+        style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+      />
+    )
   }
+
+  const statusConfig = getStatusConfig(server?.status || '')
 
   return (
     <div>
+      {/* Back Button */}
       <div style={{ marginBottom: 24 }}>
         <Link to="/dashboard/servers">
-          <Button icon={<ArrowLeft size={16} />} type="text">Back to Servers</Button>
+          <Button 
+            icon={<ArrowLeft size={16} />} 
+            type="text"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            Back to Servers
+          </Button>
         </Link>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ 
-            width: 48, height: 48, borderRadius: 8, 
-            background: server?.status === 'active' ? '#52c41a' : '#faad14',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <Server size={24} color="white" />
-          </div>
-          <div>
-            <Title level={2} style={{ margin: 0 }}>{server?.hostname}</Title>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Badge 
-                status={server?.status === 'active' ? 'success' : 'warning'} 
-                text={server?.status} 
-              />
-              <Tooltip title={isConnected ? 'Live updates active' : 'Live updates disconnected'}>
-                <Badge 
-                  status={isConnected ? 'processing' : 'default'} 
-                  text={isConnected ? 'Live' : 'Offline'} 
-                />
-              </Tooltip>
+      {/* Header */}
+      <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
+        <Col>
+          <Space size={20} align="center">
+            <Avatar
+              size={64}
+              style={{
+                background: statusConfig.bg,
+                border: `2px solid ${statusConfig.color}40`,
+              }}
+              icon={<Server size={32} color={statusConfig.color} />}
+            />
+            <div>
+              <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                {server?.hostname}
+              </Title>
+              <Space size={12} style={{ marginTop: 8 }}>
+                <Tag 
+                  style={{ 
+                    background: statusConfig.bg, 
+                    color: statusConfig.color, 
+                    border: 'none',
+                    fontWeight: 600,
+                    fontSize: 12,
+                  }}
+                >
+                  {statusConfig.text}
+                </Tag>
+                <Tooltip title={isConnected ? 'Live updates active' : 'Live updates disconnected'}>
+                  <Space size={6}>
+                    <span 
+                      style={{ 
+                        width: 8, 
+                        height: 8, 
+                        borderRadius: '50%', 
+                        background: isConnected ? '#10b981' : '#64748b',
+                        boxShadow: isConnected ? '0 0 8px #10b981' : 'none',
+                      }} 
+                    />
+                    <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                      {isConnected ? 'Live' : 'Offline'}
+                    </Text>
+                  </Space>
+                </Tooltip>
+              </Space>
             </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Tooltip title="Refresh data">
-            <Button 
-              icon={<RefreshCw size={16} className={isRefreshing ? 'spin-animation' : ''} />} 
-              onClick={handleRefresh}
-              loading={isRefreshing}
+          </Space>
+        </Col>
+        <Col>
+          <Space>
+            <Tooltip title="Refresh data">
+              <Button 
+                icon={<RefreshCw size={16} />} 
+                onClick={handleRefresh}
+                loading={isRefreshing}
+                style={{
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                Refresh
+              </Button>
+            </Tooltip>
+            <Popconfirm
+              title="Delete Server"
+              description="Are you sure you want to delete this server? This action cannot be undone."
+              onConfirm={handleDelete}
+              okText="Yes, Delete"
+              cancelText="No"
+              okButtonProps={{ danger: true, loading: deleteMutation.isPending }}
             >
-              Refresh
-            </Button>
-          </Tooltip>
-          <Popconfirm
-            title="Delete Server"
-            description="Are you sure you want to delete this server? The agent will terminate itself and all data will be lost."
-            onConfirm={handleDelete}
-            okText="Yes, Delete"
-            cancelText="No"
-            okButtonProps={{ danger: true, loading: deleteMutation.isPending }}
-          >
-            <Button danger icon={<Trash2 size={16} />} loading={deleteMutation.isPending}>
-              Delete Server
-            </Button>
-          </Popconfirm>
-        </div>
-      </div>
+              <Button 
+                danger 
+                icon={<Trash2 size={16} />} 
+                loading={deleteMutation.isPending}
+              >
+                Delete
+              </Button>
+            </Popconfirm>
+          </Space>
+        </Col>
+      </Row>
 
-      {/* Server Info */}
-      <Card style={{ marginBottom: 24 }}>
-        <Descriptions column={{ xs: 1, sm: 2, md: 4 }} size="small">
-          <Descriptions.Item label="IP Address">{server?.ip_address || '-'}</Descriptions.Item>
-          <Descriptions.Item label="Agent Version">{server?.agent_version || '-'}</Descriptions.Item>
-          <Descriptions.Item label="Last Seen">{server?.last_seen ? new Date(server.last_seen).toLocaleString() : '-'}</Descriptions.Item>
-        </Descriptions>
+      {/* Server Info Card */}
+      <Card
+        variant="borderless"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-lg)',
+          marginBottom: 24,
+        }}
+        bodyStyle={{ padding: 24 }}
+      >
+        <Row gutter={[32, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <Space direction="vertical" size={4}>
+              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                IP Address
+              </Text>
+              <Text code style={{ fontSize: 14, background: 'var(--bg-tertiary)', padding: '4px 12px', borderRadius: 6 }}>
+                {server?.ip_address || '-'}
+              </Text>
+            </Space>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Space direction="vertical" size={4}>
+              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Agent Version
+              </Text>
+              <Text strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>
+                {server?.agent_version || '-'}
+              </Text>
+            </Space>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Space direction="vertical" size={4}>
+              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Last Seen
+              </Text>
+              <Space size={6}>
+                <Clock size={14} style={{ opacity: 0.5 }} />
+                <Text style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+                  {server?.last_seen ? new Date(server.last_seen).toLocaleString() : '-'}
+                </Text>
+              </Space>
+            </Space>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Space direction="vertical" size={4}>
+              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Connection
+              </Text>
+              <Space size={6}>
+                <Wifi size={14} color={isConnected ? '#10b981' : '#ef4444'} />
+                <Text style={{ color: isConnected ? '#10b981' : '#ef4444', fontSize: 14 }}>
+                  {isConnected ? 'Connected' : 'Disconnected'}
+                </Text>
+              </Space>
+            </Space>
+          </Col>
+        </Row>
       </Card>
 
-      {/* Stats */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      {/* Stats Grid */}
+      <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}>
-          <Card>
-            <Statistic 
-              title="Total Events" 
-              value={stats?.total_events || 0} 
-              prefix={<Activity size={16} />}
-            />
+          <Card
+            variant="borderless"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+            }}
+            bodyStyle={{ padding: 20 }}
+          >
+            <Space align="center" size={12}>
+              <div style={{ width: 40, height: 40, background: 'rgba(99, 102, 241, 0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Activity size={20} color="#818cf8" />
+              </div>
+              <div>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Total Events</Text>
+                <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                  {(stats?.total_events || 0).toLocaleString()}
+                </Title>
+              </div>
+            </Space>
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card>
-            <Statistic 
-              title="Events (24h)" 
-              value={stats?.events_last_24h || 0}
-            />
+          <Card
+            variant="borderless"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+            }}
+            bodyStyle={{ padding: 20 }}
+          >
+            <Space align="center" size={12}>
+              <div style={{ width: 40, height: 40, background: 'rgba(6, 182, 212, 0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock size={20} color="#06b6d4" />
+              </div>
+              <div>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Events (24h)</Text>
+                <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                  {(stats?.events_last_24h || 0).toLocaleString()}
+                </Title>
+              </div>
+            </Space>
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card>
-            <Statistic 
-              title="Threat Events" 
-              value={stats?.threat_events || 0} 
-              valueStyle={{ color: (stats?.threat_events || 0) > 0 ? '#ff4d4f' : undefined }}
-              prefix={<Shield size={16} />}
-            />
+          <Card
+            variant="borderless"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+            }}
+            bodyStyle={{ padding: 20 }}
+          >
+            <Space align="center" size={12}>
+              <div style={{ width: 40, height: 40, background: 'rgba(239, 68, 68, 0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Shield size={20} color="#ef4444" />
+              </div>
+              <div>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Threat Events</Text>
+                <Title level={4} style={{ margin: 0, color: (stats?.threat_events || 0) > 0 ? '#ef4444' : 'var(--text-primary)' }}>
+                  {(stats?.threat_events || 0).toLocaleString()}
+                </Title>
+              </div>
+            </Space>
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card>
-            <Statistic 
-              title="Traffic" 
-              value={formatBytes((stats?.total_bytes_in || 0) + (stats?.total_bytes_out || 0))}
-              prefix={<Globe size={16} />}
-            />
+          <Card
+            variant="borderless"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+            }}
+            bodyStyle={{ padding: 20 }}
+          >
+            <Space align="center" size={12}>
+              <div style={{ width: 40, height: 40, background: 'rgba(16, 185, 129, 0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Globe size={20} color="#10b981" />
+              </div>
+              <div>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Total Traffic</Text>
+                <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                  {formatBytes((stats?.total_bytes_in || 0) + (stats?.total_bytes_out || 0))}
+                </Title>
+              </div>
+            </Space>
           </Card>
         </Col>
       </Row>
 
-      {/* Traffic Events Table */}
+      {/* Traffic Table */}
       <Card 
-        title="Recent Traffic Events"
+        variant="borderless"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-lg)',
+        }}
+        bodyStyle={{ padding: 0 }}
+        title={
+          <Space>
+            <Globe size={18} color="#818cf8" />
+            <Text strong style={{ color: 'var(--text-primary)' }}>Recent Traffic Events</Text>
+          </Space>
+        }
         extra={
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {isConnected ? '🟢 Live updates enabled' : '⚪ Updates paused'}
-          </Text>
+          <Space>
+            <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+              {isConnected ? '● Live' : '○ Paused'}
+            </Text>
+            <Badge 
+              count={portTraffic.length} 
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
+            />
+          </Space>
         }
       >
         <Table
           columns={portColumns}
           dataSource={portTraffic}
           rowKey="key"
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 15, size: 'small' }}
           size="small"
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1100 }}
           expandable={{
             expandedRowRender,
             rowExpandable: (record) => record.sources.length > 0,
           }}
-          locale={{ emptyText: 'No traffic events yet' }}
+          locale={{ 
+            emptyText: (
+              <div style={{ padding: '60px 0', textAlign: 'center' }}>
+                <div style={{ marginBottom: 16 }}>
+                  <Globe size={64} color="var(--text-muted)" opacity={0.3} />
+                </div>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>
+                  No traffic events yet
+                </Text>
+              </div>
+            ) 
+          }}
         />
       </Card>
-
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .spin-animation {
-          animation: spin 1s linear infinite;
-        }
-      `}</style>
     </div>
   )
 }

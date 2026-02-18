@@ -141,6 +141,14 @@ func main() {
 	protected.Get("/alerts", api.HandleListAlerts(queries))
 	protected.Get("/stats/overview", api.HandleStatsOverview(queries))
 
+	// Subscription endpoints
+	protected.Get("/subscription/plans", api.HandleListPlans(queries))
+	protected.Get("/subscription/status", api.HandleGetSubscriptionStatus(queries))
+	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries))
+	
+	// Polar webhook (public, but signed)
+	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries))
+
 	// gRPC Server setup
 	grpcPort := os.Getenv("GRPC_PORT")
 	if grpcPort == "" {

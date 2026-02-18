@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
+	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -15,9 +18,32 @@ import (
 	"github.com/kerneleye/agent/remediation"
 )
 
+// Version information - injected at build time via ldflags
+var (
+	Version   = "dev"
+	GitCommit = "unknown"
+	GitBranch = "unknown"
+	BuildDate = "unknown"
+	BuildUser = "unknown"
+	BuildHost = "unknown"
+	GoVersion = "unknown"
+)
+
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 bpf ebpf/traffic_probe.c -- -I/usr/include/bpf
 
 func main() {
+	// Parse version flag before main config
+	versionFlag := flag.Bool("version", false, "Show version information")
+	flag.Parse()
+
+	if *versionFlag {
+		printVersion()
+		os.Exit(0)
+	}
+
+	// Re-parse flags for main config (reset flag set)
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	cfg := parseConfig()
@@ -68,8 +94,10 @@ func main() {
 	}
 
 	analyzer := remediation.NewAnalyzer(remediation.DefaultAnalyzerConfig())
-	// Start cleanup routine
-	analyzer.CleanupRoutine(5 * time.Minute)
+	// Start cleanup routine with a cancellable context for graceful shutdown
+	analyzerCtx, analyzerCancel := context.WithCancel(context.Background())
+	defer analyzerCancel()
+	analyzer.CleanupRoutine(analyzerCtx, 5*time.Minute)
 
 	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, remediator, analyzer)
 	if err != nil {
@@ -85,18 +113,19 @@ func main() {
 	aggregator.StartFlushTimer(10 * time.Second)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	go handleShutdown(sig, aggregator, rd, remediator)
+	go handleShutdown(sig, aggregator, rd, remediator, analyzerCancel)
 	runEventLoop(rd, aggregator)
 }
 
-func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem *remediation.HybridRemediator) {
+func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem *remediation.HybridRemediator, cancelAnalyzer context.CancelFunc) {
 	select {
 	case <-sig:
 		log.Println("\nShutdown signal, flushing...")
 	case <-agg.stopChan:
 		log.Println("\nServer deleted, shutting down...")
 	}
-	agg.Close() // This will flush and cleanup
+	cancelAnalyzer() // Stop the analyzer cleanup goroutine
+	agg.Close()      // This will flush and cleanup
 	rd.Close()
 	if rem != nil {
 		rem.Teardown()
@@ -134,4 +163,17 @@ func validateEvent(e *Event) error {
 		return errors.New("missing port")
 	}
 	return nil
+}
+
+// printVersion displays version information
+func printVersion() {
+	fmt.Println("╔══════════════════════════════════════════════════════════╗")
+	fmt.Println("║          KernelEye Agent - Version Information           ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════╝")
+	fmt.Printf("  Version:    %s\n", Version)
+	fmt.Printf("  Git Commit: %s\n", GitCommit)
+	fmt.Printf("  Git Branch: %s\n", GitBranch)
+	fmt.Printf("  Build Date: %s\n", BuildDate)
+	fmt.Printf("  Built By:   %s@%s\n", BuildUser, BuildHost)
+	fmt.Printf("  Go Version: %s\n", GoVersion)
 }

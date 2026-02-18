@@ -1,7 +1,532 @@
 @import 'antd/dist/reset.css';
 
+/* ============================================
+   KernelEye Dashboard - Modern Dark Theme
+   Cyber-security aesthetic with glassmorphism
+   ============================================ */
+
+:root {
+  /* Primary Color Palette - Electric Indigo/Cyan */
+  --primary-50: #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-200: #c7d2fe;
+  --primary-300: #a5b4fc;
+  --primary-400: #818cf8;
+  --primary-500: #6366f1;
+  --primary-600: #4f46e5;
+  --primary-700: #4338ca;
+  --primary-800: #3730a3;
+  --primary-900: #312e81;
+
+  /* Accent Colors */
+  --accent-cyan: #06b6d4;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+  --accent-violet: #8b5cf6;
+
+  /* Background Colors */
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #111118;
+  --bg-tertiary: #1a1a25;
+  --bg-elevated: #222230;
+  --bg-card: rgba(26, 26, 37, 0.6);
+
+  /* Text Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --text-muted: #475569;
+
+  /* Border Colors */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-focus: rgba(99, 102, 241, 0.5);
+
+  /* Semantic Colors */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #3b82f6;
+
+  /* Effects */
+  --glass-bg: rgba(17, 17, 24, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(20px);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
+  --shadow-glow-cyan: 0 0 20px rgba(6, 182, 212, 0.3);
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   padding: 0;
-  background-color: #000; /* Fallback/Safety */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ============================================
+   Ant Design Overrides - Modern Theme
+   ============================================ */
+
+/* Layout */
+.ant-layout {
+  background: var(--bg-primary);
+}
+
+.ant-layout-sider {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
+}
+
+.ant-layout-header {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* Card Modern Styles */
+.ant-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(10px);
+  transition: all var(--transition-base);
+}
+
+.ant-card:hover {
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-lg);
+}
+
+.ant-card-head {
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-5) var(--space-6);
+}
+
+.ant-card-head-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.ant-card-body {
+  padding: var(--space-6);
+}
+
+/* Table Modern Styles */
+.ant-table {
+  background: transparent;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  padding: var(--space-4) var(--space-5);
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-4) var(--space-5);
+  transition: background var(--transition-fast);
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: rgba(99, 102, 241, 0.05);
+}
+
+/* Button Modern Styles */
+.ant-btn {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  height: 40px;
+  padding: 0 var(--space-5);
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+  border: none;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-400), var(--primary-500));
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+
+.ant-btn-default {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+}
+
+.ant-btn-default:hover {
+  border-color: var(--primary-500);
+  color: var(--primary-400);
+}
+
+/* Input Modern Styles */
+.ant-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+}
+
+.ant-input:hover,
+.ant-input:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.ant-input-affix-wrapper {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Menu Modern Styles */
+.ant-menu {
+  background: transparent;
+  border-right: none;
+}
+
+.ant-menu-item {
+  border-radius: var(--radius-md);
+  margin: var(--space-1) var(--space-3);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.ant-menu-item:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ant-menu-item-selected {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.1)) !important;
+  color: var(--primary-400) !important;
+  border-left: 3px solid var(--primary-500);
+}
+
+/* Tag Modern Styles */
+.ant-tag {
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border: none;
+}
+
+/* Modal Modern Styles */
+.ant-modal-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.ant-modal-header {
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Dropdown Modern Styles */
+.ant-dropdown-menu {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.ant-dropdown-menu-item {
+  color: var(--text-primary);
+}
+
+.ant-dropdown-menu-item:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* Select Modern Styles */
+.ant-select-selector {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+/* Form Modern Styles */
+.ant-form-item-label > label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Alert Modern Styles */
+.ant-alert {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Statistic Modern Styles */
+.ant-statistic-title {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ant-statistic-content {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* Badge Modern Styles */
+.ant-badge-status-dot {
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ============================================
+   Custom Utility Classes
+   ============================================ */
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+}
+
+.gradient-border {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+  padding: 1px;
+  background: linear-gradient(135deg, var(--primary-500), var(--accent-cyan));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.glow-effect {
+  box-shadow: var(--shadow-glow);
+}
+
+.glow-cyan {
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary-400), var(--accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.status-online {
+  background: var(--success);
+  color: var(--success);
+}
+
+.status-warning {
+  background: var(--warning);
+  color: var(--warning);
+}
+
+.status-offline {
+  background: var(--error);
+  color: var(--error);
+}
+
+/* Animation Classes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease forwards;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Grid Pattern Background */
+.bg-grid {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Radial Gradient Background */
+.bg-radial {
+  background: radial-gradient(ellipse at top, rgba(99, 102, 241, 0.15), transparent 50%);
+}
+
+/* Code/Monospace Text */
+.font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ============================================
+   Page Container Styles
+   ============================================ */
+
+.page-container {
+  padding: var(--space-6);
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: var(--space-8);
+}
+
+.page-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.page-subtitle {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 768px) {
+  .page-container {
+    padding: var(--space-4);
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+  }
+
+  .ant-card-body {
+    padding: var(--space-4);
+  }
 }
