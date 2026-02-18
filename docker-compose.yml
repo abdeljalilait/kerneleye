@@ -47,6 +47,7 @@ services:
     restart: unless-stopped
 
   # Frontend (Landing + Dashboard)
+  # Serves static files only - API calls go directly to backend
   frontend:
     image: registry.hakiware.com/kerneleye/frontend:latest
     build:
@@ -54,15 +55,15 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: kerneleye-frontend
     environment:
+      # Backend API URL (for dashboard runtime config)
       BACKEND_HOST: ${BACKEND_HOST:-api.kerneleye.cloud}
       BACKEND_PORT: ${BACKEND_PORT:-443}
+      # Domain names (for nginx server_name)
       LANDING_DOMAIN: ${LANDING_DOMAIN:-kerneleye.cloud}
       DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:-app.kerneleye.cloud}
     ports:
       - '80:80'
       - '443:443'
-    depends_on:
-      - backend
     restart: unless-stopped
 
   # Redis (Optional - for caching in production)
