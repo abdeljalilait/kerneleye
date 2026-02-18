@@ -11,6 +11,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
+	github.com/sendgrid/sendgrid-go v3.16.0+incompatible
 	golang.org/x/crypto v0.46.0
 	google.golang.org/grpc v1.77.0
 )
@@ -27,6 +28,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 // indirect
+	github.com/sendgrid/rest v2.6.9+incompatible // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.52.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect

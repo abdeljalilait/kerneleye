@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kerneleye/backend/internal/api"
 	"github.com/kerneleye/backend/internal/database"
+	"github.com/kerneleye/backend/internal/email"
 	"github.com/kerneleye/backend/internal/geoip"
 	"github.com/kerneleye/backend/internal/scoring"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
@@ -57,6 +58,14 @@ func main() {
 	hub := api.NewHub()
 	go hub.Run()
 
+	// Initialize Email Service
+	emailService := email.NewService()
+	if emailService != nil && emailService.IsEnabled() {
+		log.Println("📧 Email service initialized")
+	} else {
+		log.Println("⚠️  Email service not configured (SENDGRID_API_KEY not set)")
+	}
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:      "KernelEye API v1.0",
@@ -81,12 +90,13 @@ func main() {
 	}))
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 	if corsOrigins == "" {
-		corsOrigins = "http://localhost:3000,http://localhost:5173"
+		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.cloud"
 	}
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: corsOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowOrigins:     corsOrigins,
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowCredentials: true,
 	}))
 
 	// Health check
@@ -147,7 +157,7 @@ func main() {
 	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries))
 	
 	// Polar webhook (public, but signed)
-	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries))
+	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService))
 
 	// gRPC Server setup
 	grpcPort := os.Getenv("GRPC_PORT")

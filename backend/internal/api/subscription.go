@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/kerneleye/backend/internal/database"
+	"github.com/kerneleye/backend/internal/email"
 )
 
 // PolarWebhookPayload represents a webhook event from Polar
@@ -233,7 +234,7 @@ func HandleCreateCheckout(queries *database.Queries) fiber.Handler {
 }
 
 // HandlePolarWebhook handles webhook events from Polar
-func HandlePolarWebhook(queries *database.Queries) fiber.Handler {
+func HandlePolarWebhook(queries *database.Queries, emailService *email.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Get the signature from header
 		signature := c.Get("Polar-Signature")
@@ -276,6 +277,29 @@ func HandlePolarWebhook(queries *database.Queries) fiber.Handler {
 			if userID != "" {
 				if err := updateUserSubscription(queries, c, userID, sub); err != nil {
 					log.Printf("[Polar] Failed to update user subscription: %v", err)
+				} else {
+					// Send welcome email after successful subscription
+					if emailService != nil && emailService.IsEnabled() {
+						go func() {
+							// Get user details for email
+							user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
+							if err != nil {
+								log.Printf("[Polar] Failed to get user for welcome email: %v", err)
+								return
+							}
+							
+							planName := "Starter"
+							if p, ok := sub.Metadata["plan"]; ok {
+								planName = p
+							}
+							
+							if err := emailService.SendWelcomeEmail(user.Email, user.Email, planName); err != nil {
+								log.Printf("[Polar] Failed to send welcome email: %v", err)
+							} else {
+								log.Printf("[Polar] Welcome email sent to %s", user.Email)
+							}
+						}()
+					}
 				}
 			}
 
