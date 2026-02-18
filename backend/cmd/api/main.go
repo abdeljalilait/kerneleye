@@ -61,9 +61,9 @@ func main() {
 	// Initialize Email Service
 	emailService := email.NewService()
 	if emailService != nil && emailService.IsEnabled() {
-		log.Println("📧 Email service initialized")
+		log.Println("📧 Email service initialized (Mailtrap)")
 	} else {
-		log.Println("⚠️  Email service not configured (SENDGRID_API_KEY not set)")
+		log.Println("⚠️  Email service not configured (MAILTRAP_API_TOKEN not set)")
 	}
 
 	// Create Fiber app

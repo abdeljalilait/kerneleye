@@ -3,26 +3,50 @@ package email
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"net/http"
 	"os"
-
-	"github.com/sendgrid/sendgrid-go"
-	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"time"
 )
 
-// Service handles email sending
+// Mailtrap API endpoints
+const (
+	mailtrapBaseURL = "https://send.api.mailtrap.io"
+	mailtrapSendAPI = "/api/send"
+)
+
+// Service handles email sending via Mailtrap
 type Service struct {
-	client   *sendgrid.Client
-	from     *mail.Email
-	templates map[string]*template.Template
+	apiToken   string
+	fromEmail  string
+	fromName   string
+	httpClient *http.Client
+	templates  map[string]*template.Template
 }
 
-// NewService creates a new email service
+// MailtrapEmail represents the email payload for Mailtrap API
+type MailtrapEmail struct {
+	From      MailtrapAddress   `json:"from"`
+	To        []MailtrapAddress `json:"to"`
+	Subject   string            `json:"subject"`
+	HTML      string            `json:"html"`
+	Text      string            `json:"text,omitempty"`
+	Category  string            `json:"category,omitempty"`
+}
+
+// MailtrapAddress represents an email address
+type MailtrapAddress struct {
+	Email string `json:"email"`
+	Name  string `json:"name,omitempty"`
+}
+
+// NewService creates a new email service using Mailtrap
 func NewService() *Service {
-	apiKey := os.Getenv("SENDGRID_API_KEY")
-	if apiKey == "" {
-		return nil // Email service disabled if no API key
+	apiToken := os.Getenv("MAILTRAP_API_TOKEN")
+	if apiToken == "" {
+		return nil // Email service disabled if no API token
 	}
 
 	fromEmail := os.Getenv("EMAIL_FROM")
@@ -35,23 +59,76 @@ func NewService() *Service {
 	}
 
 	return &Service{
-		client:   sendgrid.NewSendClient(apiKey),
-		from:     mail.NewEmail(fromName, fromEmail),
+		apiToken:  apiToken,
+		fromEmail: fromEmail,
+		fromName:  fromName,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 		templates: make(map[string]*template.Template),
 	}
 }
 
 // IsEnabled returns true if the email service is configured
 func (s *Service) IsEnabled() bool {
-	return s != nil && s.client != nil
+	return s != nil && s.apiToken != ""
 }
 
-// SendWelcomeEmail sends a welcome email with dashboard access after subscription
-func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
+// sendEmail sends an email via Mailtrap API
+func (s *Service) sendEmail(toEmail, toName, subject, htmlContent, category string) error {
 	if !s.IsEnabled() {
 		return fmt.Errorf("email service not configured")
 	}
 
+	email := MailtrapEmail{
+		From: MailtrapAddress{
+			Email: s.fromEmail,
+			Name:  s.fromName,
+		},
+		To: []MailtrapAddress{
+			{
+				Email: toEmail,
+				Name:  toName,
+			},
+		},
+		Subject:  subject,
+		HTML:     htmlContent,
+		Text:     stripHTML(htmlContent),
+		Category: category,
+	}
+
+	payload, err := json.Marshal(email)
+	if err != nil {
+		return fmt.Errorf("failed to marshal email: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", mailtrapBaseURL+mailtrapSendAPI, bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiToken)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		var errResp map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
+			return fmt.Errorf("mailtrap error: %v", errResp)
+		}
+		return fmt.Errorf("mailtrap error: status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// SendWelcomeEmail sends a welcome email with dashboard access after subscription
+func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
 		dashboardURL = "https://app.kerneleye.cloud"
@@ -59,7 +136,6 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
 
 	subject := "Welcome to KernelEye - Your Dashboard Access"
 
-	// Simple HTML template
 	htmlContent := fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -78,7 +154,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
 </head>
 <body>
     <div class="header">
-        <h1>🛡️ Welcome to KernelEye</h1>
+        <h1>Welcome to KernelEye</h1>
     </div>
     <div class="content">
         <p>Hi %s,</p>
@@ -108,34 +184,18 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
         <p>Best regards,<br>The KernelEye Team</p>
     </div>
     <div class="footer">
-        <p>© 2025 KernelEye. All rights reserved.</p>
+        <p>&copy; 2025 KernelEye. All rights reserved.</p>
         <p>You received this email because you subscribed to KernelEye.</p>
     </div>
 </body>
 </html>
 `, toName, plan, dashboardURL, dashboardURL, dashboardURL)
 
-	to := mail.NewEmail(toName, toEmail)
-	message := mail.NewSingleEmail(s.from, subject, to, "", htmlContent)
-	
-	response, err := s.client.Send(message)
-	if err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
-	}
-	
-	if response.StatusCode >= 400 {
-		return fmt.Errorf("sendgrid error: %s", response.Body)
-	}
-	
-	return nil
+	return s.sendEmail(toEmail, toName, subject, htmlContent, "welcome")
 }
 
 // SendPasswordResetEmail sends a password reset email
 func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) error {
-	if !s.IsEnabled() {
-		return fmt.Errorf("email service not configured")
-	}
-
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
 		dashboardURL = "https://app.kerneleye.cloud"
@@ -162,7 +222,7 @@ func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) err
 </head>
 <body>
     <div class="header">
-        <h1>🔐 Password Reset</h1>
+        <h1>Password Reset</h1>
     </div>
     <div class="content">
         <p>Hi %s,</p>
@@ -182,33 +242,17 @@ func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) err
         <p>Best regards,<br>The KernelEye Team</p>
     </div>
     <div class="footer">
-        <p>© 2025 KernelEye. All rights reserved.</p>
+        <p>&copy; 2025 KernelEye. All rights reserved.</p>
     </div>
 </body>
 </html>
 `, toName, resetURL, resetURL, resetURL)
 
-	to := mail.NewEmail(toName, toEmail)
-	message := mail.NewSingleEmail(s.from, subject, to, "", htmlContent)
-	
-	response, err := s.client.Send(message)
-	if err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
-	}
-	
-	if response.StatusCode >= 400 {
-		return fmt.Errorf("sendgrid error: %s", response.Body)
-	}
-	
-	return nil
+	return s.sendEmail(toEmail, toName, subject, htmlContent, "password_reset")
 }
 
 // SendTrialEndingEmail sends a reminder when trial is about to end
 func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) error {
-	if !s.IsEnabled() {
-		return fmt.Errorf("email service not configured")
-	}
-
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
 		dashboardURL = "https://app.kerneleye.cloud"
@@ -235,7 +279,7 @@ func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) err
 </head>
 <body>
     <div class="header">
-        <h1>⏰ Trial Ending Soon</h1>
+        <h1>Trial Ending Soon</h1>
     </div>
     <div class="content">
         <p>Hi %s,</p>
@@ -255,30 +299,17 @@ func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) err
         <p>Best regards,<br>The KernelEye Team</p>
     </div>
     <div class="footer">
-        <p>© 2025 KernelEye. All rights reserved.</p>
+        <p>&copy; 2025 KernelEye. All rights reserved.</p>
     </div>
 </body>
 </html>
 `, toName, daysLeft, billingURL)
 
-	to := mail.NewEmail(toName, toEmail)
-	message := mail.NewSingleEmail(s.from, subject, to, "", htmlContent)
-	
-	response, err := s.client.Send(message)
-	if err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
-	}
-	
-	if response.StatusCode >= 400 {
-		return fmt.Errorf("sendgrid error: %s", response.Body)
-	}
-	
-	return nil
+	return s.sendEmail(toEmail, toName, subject, htmlContent, "trial_reminder")
 }
 
-// Template for plain text version
+// stripHTML removes HTML tags for plain text version
 func stripHTML(html string) string {
-	// Simple HTML tag removal - in production, use a proper HTML-to-text library
 	var buf bytes.Buffer
 	inTag := false
 	for _, r := range html {
