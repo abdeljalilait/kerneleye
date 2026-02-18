@@ -20,6 +20,7 @@ services:
 
   # Backend API
   backend:
+    image: registry.hakiware.com/kerneleye/backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -27,25 +28,39 @@ services:
     environment:
       DATABASE_URL: postgres://kerneleye:${DB_PASSWORD:-changeme}@postgres:5432/kerneleye?sslmode=disable
       PORT: 8080
-      CORS_ORIGINS: http://localhost:3000,https://app.kerneleye.io
+      GRPC_PORT: 9091
+      CORS_ORIGINS: http://localhost:3000,https://app.kerneleye.io,https://app.kerneleye.cloud
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      API_KEY_SECRET: ${API_KEY_SECRET:-change-in-production}
+      DASHBOARD_URL: ${DASHBOARD_URL:-https://app.kerneleye.cloud}
+      MAILTRAP_API_TOKEN: ${MAILTRAP_API_TOKEN:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@kerneleye.cloud}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-KernelEye}
+      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
     ports:
       - '8080:8080'
+      - '9091:9091'
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
-  # Frontend Dashboard
-  dashboard:
+  # Frontend (Landing + Dashboard)
+  frontend:
+    image: registry.hakiware.com/kerneleye/frontend:latest
     build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    container_name: kerneleye-dashboard
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: kerneleye-frontend
     environment:
-      VITE_API_URL: http://localhost:8080/api/v1
+      BACKEND_HOST: ${BACKEND_HOST:-api.kerneleye.cloud}
+      BACKEND_PORT: ${BACKEND_PORT:-443}
+      LANDING_DOMAIN: ${LANDING_DOMAIN:-kerneleye.cloud}
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:-app.kerneleye.cloud}
     ports:
-      - '3000:80'
+      - '80:80'
+      - '443:443'
     depends_on:
       - backend
     restart: unless-stopped
