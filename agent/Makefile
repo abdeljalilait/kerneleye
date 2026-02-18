@@ -37,6 +37,9 @@ FULL_VERSION := $(FULL_VERSION)-$(VERSION_PRERELEASE)
 endif
 FULL_VERSION := $(FULL_VERSION)+$(VERSION_BUILD)
 
+# gRPC URL - can be set at build time via environment variable
+GRPC_URL ?= ""
+
 # Go build flags
 LDFLAGS := -ldflags "\
 	-X 'main.Version=$(FULL_VERSION)' \
@@ -46,6 +49,7 @@ LDFLAGS := -ldflags "\
 	-X 'main.BuildUser=$(BUILD_USER)' \
 	-X 'main.BuildHost=$(BUILD_HOST)' \
 	-X 'main.GoVersion=$(GO_VERSION)' \
+	-X 'main.DefaultGRPCURL=$(GRPC_URL)' \
 	-s -w"
 
 # Build flags for different modes
@@ -109,6 +113,7 @@ help:
 	@echo "  $(YELLOW)DEBUG=1$(NC)          Build with debug symbols"
 	@echo "  $(YELLOW)PREFIX=$(NC)          Installation prefix (default: /usr/local)"
 	@echo "  $(YELLOW)VERSION=$(NC)         Override version string"
+	@echo "  $(YELLOW)GRPC_URL=$(NC)        Default gRPC URL (e.g., grpc.kerneleye.io:443)"
 
 # Display version information
 version:
@@ -170,6 +175,7 @@ build-release: LDFLAGS += -ldflags "\
 	-X 'main.BuildUser=$(BUILD_USER)' \
 	-X 'main.BuildHost=$(BUILD_HOST)' \
 	-X 'main.GoVersion=$(GO_VERSION)' \
+	-X 'main.DefaultGRPCURL=$(GRPC_URL)' \
 	-s -w \
 	-extldflags '-static'"
 build-release: $(SOURCES)
@@ -232,6 +238,7 @@ install: check-root build-release create-dirs
 		echo "# KernelEye Agent Configuration" > $(DESTDIR)$(CONFIGDIR)/agent.env; \
 		echo "KERNELEYE_API_KEY=your-api-key-here" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
 		echo "KERNELEYE_SERVER=api.kerneleye.io:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
+		echo "# KERNELEYE_GRPC_URL=grpc.kerneleye.io:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
 		chmod 0600 $(DESTDIR)$(CONFIGDIR)/agent.env; \
 	fi
 	@echo "$(GREEN)Installation complete!$(NC)"
@@ -313,4 +320,5 @@ print-vars:
 	@echo "  FULL_VERSION: $(FULL_VERSION)"
 	@echo "  GIT_COMMIT: $(GIT_COMMIT)"
 	@echo "  BUILD_DATE: $(BUILD_DATE)"
+	@echo "  GRPC_URL: $(GRPC_URL)"
 	@echo "  LDFLAGS: $(LDFLAGS)"

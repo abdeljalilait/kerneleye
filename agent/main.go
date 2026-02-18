@@ -29,6 +29,10 @@ var (
 	GoVersion = "unknown"
 )
 
+// Default gRPC URL - can be overridden at build time via ldflags
+// or at runtime via KERNELEYE_GRPC_URL environment variable
+var DefaultGRPCURL = ""
+
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 bpf ebpf/traffic_probe.c -- -I/usr/include/bpf
 
 func main() {
@@ -51,7 +55,7 @@ func main() {
 		log.Fatal("KERNELEYE_API_KEY is required.")
 	}
 	log.Println("Registering agent with server...")
-	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost); err != nil {
+	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL); err != nil {
 		log.Fatalf("Registration failed: %v", err)
 	}
 	log.Println("✅ Agent approved! Starting monitoring...")
@@ -99,7 +103,7 @@ func main() {
 	defer analyzerCancel()
 	analyzer.CleanupRoutine(analyzerCtx, 5*time.Minute)
 
-	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, remediator, analyzer)
+	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, remediator, analyzer)
 	if err != nil {
 		log.Fatalf("Failed to create aggregator: %v", err)
 	}

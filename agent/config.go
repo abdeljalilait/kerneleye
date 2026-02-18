@@ -10,6 +10,7 @@ import (
 type AgentConfig struct {
 	APIKey            string
 	ServerHost        string
+	GRPCURL           string // gRPC server URL (overrides ServerHost if set)
 	EnableRemediation bool
 	EnableXDP         bool
 	InterfaceName     string
@@ -18,6 +19,7 @@ type AgentConfig struct {
 func parseConfig() AgentConfig {
 	serverFlag := flag.String("server", "", "Backend server address")
 	apiKeyFlag := flag.String("apikey", "", "API key")
+	grpcURLFlag := flag.String("grpc-url", "", "gRPC server URL (overrides server address)")
 	enableRemediation := flag.Bool("enable-remediation", false, "Enable active remediation (requires root and iptables)")
 	enableXDP := flag.Bool("xdp", false, "Enable XDP fast-path blocking (requires root, kernel 5.4+)")
 	interfaceName := flag.String("interface", "", "Network interface for XDP attachment (e.g., eth0)")
@@ -26,6 +28,7 @@ func parseConfig() AgentConfig {
 	cfg := AgentConfig{
 		APIKey:            os.Getenv("KERNELEYE_API_KEY"),
 		ServerHost:        os.Getenv("KERNELEYE_SERVER"),
+		GRPCURL:           os.Getenv("KERNELEYE_GRPC_URL"),
 		EnableRemediation: *enableRemediation,
 		EnableXDP:         *enableXDP,
 		InterfaceName:     *interfaceName,
@@ -36,6 +39,13 @@ func parseConfig() AgentConfig {
 	}
 	if *serverFlag != "" {
 		cfg.ServerHost = *serverFlag
+	}
+	if *grpcURLFlag != "" {
+		cfg.GRPCURL = *grpcURLFlag
+	}
+	// Fall back to build-time default if env var not set
+	if cfg.GRPCURL == "" && DefaultGRPCURL != "" {
+		cfg.GRPCURL = DefaultGRPCURL
 	}
 	if cfg.ServerHost == "" {
 		cfg.ServerHost = "api.kerneleye.io:443"
@@ -67,6 +77,9 @@ func printBanner(cfg AgentConfig) {
 	log.Println("╚════════════════════════════════════════╝")
 	log.Printf("API Key: %s...%s\n", cfg.APIKey[:4], cfg.APIKey[len(cfg.APIKey)-4:])
 	log.Printf("Server: %s\n", cfg.ServerHost)
+	if cfg.GRPCURL != "" {
+		log.Printf("gRPC URL: %s\n", cfg.GRPCURL)
+	}
 	log.Println("Monitoring: TCP connections (IPv4)")
 	if byteCounterMap != nil {
 		log.Println("Monitoring: Bandwidth tracking (IPv4)")

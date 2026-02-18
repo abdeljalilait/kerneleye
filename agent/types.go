@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,7 @@ type IpBytes struct {
 
 // IPStats holds per-IP statistics for aggregation
 type IPStats struct {
+	mu               sync.Mutex // Protects all mutable fields below
 	SYNCount         int
 	ACKCount         int
 	FailedHandshakes int

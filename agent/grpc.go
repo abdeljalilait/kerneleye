@@ -15,7 +15,13 @@ import (
 )
 
 // buildGRPCTarget converts server host to gRPC target address
-func buildGRPCTarget(serverHost string) string {
+// If grpcURL is provided, it takes precedence over serverHost
+func buildGRPCTarget(serverHost, grpcURL string) string {
+	// If explicit gRPC URL is provided, use it directly
+	if grpcURL != "" {
+		return grpcURL
+	}
+	// Otherwise derive from server host
 	grpcTarget := serverHost
 	if !strings.Contains(grpcTarget, ":") {
 		grpcTarget = grpcTarget + ":9091"
@@ -33,11 +39,11 @@ func buildGRPCOpts(target string) []grpc.DialOption {
 }
 
 // registerAndWaitForApproval registers the agent and polls for approval
-func registerAndWaitForApproval(apiKey, serverHost string) error {
+func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 	hostname, _ := os.Hostname()
 	ipAddress := getPublicIP()
 
-	grpcTarget := buildGRPCTarget(serverHost)
+	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 
 	var opts []grpc.DialOption
 	if strings.HasSuffix(grpcTarget, ":443") {

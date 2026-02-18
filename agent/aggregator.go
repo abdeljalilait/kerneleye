@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/kerneleye/agent/remediation"
@@ -28,11 +29,13 @@ type Aggregator struct {
 	serverIPs          map[string]bool // Server's local IPs for direction detection
 	flushTicker        *time.Ticker
 	heartbeatTicker    *time.Ticker
+	bootTime           time.Time      // System boot time for eBPF timestamp conversion
+	wg                 sync.WaitGroup // Tracks background goroutines for graceful shutdown
 }
 
 // NewAggregator creates a new aggregator with gRPC connection
-func NewAggregator(apiKey, serverHost string, rem remediation.Remediator, ana *remediation.Analyzer) (*Aggregator, error) {
-	grpcTarget := buildGRPCTarget(serverHost)
+func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer) (*Aggregator, error) {
+	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 	conn, err := grpc.NewClient("passthrough:///"+grpcTarget, buildGRPCOpts(grpcTarget)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
@@ -45,11 +48,21 @@ func NewAggregator(apiKey, serverHost string, rem remediation.Remediator, ana *r
 		return nil, fmt.Errorf("buffer init: %w", err)
 	}
 
-	// Get server's local IPs at startup
+	// Get server's local IPs at startup (IPv4 + IPv6)
 	serverIPs := getServerIPs()
 
-	// Cache public IP once at startup
+	// Cache public IP once at startup, fall back to local IP
 	cachedPublicIP := getPublicIP()
+	if cachedPublicIP == "" {
+		log.Printf("⚠️  Could not detect public IP, falling back to local IP")
+		for ip := range serverIPs {
+			cachedPublicIP = ip
+			break
+		}
+	}
+
+	// Compute boot time for eBPF monotonic timestamp conversion
+	bootTime := getBootTime()
 
 	return &Aggregator{
 		stats:          NewSafeStats(),
@@ -64,6 +77,7 @@ func NewAggregator(apiKey, serverHost string, rem remediation.Remediator, ana *r
 		buffer:         buffer,
 		cachedPublicIP: cachedPublicIP,
 		serverIPs:      serverIPs,
+		bootTime:       bootTime,
 	}, nil
 }
 
@@ -87,7 +101,7 @@ func getServerIPs() map[string]bool {
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			if ip != nil && ip.To4() != nil {
+			if ip != nil && !ip.IsLoopback() {
 				ips[ip.String()] = true
 			}
 		}
@@ -104,10 +118,10 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	ip := ipObj.String()
 	localIP := a.cachedPublicIP
 
-	// Use event timestamp if available, otherwise use current time
+	// Convert eBPF monotonic timestamp (nanoseconds since boot) to wall clock
 	eventTime := time.Now()
 	if event.Timestamp > 0 {
-		eventTime = time.Unix(0, int64(event.Timestamp))
+		eventTime = a.bootTime.Add(time.Duration(event.Timestamp))
 	}
 
 	// GetOrCreate atomically gets or creates stats entry
@@ -121,7 +135,8 @@ func (a *Aggregator) ProcessEvent(event Event) {
 		}
 	})
 
-	// Update stats (still needs lock since IPStats internals are mutated)
+	// Update stats under per-entry lock to prevent concurrent map writes and data races
+	stats.mu.Lock()
 	stats.LastSeen = eventTime
 	if event.Flags&0x01 != 0 {
 		stats.SYNCount++
@@ -131,6 +146,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	}
 	stats.UniquePorts[event.Lport] = true
 	stats.PortCounts[event.Lport]++
+	stats.mu.Unlock()
 
 	// Analyze traffic for remediation
 	if a.analyzer != nil && a.remediator != nil {
@@ -161,7 +177,9 @@ func (a *Aggregator) StartFlushTimer(interval time.Duration) {
 	a.flushTicker = time.NewTicker(interval)
 	a.heartbeatTicker = time.NewTicker(30 * time.Second)
 
+	a.wg.Add(1)
 	go func() {
+		defer a.wg.Done()
 		for {
 			select {
 			case <-a.flushTicker.C:
@@ -185,7 +203,7 @@ func (a *Aggregator) SendHeartbeat() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	resp, err := a.grpcClient.Heartbeat(ctx, &pb.HeartbeatRequest{
-		ApiKey: a.apiKey, Hostname: hostname, AgentVersion: "0.1.0", IpAddress: a.cachedPublicIP,
+		ApiKey: a.apiKey, Hostname: hostname, AgentVersion: Version, IpAddress: a.cachedPublicIP,
 	})
 	if err != nil {
 		log.Printf("❌ gRPC heartbeat error: %v", err)
@@ -207,8 +225,14 @@ func (a *Aggregator) Stop() {
 	}
 }
 
-// Close releases all resources held by the aggregator
+// Close releases all resources held by the aggregator.
+// It signals the background goroutine to stop, waits for it to exit,
+// then performs a final flush and tears down resources.
 func (a *Aggregator) Close() error {
+	// Signal background goroutine to stop and wait for it to exit
+	a.Stop()
+	a.wg.Wait()
+
 	// Stop timers
 	if a.flushTicker != nil {
 		a.flushTicker.Stop()
@@ -217,7 +241,7 @@ func (a *Aggregator) Close() error {
 		a.heartbeatTicker.Stop()
 	}
 
-	// Flush remaining data
+	// Flush remaining data (safe now — goroutine has exited)
 	a.FlushToAPI()
 
 	// Close gRPC connection
@@ -259,20 +283,29 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 		blockAction = pb.BlockAction_BLOCK_ACTION_ALLOW
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := a.grpcClient.ReportBlockedIP(ctx, &pb.BlockedIPEvent{
+	req := &pb.BlockedIPEvent{
 		ApiKey:          a.apiKey,
 		ServerId:        a.cachedPublicIP, // Using public IP as server ID
 		IpAddress:       ip.String(),
 		Action:          blockAction,
 		DurationSeconds: uint32(duration.Seconds()),
 		Reason:          reason,
-	})
-	if err != nil {
-		log.Printf("❌ Failed to report blocked IP %s: %v", ip, err)
-		return
 	}
-	log.Printf("📡 Reported blocked IP %s (%s) to backend", ip, action)
+
+	// Retry up to 3 times with exponential backoff
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err = a.grpcClient.ReportBlockedIP(ctx, req)
+		cancel()
+		if err == nil {
+			log.Printf("📡 Reported blocked IP %s (%s) to backend", ip, action)
+			return
+		}
+		log.Printf("⚠️  Attempt %d/3 failed to report blocked IP %s: %v", attempt+1, ip, err)
+		if attempt < 2 {
+			time.Sleep(time.Duration(1<<attempt) * time.Second) // 1s, 2s backoff
+		}
+	}
+	log.Printf("❌ Failed to report blocked IP %s after 3 attempts: %v", ip, err)
 }

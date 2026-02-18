@@ -27,8 +27,10 @@ func (a *Aggregator) FlushToAPI() {
 			key := ipToNetworkOrder(ip)
 			var counters IpBytes
 			if err := byteCounterMap.Lookup(&key, &counters); err == nil {
+				stats.mu.Lock()
 				stats.BytesIn = counters.BytesIn
 				stats.BytesOut = counters.BytesOut
+				stats.mu.Unlock()
 			}
 		})
 	}
