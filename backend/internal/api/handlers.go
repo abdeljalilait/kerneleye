@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -202,12 +203,40 @@ func HandleGenerateAPIKey(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusUnauthorized, "User not authenticated")
 		}
 
+		userIDStr := userID.(string)
+
+		// Get user's subscription details
+		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userIDStr))
+		if err != nil {
+			log.Printf("[GenerateAPIKey] Failed to get user %s: %v", userIDStr, err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to verify subscription")
+		}
+
+		// Count current servers
+		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userIDStr))
+		if err != nil {
+			log.Printf("[GenerateAPIKey] Failed to count servers for user %s: %v", userIDStr, err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to count servers")
+		}
+
+		// Check if user has reached their server limit
+		if int32(serverCount) >= user.MaxServers {
+			log.Printf("[GenerateAPIKey] User %s has reached server limit (%d/%d)", userIDStr, serverCount, user.MaxServers)
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error":   "Server limit reached",
+				"message": fmt.Sprintf("Your %s plan allows up to %d servers. Please upgrade to add more.", user.Plan, user.MaxServers),
+				"current": serverCount,
+				"limit":   user.MaxServers,
+				"upgrade_url": "/subscription/plans",
+			})
+		}
+
 		// Generate a placeholder server ID for the API key
 		// The actual server will be created when the agent registers
 		placeholderServerID := uuid.New().String()
 
 		// Generate unique API key
-		apiKey := GenerateAPIKey(userID.(string), placeholderServerID)
+		apiKey := GenerateAPIKey(userIDStr, placeholderServerID)
 
 		return c.JSON(fiber.Map{
 			"api_key": apiKey,
