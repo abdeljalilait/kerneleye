@@ -9,6 +9,13 @@ GEN_GO_DIR = proto/gen/go
 BACKEND_DIR = backend
 AGENT_DIR = agent
 
+# Docker Registry
+REGISTRY = registry.hakiware.com
+NAMESPACE = kerneleye
+BACKEND_IMAGE = $(REGISTRY)/$(NAMESPACE)/backend
+FRONTEND_IMAGE = $(REGISTRY)/$(NAMESPACE)/frontend
+TAG ?= latest
+
 # Protobuf Generation
 .PHONY: gen-proto
 gen-proto:
@@ -84,3 +91,164 @@ clean:
 	rm -f $(AGENT_DIR)/kerneleye-agent
 	@echo "Clean complete"
 
+# ==========================================
+# Docker Build Targets
+# ==========================================
+
+# Build backend Docker image
+.PHONY: docker-build-backend
+docker-build-backend:
+	@echo "Building backend Docker image..."
+	docker build -f Dockerfile.backend -t $(BACKEND_IMAGE):$(TAG) .
+	@echo "Built: $(BACKEND_IMAGE):$(TAG)"
+
+# Build frontend Docker image
+.PHONY: docker-build-frontend
+docker-build-frontend:
+	@echo "Building frontend Docker image..."
+	docker build -f Dockerfile.frontend -t $(FRONTEND_IMAGE):$(TAG) .
+	@echo "Built: $(FRONTEND_IMAGE):$(TAG)"
+
+# Build all Docker images
+.PHONY: docker-build
+docker-build: docker-build-backend docker-build-frontend
+	@echo "All Docker images built!"
+
+# ==========================================
+# Docker Push Targets
+# ==========================================
+
+# Push backend Docker image
+.PHONY: docker-push-backend
+docker-push-backend:
+	@echo "Pushing backend image to $(REGISTRY)..."
+	docker push $(BACKEND_IMAGE):$(TAG)
+
+# Push frontend Docker image
+.PHONY: docker-push-frontend
+docker-push-frontend:
+	@echo "Pushing frontend image to $(REGISTRY)..."
+	docker push $(FRONTEND_IMAGE):$(TAG)
+
+# Push all Docker images
+.PHONY: docker-push
+docker-push: docker-push-backend docker-push-frontend
+	@echo "All Docker images pushed!"
+
+# ==========================================
+# Combined Build & Push
+# ==========================================
+
+# Build and push backend
+.PHONY: docker-deploy-backend
+docker-deploy-backend: docker-build-backend docker-push-backend
+
+# Build and push frontend
+.PHONY: docker-deploy-frontend
+docker-deploy-frontend: docker-build-frontend docker-push-frontend
+
+# Build and push all images
+.PHONY: docker-deploy
+docker-deploy: docker-build docker-push
+
+# ==========================================
+# Multi-arch Build (requires buildx)
+# ==========================================
+
+# Build and push multi-arch backend image
+.PHONY: docker-buildx-backend
+docker-buildx-backend:
+	@echo "Building multi-arch backend image..."
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-f Dockerfile.backend \
+		-t $(BACKEND_IMAGE):$(TAG) \
+		--push .
+
+# Build and push multi-arch frontend image
+.PHONY: docker-buildx-frontend
+docker-buildx-frontend:
+	@echo "Building multi-arch frontend image..."
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-f Dockerfile.frontend \
+		-t $(FRONTEND_IMAGE):$(TAG) \
+		--push .
+
+# Build and push all multi-arch images
+.PHONY: docker-buildx
+docker-buildx: docker-buildx-backend docker-buildx-frontend
+
+# ==========================================
+# Docker Compose
+# ==========================================
+
+# Pull latest images and start with docker-compose
+.PHONY: compose-up
+compose-up:
+	docker-compose pull
+	docker-compose up -d
+
+# Stop docker-compose
+.PHONY: compose-down
+compose-down:
+	docker-compose down
+
+# Restart docker-compose
+.PHONY: compose-restart
+compose-restart: compose-down compose-up
+
+# View logs
+.PHONY: compose-logs
+compose-logs:
+	docker-compose logs -f
+
+# ==========================================
+# Help
+# ==========================================
+
+.PHONY: help
+help:
+	@echo "KernelEye Makefile Commands"
+	@echo ""
+	@echo "Development:"
+	@echo "  make build              Build backend and agent binaries"
+	@echo "  make build-backend      Build backend binary only"
+	@echo "  make build-agent        Build agent binary only"
+	@echo "  make generate           Generate all code (proto, sql, ebpf)"
+	@echo "  make dev                Show dev environment instructions"
+	@echo ""
+	@echo "Docker Build:"
+	@echo "  make docker-build-backend     Build backend Docker image"
+	@echo "  make docker-build-frontend    Build frontend Docker image"
+	@echo "  make docker-build             Build all Docker images"
+	@echo ""
+	@echo "Docker Push:"
+	@echo "  make docker-push-backend      Push backend image to registry"
+	@echo "  make docker-push-frontend     Push frontend image to registry"
+	@echo "  make docker-push              Push all images to registry"
+	@echo ""
+	@echo "Docker Deploy (build + push):"
+	@echo "  make docker-deploy-backend    Build and push backend"
+	@echo "  make docker-deploy-frontend   Build and push frontend"
+	@echo "  make docker-deploy            Build and push all images"
+	@echo ""
+	@echo "Multi-arch Build:"
+	@echo "  make docker-buildx-backend    Build and push multi-arch backend"
+	@echo "  make docker-buildx-frontend   Build and push multi-arch frontend"
+	@echo "  make docker-buildx            Build and push all multi-arch"
+	@echo ""
+	@echo "Docker Compose:"
+	@echo "  make compose-up               Pull and start services"
+	@echo "  make compose-down             Stop services"
+	@echo "  make compose-restart          Restart services"
+	@echo "  make compose-logs             View logs"
+	@echo ""
+	@echo "Variables:"
+	@echo "  TAG=<tag>               Set image tag (default: latest)"
+	@echo "  REGISTRY=<url>          Set registry (default: registry.hakiware.com)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make docker-build TAG=v1.0.0"
+	@echo "  make docker-deploy TAG=prod"
+	@echo "  make docker-buildx TAG=latest"
