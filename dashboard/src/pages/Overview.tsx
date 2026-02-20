@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
-import { Server as ServerIcon, Activity, Shield, AlertTriangle, Zap, TrendingUp } from 'lucide-react'
-import { Row, Col, Typography, Card, Space, Badge } from 'antd'
+import { Server as ServerIcon, Activity, Shield, AlertTriangle, Zap, TrendingUp, Crown, Sparkles } from 'lucide-react'
+import { Row, Col, Typography, Card, Space, Badge, Button, Tag } from 'antd'
+import { useNavigate } from '@tanstack/react-router'
 import StatCard from '../components/StatCard'
 import TrafficChart from '../components/TrafficChart'
 import ThreatsList from '../components/ThreatsList'
@@ -8,7 +9,7 @@ import ServersList from '../components/ServersList'
 import LiveStream from '../components/LiveStream'
 import { Threat, StatsOverview } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
-import { useServers, useThreats, useStats } from '../hooks/useQueries'
+import { useServers, useThreats, useStats, useSubscriptionStatus } from '../hooks/useQueries'
 import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
@@ -17,7 +18,12 @@ export default function Overview() {
   const { data: statsData } = useStats()
   const { data: serversData } = useServers()
   const { data: threatsData } = useThreats()
+  const { data: subscription } = useSubscriptionStatus()
   const { lastMessage } = useWebSocket()
+  const navigate = useNavigate()
+
+  const noSubscription = subscription && subscription.plan === 'none'
+  const hasActiveTrial = subscription && subscription.is_trialing
 
   const stats = statsData || {
     total_servers: 0,
@@ -182,14 +188,58 @@ export default function Overview() {
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="Alerts (24h)"
-            value={stats.alerts_last_24h.toString()}
-            subtext="Security incidents"
-            icon={Activity}
-            trend={stats.alerts_last_24h > 5 ? 'down' : 'neutral'}
-            color="warning"
-          />
+          <Card
+            variant="borderless"
+            style={{
+              background: noSubscription 
+                ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))' 
+                : hasActiveTrial 
+                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05))'
+                  : 'var(--bg-card)',
+              border: `1px solid ${noSubscription || hasActiveTrial ? 'transparent' : 'var(--border-subtle)'}`,
+              borderRadius: 'var(--radius-lg)',
+              cursor: noSubscription ? 'pointer' : 'default',
+              height: '100%',
+            }}
+            bodyStyle={{ padding: 20, height: '100%' }}
+            onClick={noSubscription ? () => navigate({ to: '/subscription' }) : undefined}
+          >
+            <Space size={16}>
+              <div 
+                style={{
+                  width: 48,
+                  height: 48,
+                  background: noSubscription 
+                    ? 'rgba(99, 102, 241, 0.2)' 
+                    : hasActiveTrial 
+                      ? 'rgba(245, 158, 11, 0.2)'
+                      : 'rgba(16, 185, 129, 0.15)',
+                  borderRadius: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {noSubscription ? <Crown size={24} color="#818cf8" /> : 
+                 hasActiveTrial ? <Sparkles size={24} color="#f59e0b" /> :
+                 <Crown size={24} color="#10b981" />}
+              </div>
+              <div>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                  Current Plan
+                </Text>
+                <Title level={3} style={{ margin: 0, color: noSubscription ? '#818cf8' : hasActiveTrial ? '#f59e0b' : '#10b981', fontSize: 20 }}>
+                  {subscription?.plan_display_name || 'Loading...'}
+                </Title>
+                {noSubscription && (
+                  <Text style={{ color: '#818cf8', fontSize: 12 }}>Click to start trial →</Text>
+                )}
+                {hasActiveTrial && (
+                  <Tag color="gold" style={{ marginTop: 4, fontSize: 10 }}>Trial Active</Tag>
+                )}
+              </div>
+            </Space>
+          </Card>
         </Col>
       </Row>
 

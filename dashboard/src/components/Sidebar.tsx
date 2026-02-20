@@ -1,5 +1,5 @@
 import { Layout, Menu, Button } from 'antd'
-import { Shield, Activity, Server, AlertTriangle, LogOut, CreditCard } from 'lucide-react'
+import { Shield, Activity, Server, AlertTriangle, LogOut, CreditCard, User, FileBarChart, BarChart3 } from 'lucide-react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useAuth } from '../context/AuthContext'
 

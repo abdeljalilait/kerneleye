@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/kerneleye/backend/internal/database"
 	polargo "github.com/polarsource/polar-go"
 	"github.com/polarsource/polar-go/models/components"
 	"github.com/polarsource/polar-go/models/operations"
-	"github.com/kerneleye/backend/internal/database"
 )
 
 // Client wraps the Polar SDK client
@@ -41,9 +42,28 @@ func NewClient(cfg Config) *Client {
 		return &Client{client: nil, webhookSecret: cfg.WebhookSecret}
 	}
 
-	client := polargo.New(
-		polargo.WithSecurity(cfg.AccessToken),
-	)
+	// Configure Polar client
+	// Uses production by default, set POLAR_ENV=sandbox for testing
+	var client *polargo.Polar
+	serverEnv := os.Getenv("POLAR_ENV")
+	
+	switch serverEnv {
+	case "sandbox":
+		client = polargo.New(
+			polargo.WithServer("sandbox"),
+			polargo.WithSecurity(cfg.AccessToken),
+		)
+	case "production", "":
+		client = polargo.New(
+			polargo.WithSecurity(cfg.AccessToken),
+		)
+	default:
+		// If a custom URL is provided, use it directly
+		client = polargo.New(
+			polargo.WithServerURL(serverEnv),
+			polargo.WithSecurity(cfg.AccessToken),
+		)
+	}
 
 	log.Println("[Polar] Client initialized")
 
@@ -101,13 +121,31 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 		req.CustomerEmail = customerEmail
 	}
 
+	log.Printf("[Polar] Creating checkout session - ProductPriceID: %s, SuccessURL: %s", productPriceID, successURL)
+	
 	res, err := c.client.Checkouts.Create(ctx, req, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create checkout session: %w", err)
 	}
 
+	// Transform URL for sandbox environment if needed
+	if res.CheckoutLegacy != nil && res.CheckoutLegacy.URL != nil {
+		url := *res.CheckoutLegacy.URL
+		log.Printf("[Polar] Raw checkout URL: %s", url)
+		
+		// If using sandbox, the URL might still point to production
+		// Transform it to sandbox URL
+		if os.Getenv("POLAR_ENV") == "sandbox" {
+			url = strings.Replace(url, "https://polar.sh/", "https://sandbox.polar.sh/", 1)
+			res.CheckoutLegacy.URL = &url
+			log.Printf("[Polar] Transformed sandbox URL: %s", url)
+		}
+	}
+
 	return res.CheckoutLegacy, nil
 }
+
+
 
 // CreateCheckoutSessionWithTrial creates a checkout session with a trial period
 func (c *Client) CreateCheckoutSessionWithTrial(ctx context.Context, productPriceID string, customerEmail *string, successURL string, trialDays int) (*components.CheckoutLegacy, error) {
@@ -217,8 +255,8 @@ type SubscriptionData struct {
 	CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
 	Metadata           map[string]string `json:"metadata"`
 	// Trial fields
-	IsTrialing         bool              `json:"is_trialing,omitempty"`
-	TrialEndsAt        *time.Time        `json:"trial_ends_at,omitempty"`
+	IsTrialing  bool       `json:"is_trialing,omitempty"`
+	TrialEndsAt *time.Time `json:"trial_ends_at,omitempty"`
 }
 
 // CustomerData represents customer data in webhooks

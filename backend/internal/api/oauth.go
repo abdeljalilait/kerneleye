@@ -200,11 +200,11 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 		// Find or create user
 		user, err := queries.GetUserByEmail(c.Context(), githubUser.Email)
 		if err != nil {
-			// Create new user
+			// Create new user with no active plan
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
 				Email:        githubUser.Email,
 				PasswordHash: "oauth", // OAuth users don't have passwords
-				Plan:         "starter",
+				Plan:         "none",
 			})
 			if err != nil {
 				log.Printf("[OAuth] Failed to create user: %v", err)
@@ -421,11 +421,11 @@ func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
 		// Find or create user
 		user, err := queries.GetUserByEmail(c.Context(), googleUser.Email)
 		if err != nil {
-			// Create new user
+			// Create new user with no active plan
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
 				Email:        googleUser.Email,
 				PasswordHash: "oauth", // OAuth users don't have passwords
-				Plan:         "starter",
+				Plan:         "none",
 			})
 			if err != nil {
 				log.Printf("[OAuth] Failed to create user: %v", err)

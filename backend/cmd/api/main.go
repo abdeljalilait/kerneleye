@@ -175,6 +175,8 @@ func main() {
 	protected.Get("/subscription/status", api.HandleGetSubscriptionStatus(queries))
 	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries, polarClient))
 	protected.Post("/subscription/portal", api.HandleCreateCustomerPortal(queries, polarClient))
+	protected.Get("/subscription/debug", api.HandlePolarDebug(polarClient, queries))
+
 
 	// Polar webhook (public, but signed)
 	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService, polarClient))

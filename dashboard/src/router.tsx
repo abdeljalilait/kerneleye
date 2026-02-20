@@ -11,16 +11,19 @@ import ServerDetail from './pages/ServerDetail'
 import Subscription from './pages/Subscription'
 import OAuthCallback from './pages/OAuthCallback'
 import ForgotPassword from './pages/ForgotPassword'
+import Profile from './pages/Profile'
+import Reports from './pages/Reports'
+import Visualizer from './pages/Visualizer'
+import CheckoutSuccess from './pages/CheckoutSuccess'
 import { WebSocketProvider } from './context/WebSocketContext'
-import { AuthProvider } from './context/AuthContext'
 
-// 1. Create a root route with AuthProvider
+// 1. Create a root route
 const rootRoute = createRootRoute({
   component: () => (
-    <AuthProvider>
+    <>
       <Outlet />
       {/* <TanStackRouterDevtools /> */}
-    </AuthProvider>
+    </>
   ),
 })
 
@@ -109,6 +112,13 @@ const subscriptionRoute = createRoute({
   beforeLoad: authCheck,
 })
 
+const checkoutSuccessRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/subscription/success',
+  component: CheckoutSuccess,
+  beforeLoad: authCheck,
+})
+
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth/callback',
@@ -121,6 +131,27 @@ const forgotPasswordRoute = createRoute({
   component: ForgotPassword,
 })
 
+const profileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/profile',
+  component: Profile,
+  beforeLoad: authCheck,
+})
+
+const reportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports',
+  component: Reports,
+  beforeLoad: authCheck,
+})
+
+const visualizerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/visualizer',
+  component: Visualizer,
+  beforeLoad: authCheck,
+})
+
 // 3. Register the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -128,6 +159,10 @@ const routeTree = rootRoute.addChildren([
   forgotPasswordRoute,
   oauthCallbackRoute,
   subscriptionRoute,
+  checkoutSuccessRoute,
+  profileRoute,
+  reportsRoute,
+  visualizerRoute,
   dashboardRoute.addChildren([
     overviewRoute,
     serversRoute,

@@ -1,8 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearch } from '@tanstack/react-router';
-import { Card, Button, Typography, Tag, Spin, Alert, Divider, Row, Col, Statistic, Grid } from 'antd';
-import { Check, ArrowLeft, CreditCard, ExternalLink, Crown, Server, Database } from 'lucide-react';
+import { Card, Button, Typography, Tag, Spin, Alert, Divider, Row, Col, Statistic, Grid, Space, Modal } from 'antd';
+import { Check, ArrowLeft, CreditCard, ExternalLink, Crown, Server, Database, Sparkles } from 'lucide-react';
 import { useSubscriptionPlans, useSubscriptionStatus, useCreateCheckout, useCreateCustomerPortal } from '../hooks/useQueries';
+
+// Polar embedded checkout - loaded via CDN
+declare global {
+  interface Window {
+    PolarEmbedCheckout?: {
+      create: (options: {
+        checkoutUrl: string;
+        onSuccess: () => void;
+        onClose?: () => void;
+        target?: string;
+        theme?: 'light' | 'dark';
+      }) => { close: () => void };
+    };
+  }
+}
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -27,6 +42,7 @@ const Subscription = () => {
   const search = useSearch({ from: '/subscription' });
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   // Helper to calculate days left in trial
   const getTrialDaysLeft = (trialEndsAt?: string): number | null => {
@@ -42,29 +58,88 @@ const Subscription = () => {
   const checkoutMutation = useCreateCheckout();
   const portalMutation = useCreateCustomerPortal();
 
+  // Load Polar checkout script
+  useEffect(() => {
+    const existingScript = document.getElementById('polar-checkout-script');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.id = 'polar-checkout-script';
+      script.src = 'https://cdn.jsdelivr.net/npm/@polar-sh/checkout@latest/dist/embed.global.js';
+      script.async = true;
+      script.dataset.autoInit = 'false';
+      document.body.appendChild(script);
+    }
+  }, []);
+
   // Handle plan selection from URL query param
   useEffect(() => {
     const planParam = (search as any)?.plan;
     if (planParam && plans) {
       const plan = plans.find((p: Plan) => p.name === planParam);
-      if (plan) {
+      if (plan && !isCheckoutOpen) {
         handleSelectPlan(plan);
       }
     }
-  }, [search, plans]);
+  }, [search, plans, isCheckoutOpen]);
+
+  const handleCheckoutSuccess = useCallback(() => {
+    setIsCheckoutOpen(false);
+    // Navigate to success page
+    router.navigate({ to: '/subscription/success' });
+  }, [router]);
+
+  const handleCheckoutClose = useCallback(() => {
+    setIsCheckoutOpen(false);
+  }, []);
+
+  const openEmbeddedCheckout = useCallback((url: string) => {
+    if (!window.PolarEmbedCheckout) {
+      // Fallback to redirect if script not loaded yet
+      window.location.href = url;
+      return;
+    }
+
+    setIsCheckoutOpen(true);
+
+    window.PolarEmbedCheckout.create({
+      checkoutUrl: url,
+      onSuccess: handleCheckoutSuccess,
+      onClose: handleCheckoutClose,
+      theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
+    });
+  }, [handleCheckoutSuccess, handleCheckoutClose]);
 
   const handleSelectPlan = async (plan: Plan) => {
+    console.log('[Checkout] Selecting plan:', plan.name, '-> normalized:', plan.name.toLowerCase());
     setSelectedPlan(plan.name);
     setCheckoutError(null);
 
     try {
-      const data = await checkoutMutation.mutateAsync(plan.name.toLowerCase());
+      // Pass embed_origin for embedded checkout support
+      const embedOrigin = window.location.origin;
+      console.log('[Checkout] Sending request with planName:', plan.name.toLowerCase(), 'embedOrigin:', embedOrigin);
+      
+      const data = await checkoutMutation.mutateAsync({
+        planName: plan.name.toLowerCase(),
+        embedOrigin,
+      });
+      
+      console.log('[Checkout] Response:', data);
+      
       if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        // Check if embedded checkout is supported and use it
+        if (data.embedded || window.PolarEmbedCheckout) {
+          openEmbeddedCheckout(data.checkout_url);
+        } else {
+          // Fallback to redirect
+          window.location.href = data.checkout_url;
+        }
       } else {
         setCheckoutError('No checkout URL received. Please try again.');
       }
     } catch (error: any) {
+      console.error('[Checkout] Error:', error);
+      console.error('[Checkout] Response data:', error?.response?.data);
       setCheckoutError(error?.response?.data?.error || 'Failed to create checkout session. Please try again.');
     }
   };
@@ -112,10 +187,12 @@ const Subscription = () => {
           Back to Dashboard
         </Button>
         <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
-          Subscription & Billing
+          {status?.plan === 'none' ? 'Choose Your Plan' : 'Subscription & Billing'}
         </Title>
         <Text style={{ color: 'var(--text-secondary)' }}>
-          Manage your KernelEye subscription and billing details
+          {status?.plan === 'none' 
+            ? 'Start your 7-day free trial or subscribe to a plan to add servers' 
+            : 'Manage your KernelEye subscription and billing details'}
         </Text>
       </div>
 
@@ -136,7 +213,9 @@ const Subscription = () => {
                     width: 56,
                     height: 56,
                     borderRadius: 12,
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    background: status.plan === 'none' 
+                      ? 'linear-gradient(135deg, #6b7280, #9ca3af)' 
+                      : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -149,8 +228,8 @@ const Subscription = () => {
                   <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
                     {status.plan_display_name}
                   </Title>
-                  <Tag color={status.is_trialing ? 'gold' : status.status === 'active' ? 'green' : 'default'}>
-                    {status.is_trialing ? 'Trial' : status.status}
+                  <Tag color={status.is_trialing ? 'gold' : status.status === 'active' ? 'green' : status.plan === 'none' ? 'red' : 'default'}>
+                    {status.is_trialing ? 'Trial' : status.status === 'inactive' ? 'No Active Plan' : status.status}
                   </Tag>
                 </div>
               </div>
@@ -160,7 +239,7 @@ const Subscription = () => {
                 <Col span={12}>
                   <Statistic
                     title={<Text style={{ color: 'var(--text-secondary)' }}>Servers</Text>}
-                    value={`${status.current_servers} / ${status.max_servers}`}
+                    value={status.plan === 'none' ? '0' : `${status.current_servers} / ${status.max_servers}`}
                     prefix={<Server size={16} style={{ marginRight: 8 }} />}
                     valueStyle={{ color: 'var(--text-primary)', fontSize: 18 }}
                   />
@@ -168,7 +247,7 @@ const Subscription = () => {
                 <Col span={12}>
                   <Statistic
                     title={<Text style={{ color: 'var(--text-secondary)' }}>Data Retention</Text>}
-                    value={`${status.data_retention_days} days`}
+                    value={status.plan === 'none' ? '-' : `${status.data_retention_days} days`}
                     prefix={<Database size={16} style={{ marginRight: 8 }} />}
                     valueStyle={{ color: 'var(--text-primary)', fontSize: 18 }}
                   />
@@ -176,15 +255,28 @@ const Subscription = () => {
               </Row>
             </Col>
             <Col xs={24} md={6} style={{ textAlign: 'right' }}>
-              <Button
-                icon={<ExternalLink size={16} />}
-                onClick={handleManageSubscription}
-                loading={portalMutation.isPending}
-              >
-                Manage Subscription
-              </Button>
+              {status.plan !== 'none' && (
+                <Button
+                  icon={<ExternalLink size={16} />}
+                  onClick={handleManageSubscription}
+                  loading={portalMutation.isPending}
+                >
+                  Manage Subscription
+                </Button>
+              )}
             </Col>
           </Row>
+
+          {status.plan === 'none' && (
+            <Alert
+              message="Start Your Free Trial"
+              description="Choose a plan below to start your 7-day free trial. Your credit card will be charged only after the trial ends. Cancel anytime."
+              type="info"
+              showIcon
+              icon={<Sparkles size={16} />}
+              style={{ marginTop: 16, background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+            />
+          )}
 
           {status.is_trialing && status.trial_ends_at && (
             (() => {
@@ -233,7 +325,7 @@ const Subscription = () => {
 
       <Row gutter={[24, 24]}>
         {plans?.map((plan: Plan) => {
-          const isCurrentPlan = status?.plan === plan.name;
+          const isCurrentPlan = status?.plan === plan.name && status?.plan !== 'none';
           const isProcessing = selectedPlan === plan.name && checkoutMutation.isPending;
 
           return (
@@ -299,18 +391,37 @@ const Subscription = () => {
                   </ul>
                 </div>
 
-                <Button
-                  type={isCurrentPlan ? 'default' : 'primary'}
-                  size="large"
-                  block
-                  style={{ marginTop: 24 }}
-                  disabled={isCurrentPlan || isProcessing}
-                  loading={isProcessing}
-                  onClick={() => handleSelectPlan(plan)}
-                  icon={isCurrentPlan ? <Check size={16} /> : <CreditCard size={16} />}
-                >
-                  {isCurrentPlan ? 'Current Plan' : isProcessing ? 'Processing...' : 'Subscribe'}
-                </Button>
+                {/* Show trial button for new users, subscribe button for others */}
+                {status?.plan === 'none' ? (
+                  <Space direction="vertical" style={{ width: '100%', marginTop: 24 }} size={8}>
+                    <Button
+                      type="primary"
+                      size="large"
+                      block
+                      loading={selectedPlan === plan.name && checkoutMutation.isPending}
+                      onClick={() => handleSelectPlan(plan)}
+                      icon={<Sparkles size={16} />}
+                    >
+                      {selectedPlan === plan.name && checkoutMutation.isPending ? 'Loading Checkout...' : 'Start 7-Day Free Trial'}
+                    </Button>
+                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', display: 'block' }}>
+                      Credit card required. Cancel anytime during trial.
+                    </Text>
+                  </Space>
+                ) : (
+                  <Button
+                    type={isCurrentPlan ? 'default' : 'primary'}
+                    size="large"
+                    block
+                    style={{ marginTop: 24 }}
+                    disabled={isCurrentPlan || isProcessing}
+                    loading={isProcessing}
+                    onClick={() => handleSelectPlan(plan)}
+                    icon={isCurrentPlan ? <Check size={16} /> : <CreditCard size={16} />}
+                  >
+                    {isCurrentPlan ? 'Current Plan' : isProcessing ? 'Processing...' : 'Subscribe'}
+                  </Button>
+                )}
               </Card>
             </Col>
           );

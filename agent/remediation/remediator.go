@@ -48,6 +48,10 @@ func (r *IPSetRemediator) Setup() error {
 		log.Printf("⚠️  ip6tables not found, IPv6 blocking will be skipped")
 	}
 
+	if hasIP6Tables {
+		log.Printf("✅ ip6tables found, IPv6 blocking enabled")
+	}
+
 	// Create IPv4 ipsets
 	if err := r.Runner("ipset", "create", BlockSet, "hash:ip", "timeout", "3600", "-exist"); err != nil {
 		return fmt.Errorf("failed to create block ipset: %w", err)

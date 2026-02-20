@@ -26,8 +26,10 @@ FROM node:24-alpine AS dashboard-builder
 # VITE_API_URL must be baked in at build time (Vite embeds it into the JS bundle)
 ARG VITE_API_URL
 ARG VITE_INSTALL_DOMAIN
+ARG VITE_GRPC_HOST
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_INSTALL_DOMAIN=$VITE_INSTALL_DOMAIN
+ENV VITE_GRPC_HOST=$VITE_GRPC_HOST
 
 WORKDIR /app/dashboard
 

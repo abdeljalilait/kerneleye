@@ -11,7 +11,10 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  User
+  User,
+  CreditCard,
+  FileBarChart,
+  BarChart3
 } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
@@ -40,6 +43,16 @@ const menuItems = [
     key: '/dashboard/alerts',
     icon: <AlertTriangle size={18} />,
     label: 'Alerts',
+  },
+  {
+    key: '/reports',
+    icon: <FileBarChart size={18} />,
+    label: 'Reports',
+  },
+  {
+    key: '/visualizer',
+    icon: <BarChart3 size={18} />,
+    label: 'Visualizer',
   },
 ]
 
@@ -86,13 +99,15 @@ export default function Dashboard() {
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
-      label: 'Profile',
+      label: 'Profile & Settings',
       icon: <User size={14} />,
+      onClick: () => navigate({ to: '/profile' }),
     },
     {
-      key: 'settings',
-      label: 'Settings',
-      icon: <Settings size={14} />,
+      key: 'subscription',
+      label: 'Subscription',
+      icon: <CreditCard size={14} />,
+      onClick: () => navigate({ to: '/subscription' }),
     },
     {
       type: 'divider',

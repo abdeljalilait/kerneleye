@@ -1,6 +1,24 @@
 -- ============================================
 -- Migration: Add Polar Subscription Support
 -- ============================================
+-- 
+-- IMPORTANT: Polar Setup Instructions
+-- -----------------------------------
+-- 1. Go to Polar Dashboard (https://polar.sh)
+-- 2. Create Products with the following prices:
+--    - Starter: $49/month with 7-day free trial
+--    - Pro: $149/month with 7-day free trial
+-- 3. Copy the Price IDs (format: price_xxx or UUID)
+-- 4. Update the subscription_plans table:
+--    UPDATE subscription_plans SET polar_price_id = 'your_price_id' WHERE name = 'starter';
+--    UPDATE subscription_plans SET polar_price_id = 'your_price_id' WHERE name = 'pro';
+-- 5. Set environment variables:
+--    - POLAR_ACCESS_TOKEN (from Polar API settings)
+--    - POLAR_WEBHOOK_SECRET (from Polar webhook settings)
+--    - POLAR_WEBHOOK_URL should point to: https://your-api.com/api/v1/webhooks/polar
+--
+-- Note: The 7-day trial must be configured in Polar Dashboard
+-- when creating the Price (enable "Free trial" and set to 7 days)
 
 -- Update users table to support Polar subscriptions
 ALTER TABLE users 
@@ -199,15 +217,23 @@ CREATE TRIGGER update_subscription_plans_updated_at
 CREATE OR REPLACE FUNCTION update_user_plan_limits()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- Handle 'none' plan (no active subscription)
+    IF NEW.plan = 'none' OR NEW.plan IS NULL OR NEW.plan = '' THEN
+        NEW.max_servers := 0;
+        NEW.subscription_status := 'inactive';
+        RETURN NEW;
+    END IF;
+    
     -- Update max_servers based on plan
     SELECT max_servers INTO NEW.max_servers
     FROM subscription_plans
     WHERE name = NEW.plan AND is_active = TRUE;
     
-    -- If plan not found, default to starter
+    -- If plan not found, set to none (no servers allowed)
     IF NEW.max_servers IS NULL THEN
-        NEW.max_servers := 10;
-        NEW.plan := 'starter';
+        NEW.max_servers := 0;
+        NEW.plan := 'none';
+        NEW.subscription_status := 'inactive';
     END IF;
     
     RETURN NEW;
@@ -245,8 +271,19 @@ FROM users u
 LEFT JOIN subscription_plans p ON u.plan = p.name;
 
 -- ============================================
+-- Post-Setup: Configure Polar Price IDs
+-- ============================================
+-- After creating products in Polar Dashboard, run these SQL commands:
+--
+-- UPDATE subscription_plans SET polar_price_id = 'price_xxx' WHERE name = 'starter';
+-- UPDATE subscription_plans SET polar_price_id = 'price_xxx' WHERE name = 'pro';
+--
+-- To verify your setup:
+-- SELECT name, display_name, price_cents, polar_price_id FROM subscription_plans;
+
+-- ============================================
 -- Comments
 -- ============================================
-COMMENT ON TABLE subscription_plans IS 'Available subscription plans with Polar integration';
+COMMENT ON TABLE subscription_plans IS 'Available subscription plans with Polar integration. Set polar_price_id after creating products in Polar dashboard';
 COMMENT ON TABLE subscription_events IS 'Webhook events from Polar for audit trail';
 COMMENT ON VIEW user_subscriptions IS 'Convenience view of user subscription status';

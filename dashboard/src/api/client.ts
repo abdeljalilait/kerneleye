@@ -76,7 +76,10 @@ export const statsAPI = {
 export const subscriptionAPI = {
   getPlans: () => api.get('/subscription/plans'),
   getStatus: () => api.get('/subscription/status'),
-  createCheckout: (planName: string) => api.post('/subscription/checkout', { plan_name: planName }),
+  createCheckout: (planName: string, embedOrigin?: string) => api.post('/subscription/checkout', { 
+    plan_name: planName,
+    embed_origin: embedOrigin,
+  }),
   createCustomerPortal: () => api.post('/subscription/portal', {}),
 };
 

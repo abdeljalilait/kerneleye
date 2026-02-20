@@ -4,6 +4,8 @@ import (
 	"flag"
 	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 // AgentConfig holds all agent configuration
@@ -17,7 +19,18 @@ type AgentConfig struct {
 	LogFile           string // Path to log file (empty = stdout only)
 }
 
+// DefaultEnvFile is the path to the environment file
+const DefaultEnvFile = "/etc/kerneleye/agent.env"
+
 func parseConfig() AgentConfig {
+	// Load environment file if it exists (before parsing flags)
+	// This allows flags to override env file settings
+	if _, err := os.Stat(DefaultEnvFile); err == nil {
+		if err := godotenv.Load(DefaultEnvFile); err != nil {
+			log.Printf("⚠️  Failed to load %s: %v", DefaultEnvFile, err)
+		}
+	}
+
 	serverFlag := flag.String("server", "", "Backend server address")
 	apiKeyFlag := flag.String("apikey", "", "API key")
 	grpcURLFlag := flag.String("grpc-url", "", "gRPC server URL (overrides server address)")

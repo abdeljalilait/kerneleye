@@ -1,19 +1,24 @@
 import { useState, useEffect } from 'react'
 import { Button, Row, Col, Typography, Alert, Spin, Card, Space, Badge } from 'antd'
-import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 import ServersList from '../components/ServersList'
 import AddAgentModal from '../components/AddAgentModal'
 import PendingAgentsList from '../components/PendingAgentsList'
 import { useWebSocket } from '../context/WebSocketContext'
-import { useServers } from '../hooks/useQueries'
+import { useServers, useSubscriptionStatus } from '../hooks/useQueries'
 import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
 
 export default function Servers() {
   const { data: servers, isLoading: loading, error } = useServers()
+  const { data: subscription } = useSubscriptionStatus()
   const { lastMessage } = useWebSocket()
   const [showAddModal, setShowAddModal] = useState(false)
+  const navigate = useNavigate()
+
+  const noSubscription = subscription && subscription.plan === 'none'
 
   useEffect(() => {
     if (lastMessage?.type === 'stats_update') {
@@ -70,6 +75,34 @@ export default function Servers() {
           </Space>
         </Col>
       </Row>
+
+      {/* Subscription Banner */}
+      {noSubscription && (
+        <Alert
+          message="Start Your Free Trial"
+          description={
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text>
+                You need an active subscription to add and monitor servers. Start your 7-day free trial with a credit card. You won't be charged until after the trial ends.
+              </Text>
+              <Button 
+                type="primary" 
+                icon={<Sparkles size={16} />}
+                onClick={() => navigate({ to: '/subscription' })}
+              >
+                Start Free Trial
+              </Button>
+            </Space>
+          }
+          type="info"
+          showIcon
+          style={{ 
+            marginBottom: 24, 
+            background: 'rgba(99, 102, 241, 0.1)', 
+            border: '1px solid rgba(99, 102, 241, 0.3)' 
+          }}
+        />
+      )}
 
       {/* Stats Cards */}
       <Row gutter={[20, 20]} style={{ marginBottom: 32 }}>

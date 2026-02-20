@@ -264,11 +264,19 @@ export const useSubscriptionStatus = () => {
   });
 };
 
+export interface CheckoutResponse {
+  checkout_url: string;
+  session_id?: string;
+  customer_email: string;
+  metadata: any;
+  embedded?: boolean;
+}
+
 export const useCreateCheckout = () => {
   return useMutation({
-    mutationFn: async (planName: string) => {
-      const { data } = await subscriptionAPI.createCheckout(planName);
-      return data as { checkout_url: string; session_id?: string; customer_email: string; metadata: any };
+    mutationFn: async ({ planName, embedOrigin }: { planName: string; embedOrigin?: string }) => {
+      const { data } = await subscriptionAPI.createCheckout(planName, embedOrigin);
+      return data as CheckoutResponse;
     },
   });
 };

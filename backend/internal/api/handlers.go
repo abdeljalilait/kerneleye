@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -198,36 +199,58 @@ func HandleStatsOverview(queries *database.Queries) fiber.Handler {
 // The server is NOT created here - it will be created when the agent registers
 func HandleGenerateAPIKey(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		log.Printf("[API] GET /servers/generate-api-key - Starting API key generation")
+		
 		userID := c.Locals("user_id")
 		if userID == nil {
+			log.Printf("[API] GET /servers/generate-api-key - ERROR: user_id is nil")
 			return fiber.NewError(fiber.StatusUnauthorized, "User not authenticated")
 		}
 
 		userIDStr := userID.(string)
+		log.Printf("[API] GET /servers/generate-api-key - User: %s", userIDStr)
 
 		// Get user's subscription details
 		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userIDStr))
 		if err != nil {
-			log.Printf("[GenerateAPIKey] Failed to get user %s: %v", userIDStr, err)
+			log.Printf("[API] GET /servers/generate-api-key - ERROR: Failed to get user %s: %v", userIDStr, err)
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to verify subscription")
+		}
+		log.Printf("[API] GET /servers/generate-api-key - User plan: %s, status: %s, max_servers: %d", 
+			user.Plan, user.SubscriptionStatus.String, user.MaxServers)
+
+		// Check if user has an active subscription or trial
+		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
+		hasActiveSub := user.SubscriptionStatus.String == "active" || isTrialing
+		
+		if !hasActiveSub {
+			log.Printf("[API] GET /servers/generate-api-key - ERROR: User %s has no active subscription (status: %s, trialing: %v)", 
+				userIDStr, user.SubscriptionStatus.String, isTrialing)
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error":         "No active subscription",
+				"message":       "You need an active subscription or trial to add servers.",
+				"code":          "NO_SUBSCRIPTION",
+				"subscribe_url": "/subscription",
+			})
 		}
 
 		// Count current servers
 		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userIDStr))
 		if err != nil {
-			log.Printf("[GenerateAPIKey] Failed to count servers for user %s: %v", userIDStr, err)
+			log.Printf("[API] GET /servers/generate-api-key - ERROR: Failed to count servers for user %s: %v", userIDStr, err)
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to count servers")
 		}
+		log.Printf("[API] GET /servers/generate-api-key - Current servers: %d/%d", serverCount, user.MaxServers)
 
 		// Check if user has reached their server limit
 		if int32(serverCount) >= user.MaxServers {
-			log.Printf("[GenerateAPIKey] User %s has reached server limit (%d/%d)", userIDStr, serverCount, user.MaxServers)
+			log.Printf("[API] GET /servers/generate-api-key - ERROR: User %s has reached server limit (%d/%d)", userIDStr, serverCount, user.MaxServers)
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"error":   "Server limit reached",
 				"message": fmt.Sprintf("Your %s plan allows up to %d servers. Please upgrade to add more.", user.Plan, user.MaxServers),
 				"current": serverCount,
 				"limit":   user.MaxServers,
-				"upgrade_url": "/subscription/plans",
+				"upgrade_url": "/subscription",
 			})
 		}
 
@@ -237,6 +260,8 @@ func HandleGenerateAPIKey(queries *database.Queries) fiber.Handler {
 
 		// Generate unique API key
 		apiKey := GenerateAPIKey(userIDStr, placeholderServerID)
+		
+		log.Printf("[API] GET /servers/generate-api-key - SUCCESS: Generated API key for user %s", userIDStr)
 
 		return c.JSON(fiber.Map{
 			"api_key": apiKey,
