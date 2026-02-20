@@ -14,6 +14,7 @@ type AgentConfig struct {
 	EnableRemediation bool
 	EnableXDP         bool
 	InterfaceName     string
+	LogFile           string // Path to log file (empty = stdout only)
 }
 
 func parseConfig() AgentConfig {
@@ -23,6 +24,7 @@ func parseConfig() AgentConfig {
 	enableRemediation := flag.Bool("enable-remediation", false, "Enable active remediation (requires root and iptables)")
 	enableXDP := flag.Bool("xdp", false, "Enable XDP fast-path blocking (requires root, kernel 5.4+)")
 	interfaceName := flag.String("interface", "", "Network interface for XDP attachment (e.g., eth0)")
+	logFile := flag.String("log", os.Getenv("KERNELEYE_LOG_FILE"), "Log file path (default: stdout)")
 	flag.Parse()
 
 	cfg := AgentConfig{
@@ -32,6 +34,7 @@ func parseConfig() AgentConfig {
 		EnableRemediation: *enableRemediation,
 		EnableXDP:         *enableXDP,
 		InterfaceName:     *interfaceName,
+		LogFile:           *logFile,
 	}
 
 	if *apiKeyFlag != "" {

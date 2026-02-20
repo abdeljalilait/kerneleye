@@ -6,9 +6,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -43,9 +45,29 @@ func main() {
 		}
 	}
 
-	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	cfg := parseConfig()
+	
+	// Setup logging to file if specified
+	if cfg.LogFile != "" {
+		// Ensure log directory exists
+		logDir := filepath.Dir(cfg.LogFile)
+		if logDir != "" && logDir != "." {
+			if err := os.MkdirAll(logDir, 0755); err != nil {
+				log.Printf("⚠️  Failed to create log directory %s: %v", logDir, err)
+			}
+		}
+		
+		logFile, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Printf("⚠️  Failed to open log file %s: %v. Using stdout.", cfg.LogFile, err)
+		} else {
+			// Write to both stdout and file
+			log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+		}
+	} else {
+		log.SetOutput(os.Stdout)
+	}
 	if cfg.APIKey == "" {
 		log.Fatal("KERNELEYE_API_KEY is required.")
 	}
