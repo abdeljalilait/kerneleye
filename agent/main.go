@@ -78,8 +78,13 @@ func main() {
 			InterfaceName: cfg.InterfaceName,
 		})
 		if err := remediator.Setup(); err != nil {
-			log.Fatalf("❌ Remediation setup failed: %v\n\nTo install required dependencies:\n  Debian/Ubuntu: sudo apt-get install ipset iptables\n  RHEL/CentOS:   sudo yum install ipset iptables\n\nOr run without remediation:
-  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
+			log.Printf("❌ Remediation setup failed: %v", err)
+			log.Println("\nTo install required dependencies:")
+			log.Println("  Debian/Ubuntu: sudo apt-get install ipset iptables")
+			log.Println("  RHEL/CentOS:   sudo yum install ipset iptables")
+			log.Println("\nOr run without remediation:")
+			log.Printf("  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
+			os.Exit(1)
 		}
 		defer remediator.Teardown()
 		if remediator.IsXDPEnabled() {
