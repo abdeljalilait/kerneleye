@@ -175,7 +175,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
       rowKey="id"
       pagination={false}
       scroll={{ x: 'max-content' }}
-      locale:{ 
+      locale={{ 
         emptyText: (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
             <div style={{ marginBottom: 16 }}>
