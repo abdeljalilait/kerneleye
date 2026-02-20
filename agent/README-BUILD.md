@@ -32,16 +32,16 @@ The Makefile provides a comprehensive build system with semantic versioning supp
 
 ### Main Targets
 
-| Target | Description |
-|--------|-------------|
-| `make all` | Full build (check deps → gen eBPF → build) |
-| `make build` | Build debug binary |
-| `make build-release` | Build optimized release binary |
-| `make clean` | Remove build artifacts |
-| `make install` | Install binary and config to system |
-| `make uninstall` | Remove binary from system |
-| `make test` | Run unit tests |
-| `make lint` | Run linter |
+| Target               | Description                                |
+| -------------------- | ------------------------------------------ |
+| `make all`           | Full build (check deps → gen eBPF → build) |
+| `make build`         | Build debug binary                         |
+| `make build-release` | Build optimized release binary             |
+| `make clean`         | Remove build artifacts                     |
+| `make install`       | Install binary and config to system        |
+| `make uninstall`     | Remove binary from system                  |
+| `make test`          | Run unit tests                             |
+| `make lint`          | Run linter                                 |
 
 ### Version Management
 
@@ -82,11 +82,11 @@ Version information is injected at build time:
 
 ### Build Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VERSION` | From `VERSION` file | Override version string |
-| `PREFIX` | `/usr/local` | Installation prefix |
-| `DEBUG` | (unset) | Set to `1` for debug build |
+| Variable  | Default             | Description                |
+| --------- | ------------------- | -------------------------- |
+| `VERSION` | From `VERSION` file | Override version string    |
+| `PREFIX`  | `/usr/local`        | Installation prefix        |
+| `DEBUG`   | (unset)             | Set to `1` for debug build |
 
 Example:
 
@@ -168,6 +168,7 @@ kerneleye version
 Installation logs are saved to `/var/log/kerneleye/install.log`.
 
 Agent logs (when running via wrapper or systemd):
+
 - File: `/var/log/kerneleye/agent.log`
 - View: `kerneleye logs` or `sudo tail -f /var/log/kerneleye/agent.log`
 
@@ -198,7 +199,7 @@ Configuration file: `/etc/kerneleye/agent.env`
 KERNELEYE_API_KEY=your-api-key-here
 
 # Optional
-KERNELEYE_SERVER=api.kerneleye.io:443
+KERNELEYE_SERVER=api.kerneleye.cloud:443
 ENABLE_REMEDIATION=true
 ENABLE_XDP=true
 INTERFACE=eth0
@@ -238,16 +239,19 @@ After installation:
 ### Install Dependencies
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install clang llvm libbpf-dev linux-headers-$(uname -r)
 ```
 
 **Fedora/RHEL/CentOS:**
+
 ```bash
 sudo dnf install clang llvm libbpf-devel kernel-headers
 ```
 
 **Arch:**
+
 ```bash
 sudo pacman -S clang llvm libbpf linux-headers
 ```
@@ -266,20 +270,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      
+
       - name: Install dependencies
         run: sudo apt-get install -y clang llvm libbpf-dev
-      
+
       - name: Build
         run: |
           cd agent
           make build-release
-      
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -292,11 +296,13 @@ jobs:
 ### Build Issues
 
 **"bpf_bpfel_x86.go: no such file"**
+
 ```bash
 make gen-ebpf  # Regenerate eBPF bindings
 ```
 
 **"failed to load eBPF"**
+
 - Check kernel version: `uname -r` (need 5.8+)
 - Verify BTF: `ls /sys/kernel/btf/vmlinux`
 - Run as root: `sudo ./kerneleye-agent`
@@ -304,11 +310,13 @@ make gen-ebpf  # Regenerate eBPF bindings
 ### Installation Issues
 
 **"Permission denied"**
+
 ```bash
 sudo ./install.sh
 ```
 
 **"Log file not writable"**
+
 ```bash
 sudo mkdir -p /var/log/kerneleye
 sudo chown $USER:$USER /var/log/kerneleye

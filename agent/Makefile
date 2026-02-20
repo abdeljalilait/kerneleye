@@ -113,7 +113,7 @@ help:
 	@echo "  $(YELLOW)DEBUG=1$(NC)          Build with debug symbols"
 	@echo "  $(YELLOW)PREFIX=$(NC)          Installation prefix (default: /usr/local)"
 	@echo "  $(YELLOW)VERSION=$(NC)         Override version string"
-	@echo "  $(YELLOW)GRPC_URL=$(NC)        Default gRPC URL (e.g., grpc.kerneleye.io:443)"
+	@echo "  $(YELLOW)GRPC_URL=$(NC)        Default gRPC URL (e.g., grpc.kerneleye.cloud:443)"
 
 # Display version information
 version:
@@ -237,8 +237,8 @@ install: check-root build-release create-dirs
 		echo "  Creating default config file..."; \
 		echo "# KernelEye Agent Configuration" > $(DESTDIR)$(CONFIGDIR)/agent.env; \
 		echo "KERNELEYE_API_KEY=your-api-key-here" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
-		echo "KERNELEYE_SERVER=api.kerneleye.io:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
-		echo "# KERNELEYE_GRPC_URL=grpc.kerneleye.io:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
+		echo "KERNELEYE_SERVER=api.kerneleye.cloud:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
+		echo "# KERNELEYE_GRPC_URL=grpc.kerneleye.cloud:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
 		chmod 0600 $(DESTDIR)$(CONFIGDIR)/agent.env; \
 	fi
 	@echo "$(GREEN)Installation complete!$(NC)"

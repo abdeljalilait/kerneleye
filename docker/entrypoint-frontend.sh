@@ -55,6 +55,25 @@ envsubst '\$LANDING_DOMAIN \$DASHBOARD_DOMAIN' < /etc/nginx/templates/default.co
 echo "Nginx configuration generated:"
 cat /etc/nginx/conf.d/default.conf
 
+# ==========================================
+# Generate Install Script
+# ==========================================
+
+# INSTALL_DOMAIN defaults to DASHBOARD_DOMAIN
+export INSTALL_DOMAIN="${INSTALL_DOMAIN:-$DASHBOARD_DOMAIN}"
+
+echo "Install Domain: $INSTALL_DOMAIN"
+
+if [ -f /etc/kerneleye/install.sh.template ]; then
+    sed "s|__INSTALL_DOMAIN__|${INSTALL_DOMAIN}|g" \
+        /etc/kerneleye/install.sh.template \
+        > /usr/share/nginx/html/install.sh
+    chmod 644 /usr/share/nginx/html/install.sh
+    echo "Install script generated at /usr/share/nginx/html/install.sh"
+else
+    echo "WARNING: install.sh.template not found, skipping"
+fi
+
 # Test nginx config
 nginx -t
 

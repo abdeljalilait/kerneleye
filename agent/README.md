@@ -144,7 +144,7 @@ sudo ./kerneleye-agent
 
 ```bash
 export KERNELEYE_API_KEY="ke_your_api_key_here"
-export KERNELEYE_SERVER="api.kerneleye.io:443"
+export KERNELEYE_SERVER="api.kerneleye.cloud:443"
 sudo ./kerneleye-agent
 ```
 

@@ -8,6 +8,7 @@
 KernelEye is a real-time Linux server security monitoring platform that uses **eBPF** (Extended Berkeley Packet Filter) and **XDP** (eXpress Data Path) to detect and mitigate network threats at the kernel level—before they reach user applications.
 
 ### Core Value Proposition
+
 - **Kernel-Level Monitoring**: Direct network visibility via eBPF hooks (no log parsing)
 - **Ultra-Fast Remediation**: XDP-based packet filtering at the NIC driver level (~50ns)
 - **Privacy-First**: Only collects connection metadata (IPs, ports, flags)—never payloads
@@ -39,13 +40,13 @@ KernelEye is a real-time Linux server security monitoring platform that uses **e
 
 ## Technology Stack
 
-| Layer | Technologies |
-|-------|--------------|
-| **Agent** | Go 1.25+, eBPF (cilium/ebpf), XDP, TC hooks, gRPC |
-| **Backend** | Go, Fiber (HTTP), PostgreSQL (pgx/v5), sqlc, JWT |
-| **Dashboard** | React 19, TypeScript, Vite, Ant Design, TanStack Query/Router, Recharts |
-| **Protocol** | Protocol Buffers, gRPC (agent→backend), REST (dashboard→backend), WebSocket (live updates) |
-| **Infrastructure** | Docker, Docker Compose, Nginx, Make |
+| Layer              | Technologies                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| **Agent**          | Go 1.25+, eBPF (cilium/ebpf), XDP, TC hooks, gRPC                                          |
+| **Backend**        | Go, Fiber (HTTP), PostgreSQL (pgx/v5), sqlc, JWT                                           |
+| **Dashboard**      | React 19, TypeScript, Vite, Ant Design, TanStack Query/Router, Recharts                    |
+| **Protocol**       | Protocol Buffers, gRPC (agent→backend), REST (dashboard→backend), WebSocket (live updates) |
+| **Infrastructure** | Docker, Docker Compose, Nginx, Make                                                        |
 
 ## Project Structure
 
@@ -142,6 +143,7 @@ make deps           # Update and tidy all Go modules
 ### Manual Build Steps
 
 **Backend:**
+
 ```bash
 cd backend
 go mod download
@@ -172,6 +174,7 @@ sudo make uninstall
 ```
 
 **Agent Makefile targets:**
+
 - `make all` - Check deps, generate eBPF, and build
 - `make build` - Build debug binary
 - `make build-release` - Build optimized release binary
@@ -182,6 +185,7 @@ sudo make uninstall
 
 **Version Information:**
 The agent embeds version info at build time using ldflags:
+
 ```bash
 $ ./kerneleye-agent -version
 Version:    0.2.0+abc1234
@@ -191,6 +195,7 @@ Build Date: 2026-02-18T14:24:59Z
 
 **Installation Script:**
 For easy installation with logging support:
+
 ```bash
 sudo ./install.sh              # Full install
 ./install.sh --help            # Show options
@@ -198,6 +203,7 @@ sudo ./install.sh              # Full install
 ```
 
 The installer creates:
+
 - Binary at `/usr/local/bin/kerneleye-agent`
 - Wrapper script at `/usr/local/bin/kerneleye`
 - Config at `/etc/kerneleye/agent.env`
@@ -205,6 +211,7 @@ The installer creates:
 - Logs at `/var/log/kerneleye/`
 
 **Manual Build (without Makefile):**
+
 ```bash
 cd agent
 # Generate eBPF bindings (requires clang, llvm, libbpf-dev)
@@ -214,6 +221,7 @@ CGO_ENABLED=0 go build -o kerneleye-agent .
 ```
 
 **Dashboard:**
+
 ```bash
 cd dashboard
 npm install
@@ -225,40 +233,42 @@ npm run dev      # Development server
 
 ### Prerequisites
 
-| Component | Required For | Version |
-|-----------|--------------|---------|
-| Docker | PostgreSQL | Latest |
-| Go | Backend & Agent | 1.25+ |
-| Node.js | Dashboard | 18+ |
-| clang/llvm | eBPF compilation | 14+ |
-| bpftool | eBPF development | Latest |
-| Linux Kernel | Agent runtime | 5.8+ with BTF |
+| Component    | Required For     | Version       |
+| ------------ | ---------------- | ------------- |
+| Docker       | PostgreSQL       | Latest        |
+| Go           | Backend & Agent  | 1.25+         |
+| Node.js      | Dashboard        | 18+           |
+| clang/llvm   | eBPF compilation | 14+           |
+| bpftool      | eBPF development | Latest        |
+| Linux Kernel | Agent runtime    | 5.8+ with BTF |
 
 ### Quick Start
 
 1. **Run setup script:**
+
    ```bash
    chmod +x setup.sh
    ./setup.sh
    ```
 
 2. **Start services (separate terminals):**
+
    ```bash
    # Terminal 1: Database
-docker-compose up -d postgres
-   
+   docker-compose up -d postgres
+
    # Terminal 2: Backend
    cd backend && go run cmd/api/main.go
-   
+
    # Terminal 3: Dashboard
    cd dashboard && npm run dev
-   
+
    # Terminal 4: Agent (Linux only, requires root)
    cd agent && sudo ./kerneleye-agent
    ```
 
 3. **Access dashboard:** http://localhost:3000
-   - Login: `demo@kerneleye.io` / `demo`
+   - Login: `demo@kerneleye.cloud` / `demo`
 
 ### Environment Variables
 
@@ -385,6 +395,7 @@ sudo cat /sys/kernel/debug/tracing/trace_pipe
 ### Agent Privileges
 
 The agent requires elevated privileges:
+
 - `CAP_BPF` - Load eBPF programs
 - `CAP_NET_ADMIN` - Attach XDP/TC programs, manage iptables
 - `CAP_NET_RAW` - Raw socket access
@@ -394,6 +405,7 @@ The agent requires elevated privileges:
 ### Data Privacy
 
 **Collected (metadata only):**
+
 - Source/Destination IP addresses
 - Ports and protocols (TCP/UDP)
 - Connection flags (SYN/ACK)
@@ -402,6 +414,7 @@ The agent requires elevated privileges:
 - Process info (PID, command name) - agent only
 
 **Never Collected:**
+
 - Packet payloads
 - HTTP headers or bodies
 - User credentials
@@ -438,35 +451,39 @@ docker-compose up -d dashboard
 
 ## Key Files Reference
 
-| File | Purpose |
-|------|---------|
-| `agent/main.go` | Agent initialization and event loop |
-| `agent/Makefile` | Build system with semantic versioning |
-| `agent/install.sh` | Installation script with logging |
-| `agent/VERSION` | Semantic version file |
-| `agent/ebpf/traffic_probe.c` | eBPF kernel hooks |
-| `agent/remediation/analyzer.go` | Threat detection logic |
-| `backend/cmd/api/main.go` | API server setup |
-| `backend/internal/api/grpc_handlers.go` | Agent ingestion service |
-| `backend/internal/scoring/scorer.go` | Threat scoring engine |
-| `backend/migrations/001_initial_schema.sql` | Database schema |
-| `proto/kerneleye/v1/ingest.proto` | Agent-API protocol |
-| `dashboard/src/context/WebSocketContext.tsx` | Real-time updates |
+| File                                         | Purpose                               |
+| -------------------------------------------- | ------------------------------------- |
+| `agent/main.go`                              | Agent initialization and event loop   |
+| `agent/Makefile`                             | Build system with semantic versioning |
+| `agent/install.sh`                           | Installation script with logging      |
+| `agent/VERSION`                              | Semantic version file                 |
+| `agent/ebpf/traffic_probe.c`                 | eBPF kernel hooks                     |
+| `agent/remediation/analyzer.go`              | Threat detection logic                |
+| `backend/cmd/api/main.go`                    | API server setup                      |
+| `backend/internal/api/grpc_handlers.go`      | Agent ingestion service               |
+| `backend/internal/scoring/scorer.go`         | Threat scoring engine                 |
+| `backend/migrations/001_initial_schema.sql`  | Database schema                       |
+| `proto/kerneleye/v1/ingest.proto`            | Agent-API protocol                    |
+| `dashboard/src/context/WebSocketContext.tsx` | Real-time updates                     |
 
 ## Troubleshooting
 
 ### "Failed to load eBPF"
+
 - Check kernel version: `uname -r` (need 5.8+)
 - Verify BTF support: `ls /sys/kernel/btf/vmlinux`
 - Ensure running as root
 
 ### "sqlc: command not found"
+
 ```bash
 go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 ```
 
 ### gRPC Import Errors
+
 Ensure `proto/gen/go` module is generated:
+
 ```bash
 make gen-proto
 ```

@@ -1,0 +1,201 @@
+#!/bin/bash
+#
+# KernelEye Agent Quick Installer
+# Downloads and installs the pre-built KernelEye agent binary.
+#
+# Usage: curl -fsSL https://your-domain/install.sh | bash
+#
+
+set -e
+
+# ==============================================================================
+# Configuration (templated at container startup)
+# ==============================================================================
+
+DOWNLOAD_URL="https://__INSTALL_DOMAIN__/downloads/kerneleye-agent"
+BINARY_NAME="kerneleye-agent"
+INSTALL_DIR="/usr/local/bin"
+CONFIG_DIR="/etc/kerneleye"
+LOG_DIR="/var/log/kerneleye"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# ==============================================================================
+# Functions
+# ==============================================================================
+
+print_banner() {
+    echo ""
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}         ${GREEN}KernelEye Agent Installer${NC}                       ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}         Real-time Linux Security Monitoring              ${BLUE}║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+log_info()    { echo -e "${BLUE}ℹ $1${NC}"; }
+log_success() { echo -e "${GREEN}✓ $1${NC}"; }
+log_warn()    { echo -e "${YELLOW}⚠ $1${NC}"; }
+log_error()   { echo -e "${RED}✗ $1${NC}" >&2; }
+
+check_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        log_error "This installer must be run as root (or with sudo)."
+        echo "  Usage: curl -fsSL https://__INSTALL_DOMAIN__/install.sh | sudo bash"
+        exit 1
+    fi
+}
+
+check_os() {
+    if [[ "$OSTYPE" != "linux-gnu"* ]]; then
+        log_error "KernelEye Agent requires Linux. Detected: $OSTYPE"
+        exit 1
+    fi
+
+    local arch
+    arch=$(uname -m)
+    if [ "$arch" != "x86_64" ]; then
+        log_error "Unsupported architecture: $arch. Only x86_64 is supported."
+        exit 1
+    fi
+
+    # Check kernel version (need 5.8+ for BTF/eBPF)
+    local major minor
+    major=$(uname -r | cut -d. -f1)
+    minor=$(uname -r | cut -d. -f2)
+
+    if [ "$major" -lt 5 ] || { [ "$major" -eq 5 ] && [ "$minor" -lt 8 ]; }; then
+        log_warn "Kernel $(uname -r) detected. Kernel 5.8+ recommended for full eBPF support."
+    else
+        log_success "Kernel $(uname -r) is supported"
+    fi
+}
+
+download_binary() {
+    log_info "Downloading KernelEye agent from ${DOWNLOAD_URL}..."
+
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    if command -v curl > /dev/null 2>&1; then
+        curl -fsSL -o "$tmp_file" "$DOWNLOAD_URL"
+    elif command -v wget > /dev/null 2>&1; then
+        wget -qO "$tmp_file" "$DOWNLOAD_URL"
+    else
+        log_error "Neither curl nor wget found. Cannot download binary."
+        exit 1
+    fi
+
+    # Verify we got a real binary (check for ELF header)
+    if ! file "$tmp_file" | grep -q "ELF"; then
+        log_error "Downloaded file is not a valid ELF binary. Download may have failed."
+        rm -f "$tmp_file"
+        exit 1
+    fi
+
+    mkdir -p "$INSTALL_DIR"
+    mv "$tmp_file" "${INSTALL_DIR}/${BINARY_NAME}"
+    chmod 0755 "${INSTALL_DIR}/${BINARY_NAME}"
+
+    log_success "Agent installed to ${INSTALL_DIR}/${BINARY_NAME}"
+}
+
+setup_directories() {
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$LOG_DIR"
+
+    if [ ! -f "${CONFIG_DIR}/agent.env" ]; then
+        cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
+# KernelEye Agent Configuration
+# Generated on $(date)
+
+# Your API key (set via -apikey flag or here)
+# KERNELEYE_API_KEY=your-api-key-here
+
+# Backend server address (set via -server flag or here)
+# KERNELEYE_SERVER=api.your-domain.com:443
+ENVEOF
+        chmod 0600 "${CONFIG_DIR}/agent.env"
+        log_success "Config directory created at ${CONFIG_DIR}"
+    fi
+}
+
+create_systemd_service() {
+    if [ ! -d /etc/systemd/system ]; then
+        log_warn "systemd not detected. Skipping service creation."
+        return
+    fi
+
+    cat > /etc/systemd/system/kerneleye-agent.service <<SVCEOF
+[Unit]
+Description=KernelEye Agent - Real-time Linux Security Monitoring
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-${CONFIG_DIR}/agent.env
+ExecStart=${INSTALL_DIR}/${BINARY_NAME} -enable-remediation
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:${LOG_DIR}/agent.log
+StandardError=append:${LOG_DIR}/agent.log
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=${LOG_DIR}
+
+# Required capabilities for eBPF
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+    systemctl daemon-reload
+    log_success "Systemd service created"
+}
+
+print_next_steps() {
+    echo ""
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC}         Installation Complete! 🎉                        ${GREEN}║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${BLUE}Next Steps:${NC}"
+    echo ""
+    echo "  1. Run the agent with your API key:"
+    echo -e "     ${YELLOW}sudo kerneleye-agent -server \"your-server:443\" -apikey \"your-key\"${NC}"
+    echo ""
+    echo "  2. Or configure and use systemd:"
+    echo -e "     ${YELLOW}sudo nano ${CONFIG_DIR}/agent.env${NC}"
+    echo -e "     ${YELLOW}sudo systemctl enable --now kerneleye-agent${NC}"
+    echo ""
+    echo "  3. View logs:"
+    echo -e "     ${YELLOW}sudo tail -f ${LOG_DIR}/agent.log${NC}"
+    echo ""
+}
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
+main() {
+    print_banner
+    check_root
+    check_os
+    download_binary
+    setup_directories
+    create_systemd_service
+    print_next_steps
+}
+
+main "$@"

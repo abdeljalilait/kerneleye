@@ -48,7 +48,7 @@ func parseConfig() AgentConfig {
 		cfg.GRPCURL = DefaultGRPCURL
 	}
 	if cfg.ServerHost == "" {
-		cfg.ServerHost = "api.kerneleye.io:443"
+		cfg.ServerHost = "api.kerneleye.cloud:443"
 	}
 
 	// XDP requires an interface

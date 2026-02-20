@@ -60,6 +60,8 @@ services:
       # Domain names (for nginx server_name)
       LANDING_DOMAIN: ${LANDING_DOMAIN}
       DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN}
+      # Install domain for agent download URL (defaults to DASHBOARD_DOMAIN in entrypoint)
+      INSTALL_DOMAIN: ${INSTALL_DOMAIN:-}
     restart: unless-stopped
 
   # Redis (Optional - for caching in production)

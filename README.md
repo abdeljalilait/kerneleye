@@ -57,14 +57,12 @@ KernelEye is a real-time Linux server security platform that uses **eBPF** and *
 ### Key Components
 
 1. **Agent (Go + eBPF)** - Kernel-level network monitoring
-
    - `traffic_probe.c` - TCP/UDP connection tracking via kprobes
    - `xdp_firewall.c` - XDP-based packet filtering
    - TC hooks for bandwidth measurement
    - Threat analyzer with configurable rules
 
 2. **Remediation System** - Multi-layer protection
-
    - **XDP Remediator** - Kernel-level blocking (fastest)
    - **IPSet Remediator** - iptables/ipset-based blocking
    - **Hybrid Remediator** - Combines both for optimal protection
@@ -72,7 +70,6 @@ KernelEye is a real-time Linux server security platform that uses **eBPF** and *
 3. **API Backend (Go)** - Ingests, scores, and stores traffic data
 
 4. **Dashboard (React)** - Real-time threat visualization
-
    - Live traffic stream via WebSocket
    - Server management
    - Threat scoring & alerts
@@ -158,7 +155,7 @@ sudo ./kerneleye-agent
 
 Open http://localhost:3000 and login with:
 
-- **Email**: `demo@kerneleye.io`
+- **Email**: `demo@kerneleye.cloud`
 - **Password**: `demo`
 
 📖 **Full Guide**: See [docs/getting-started.md](docs/getting-started.md)
@@ -244,9 +241,9 @@ kerneleye/
 
 ## 📧 Contact
 
-- **Website**: https://kerneleye.io
-- **Email**: hello@kerneleye.io
-- **Support**: support@kerneleye.io
+- **Website**: https://kerneleye.cloud
+- **Email**: hello@kerneleye.cloud
+- **Support**: support@kerneleye.cloud
 
 ## 📄 License
 

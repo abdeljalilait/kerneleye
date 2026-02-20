@@ -21,16 +21,28 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   
   const generateApiKeyMutation = useGenerateApiKey()
 
-  const serverHost = window.location.hostname === 'localhost' 
-    ? 'localhost:9091' 
-    : 'api.kerneleye.io:443'
+  const serverHost = (() => {
+    if (window.location.hostname === 'localhost') return 'localhost:9091'
+    const apiUrl = import.meta.env.VITE_API_URL as string | undefined
+    if (apiUrl) {
+      try {
+        const url = new URL(apiUrl)
+        return url.port ? `${url.hostname}:${url.port}` : `${url.hostname}:443`
+      } catch { /* fall through */ }
+    }
+    return `${window.location.hostname}:443`
+  })()
+
+  // Derive install domain from build-time env var or window.location
+  const installDomain = (import.meta.env.VITE_INSTALL_DOMAIN as string) || window.location.hostname
+  const installProtocol = window.location.protocol
 
   const installCommand = result 
-    ? `sudo ./kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"`
+    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"`
     : ''
 
   const fullInstallCommand = result
-    ? `curl -fsSL https://install.kerneleye.io | bash && ${installCommand}`
+    ? `curl -fsSL ${installProtocol}//${installDomain}/install.sh | bash && ${installCommand}`
     : ''
 
   const handleGenerate = () => {

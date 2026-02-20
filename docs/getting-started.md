@@ -118,7 +118,7 @@ Output:
 
 Open http://localhost:3000 and login:
 
-- **Email**: `demo@kerneleye.io`
+- **Email**: `demo@kerneleye.cloud`
 - **Password**: `demo`
 
 ### Generate Test Traffic

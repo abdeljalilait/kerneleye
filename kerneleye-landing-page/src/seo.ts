@@ -15,15 +15,16 @@ export interface SEOConfig {
 // Base site config
 export const siteConfig = {
   name: 'KernelEye',
-  url: 'https://kerneleye.io',
-  logo: 'https://kerneleye.io/logo.png',
+  url: 'https://kerneleye.cloud',
+  logo: 'https://kerneleye.cloud/logo.png',
   twitter: '@kerneleye',
 };
 
 // Home page SEO
 export const homeSEO: SEOConfig = {
   title: 'KernelEye - Real-time Kernel Security for Linux Servers',
-  description: 'Kernel-level visibility and threat detection for Linux servers. eBPF-powered monitoring with millisecond response times. See everything, block threats instantly.',
+  description:
+    'Kernel-level visibility and threat detection for Linux servers. eBPF-powered monitoring with millisecond response times. See everything, block threats instantly.',
   keywords: [
     'kernel security',
     'linux security',
@@ -36,14 +37,15 @@ export const homeSEO: SEOConfig = {
     'network security',
     'intrusion detection',
   ],
-  ogImage: 'https://kerneleye.io/og-image.png',
-  canonical: 'https://kerneleye.io/',
+  ogImage: 'https://kerneleye.cloud/og-image.png',
+  canonical: 'https://kerneleye.cloud/',
 };
 
 // Features page SEO
 export const featuresSEO: SEOConfig = {
   title: 'Features - KernelEye Security Platform',
-  description: 'Complete kernel security with real-time visibility, active protection, lightning-fast performance, zero trust architecture, and smart analytics.',
+  description:
+    'Complete kernel security with real-time visibility, active protection, lightning-fast performance, zero trust architecture, and smart analytics.',
   keywords: [
     'kernel security features',
     'ebpf monitoring',
@@ -52,8 +54,8 @@ export const featuresSEO: SEOConfig = {
     'network analytics',
     'threat intelligence',
   ],
-  ogImage: 'https://kerneleye.io/og-features.png',
-  canonical: 'https://kerneleye.io/features',
+  ogImage: 'https://kerneleye.cloud/og-features.png',
+  canonical: 'https://kerneleye.cloud/features',
 };
 
 // Pricing page SEO
@@ -67,22 +69,18 @@ export const pricingSEO: SEOConfig = {
     'security software pricing',
     'enterprise security',
   ],
-  ogImage: 'https://kerneleye.io/og-pricing.png',
-  canonical: 'https://kerneleye.io/pricing',
+  ogImage: 'https://kerneleye.cloud/og-pricing.png',
+  canonical: 'https://kerneleye.cloud/pricing',
 };
 
 // Contact page SEO
 export const contactSEO: SEOConfig = {
   title: 'Contact - Get in Touch with KernelEye',
-  description: 'Contact the KernelEye team for sales inquiries, support, or to schedule a demo. Secure your infrastructure today.',
-  keywords: [
-    'contact kernel security',
-    'linux security sales',
-    'security demo',
-    'kernel security support',
-  ],
-  ogImage: 'https://kerneleye.io/og-contact.png',
-  canonical: 'https://kerneleye.io/contact',
+  description:
+    'Contact the KernelEye team for sales inquiries, support, or to schedule a demo. Secure your infrastructure today.',
+  keywords: ['contact kernel security', 'linux security sales', 'security demo', 'kernel security support'],
+  ogImage: 'https://kerneleye.cloud/og-contact.png',
+  canonical: 'https://kerneleye.cloud/contact',
 };
 
 // Default/fallback SEO
@@ -90,7 +88,7 @@ export const defaultSEO: SEOConfig = {
   title: 'KernelEye - Kernel Security Platform',
   description: 'Real-time kernel security monitoring and threat detection for Linux servers.',
   keywords: ['kernel security', 'linux', 'ebpf', 'monitoring'],
-  ogImage: 'https://kerneleye.io/og-image.png',
+  ogImage: 'https://kerneleye.cloud/og-image.png',
 };
 
 // Generate meta tags helper
@@ -100,7 +98,7 @@ export function generateMetaTags(config: SEOConfig) {
     meta: [
       { name: 'description', content: config.description },
       { name: 'keywords', content: config.keywords.join(', ') },
-      
+
       // Open Graph
       { property: 'og:title', content: config.title },
       { property: 'og:description', content: config.description },
@@ -108,20 +106,18 @@ export function generateMetaTags(config: SEOConfig) {
       { property: 'og:site_name', content: siteConfig.name },
       ...(config.ogImage ? [{ property: 'og:image', content: config.ogImage }] : []),
       ...(config.canonical ? [{ property: 'og:url', content: config.canonical }] : []),
-      
+
       // Twitter
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'twitter:site', content: siteConfig.twitter },
       { name: 'twitter:title', content: config.title },
       { name: 'twitter:description', content: config.description },
       ...(config.ogImage ? [{ name: 'twitter:image', content: config.ogImage }] : []),
-      
+
       // Robots
       ...(config.noIndex ? [{ name: 'robots', content: 'noindex, nofollow' }] : []),
     ],
-    links: [
-      ...(config.canonical ? [{ rel: 'canonical', href: config.canonical }] : []),
-    ],
+    links: [...(config.canonical ? [{ rel: 'canonical', href: config.canonical }] : [])],
   };
 }
 
@@ -132,11 +128,7 @@ export const organizationSchema = {
   name: siteConfig.name,
   url: siteConfig.url,
   logo: siteConfig.logo,
-  sameAs: [
-    'https://twitter.com/kerneleye',
-    'https://github.com/kerneleye',
-    'https://linkedin.com/company/kerneleye',
-  ],
+  sameAs: ['https://twitter.com/kerneleye', 'https://github.com/kerneleye', 'https://linkedin.com/company/kerneleye'],
 };
 
 export const softwareApplicationSchema = {

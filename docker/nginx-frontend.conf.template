@@ -71,6 +71,22 @@ server {
         }
     }
 
+    # Agent install script (templated at container startup)
+    location = /install.sh {
+        alias /usr/share/nginx/html/install.sh;
+        default_type text/plain;
+        add_header Content-Disposition "inline";
+        add_header Cache-Control "no-cache";
+    }
+
+    # Agent binary download
+    location /downloads/ {
+        root /usr/share/nginx/html;
+        default_type application/octet-stream;
+        add_header Content-Disposition 'attachment';
+        add_header Cache-Control "no-cache";
+    }
+
     # Health check
     location /health {
         access_log off;

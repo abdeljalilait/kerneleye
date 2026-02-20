@@ -16,8 +16,9 @@ BACKEND_IMAGE = $(REGISTRY)/$(NAMESPACE)/backend
 FRONTEND_IMAGE = $(REGISTRY)/$(NAMESPACE)/frontend
 TAG ?= latest
 
-# Read VITE_API_URL from dashboard/.env.production (single source of truth)
+# Read build-time env vars from dashboard/.env.production (single source of truth)
 VITE_API_URL ?= $(shell grep -E '^VITE_API_URL=' dashboard/.env.production | cut -d= -f2-)
+VITE_INSTALL_DOMAIN ?= $(shell grep -E '^VITE_INSTALL_DOMAIN=' dashboard/.env.production | cut -d= -f2-)
 
 # Protobuf Generation
 .PHONY: gen-proto
@@ -111,6 +112,7 @@ docker-build-frontend:
 	@echo "Building frontend Docker image..."
 	docker build -f Dockerfile.frontend \
 		--build-arg VITE_API_URL=$(VITE_API_URL) \
+		--build-arg VITE_INSTALL_DOMAIN=$(VITE_INSTALL_DOMAIN) \
 		-t $(FRONTEND_IMAGE):$(TAG) .
 	@echo "Built: $(FRONTEND_IMAGE):$(TAG)"
 
@@ -178,6 +180,7 @@ docker-buildx-frontend:
 		--platform linux/amd64,linux/arm64 \
 		-f Dockerfile.frontend \
 		--build-arg VITE_API_URL=$(VITE_API_URL) \
+		--build-arg VITE_INSTALL_DOMAIN=$(VITE_INSTALL_DOMAIN) \
 		-t $(FRONTEND_IMAGE):$(TAG) \
 		--push .
 
