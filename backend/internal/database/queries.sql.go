@@ -25,10 +25,8 @@ func (q *Queries) CountServersByUser(ctx context.Context, userID pgtype.UUID) (i
 }
 
 const createAlert = `-- name: CreateAlert :one
-INSERT INTO alerts (
-    server_id, source_ip, threat_score, reason, 
-    severity, status, auto_blocked
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO alerts (server_id, source_ip, threat_score, reason, severity, status)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, server_id, source_ip, threat_score, reason, severity, status, auto_blocked, blocked_until, created_at, acknowledged_at, resolved_at
 `
 
@@ -39,7 +37,6 @@ type CreateAlertParams struct {
 	Reason      string      `json:"reason"`
 	Severity    string      `json:"severity"`
 	Status      string      `json:"status"`
-	AutoBlocked pgtype.Bool `json:"auto_blocked"`
 }
 
 func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error) {
@@ -50,7 +47,6 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 		arg.Reason,
 		arg.Severity,
 		arg.Status,
-		arg.AutoBlocked,
 	)
 	var i Alert
 	err := row.Scan(
@@ -176,8 +172,8 @@ func (q *Queries) CreateServerWithAPIKey(ctx context.Context, arg CreateServerWi
 
 const createSubscriptionEvent = `-- name: CreateSubscriptionEvent :one
 INSERT INTO subscription_events (
-    user_id, polar_event_id, event_type, payload, processed, processed_at
-) VALUES ($1, $2, $3, $4, $5, $6)
+    user_id, polar_event_id, event_type, payload, processed_at
+) VALUES ($1, $2, $3, $4, $5)
 RETURNING id, user_id, polar_event_id, event_type, payload, processed, processed_at, error_message, created_at
 `
 
@@ -186,7 +182,6 @@ type CreateSubscriptionEventParams struct {
 	PolarEventID pgtype.Text        `json:"polar_event_id"`
 	EventType    string             `json:"event_type"`
 	Payload      []byte             `json:"payload"`
-	Processed    pgtype.Bool        `json:"processed"`
 	ProcessedAt  pgtype.Timestamptz `json:"processed_at"`
 }
 
@@ -196,7 +191,6 @@ func (q *Queries) CreateSubscriptionEvent(ctx context.Context, arg CreateSubscri
 		arg.PolarEventID,
 		arg.EventType,
 		arg.Payload,
-		arg.Processed,
 		arg.ProcessedAt,
 	)
 	var i SubscriptionEvent
@@ -251,17 +245,186 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 
 const deleteServer = `-- name: DeleteServer :exec
 DELETE FROM servers
-WHERE id = $1 AND user_id = $2
+WHERE id = $1
 `
 
-type DeleteServerParams struct {
-	ID     pgtype.UUID `json:"id"`
-	UserID pgtype.UUID `json:"user_id"`
+func (q *Queries) DeleteServer(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteServer, id)
+	return err
 }
 
-func (q *Queries) DeleteServer(ctx context.Context, arg DeleteServerParams) error {
-	_, err := q.db.Exec(ctx, deleteServer, arg.ID, arg.UserID)
-	return err
+const getAttackTypeBreakdown = `-- name: GetAttackTypeBreakdown :many
+SELECT 
+    CASE 
+        WHEN te.destination_port = 22 THEN 'SSH Bruteforce'
+        WHEN te.destination_port = 80 THEN 'HTTP Attack'
+        WHEN te.destination_port = 443 THEN 'HTTPS Attack'
+        WHEN te.destination_port IN (21, 23, 25, 3306, 5432, 6379, 27017) THEN 'Service Attack'
+        ELSE 'Port Scan'
+    END as attack_type,
+    SUM(te.hit_count)::int as count,
+    COUNT(DISTINCT te.source_ip)::int as unique_sources
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+GROUP BY 
+    CASE 
+        WHEN te.destination_port = 22 THEN 'SSH Bruteforce'
+        WHEN te.destination_port = 80 THEN 'HTTP Attack'
+        WHEN te.destination_port = 443 THEN 'HTTPS Attack'
+        WHEN te.destination_port IN (21, 23, 25, 3306, 5432, 6379, 27017) THEN 'Service Attack'
+        ELSE 'Port Scan'
+    END
+ORDER BY count DESC
+`
+
+type GetAttackTypeBreakdownParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+}
+
+type GetAttackTypeBreakdownRow struct {
+	AttackType    string `json:"attack_type"`
+	Count         int32  `json:"count"`
+	UniqueSources int32  `json:"unique_sources"`
+}
+
+func (q *Queries) GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeBreakdownParams) ([]GetAttackTypeBreakdownRow, error) {
+	rows, err := q.db.Query(ctx, getAttackTypeBreakdown, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAttackTypeBreakdownRow{}
+	for rows.Next() {
+		var i GetAttackTypeBreakdownRow
+		if err := rows.Scan(&i.AttackType, &i.Count, &i.UniqueSources); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDailyAttackStats = `-- name: GetDailyAttackStats :many
+
+SELECT 
+    DATE(te.created_at) as date,
+    COUNT(*)::int as total_attacks,
+    SUM(te.hit_count)::int as total_events,
+    COUNT(DISTINCT te.source_ip)::int as unique_sources,
+    SUM(CASE WHEN te.threat_level = 'malicious' THEN te.hit_count ELSE 0 END)::int as blocked,
+    SUM(CASE WHEN te.destination_port = 22 THEN te.hit_count ELSE 0 END)::int as ssh_attacks,
+    SUM(CASE WHEN te.destination_port IN (80, 443) THEN te.hit_count ELSE 0 END)::int as http_attacks,
+    SUM(CASE WHEN te.destination_port NOT IN (22, 80, 443) THEN te.hit_count ELSE 0 END)::int as other_attacks
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+GROUP BY DATE(te.created_at)
+ORDER BY date DESC
+`
+
+type GetDailyAttackStatsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+}
+
+type GetDailyAttackStatsRow struct {
+	Date          pgtype.Date `json:"date"`
+	TotalAttacks  int32       `json:"total_attacks"`
+	TotalEvents   int32       `json:"total_events"`
+	UniqueSources int32       `json:"unique_sources"`
+	Blocked       int32       `json:"blocked"`
+	SshAttacks    int32       `json:"ssh_attacks"`
+	HttpAttacks   int32       `json:"http_attacks"`
+	OtherAttacks  int32       `json:"other_attacks"`
+}
+
+// ============================================
+// Reports & Analytics Queries
+// ============================================
+func (q *Queries) GetDailyAttackStats(ctx context.Context, arg GetDailyAttackStatsParams) ([]GetDailyAttackStatsRow, error) {
+	rows, err := q.db.Query(ctx, getDailyAttackStats, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetDailyAttackStatsRow{}
+	for rows.Next() {
+		var i GetDailyAttackStatsRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.TotalAttacks,
+			&i.TotalEvents,
+			&i.UniqueSources,
+			&i.Blocked,
+			&i.SshAttacks,
+			&i.HttpAttacks,
+			&i.OtherAttacks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getHourlyAttackDistribution = `-- name: GetHourlyAttackDistribution :many
+SELECT 
+    EXTRACT(HOUR FROM te.created_at)::int as hour,
+    SUM(te.hit_count)::int as attack_count,
+    SUM(CASE WHEN te.threat_level = 'malicious' THEN te.hit_count ELSE 0 END)::int as blocked_count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+GROUP BY EXTRACT(HOUR FROM te.created_at)
+ORDER BY hour
+`
+
+type GetHourlyAttackDistributionParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+}
+
+type GetHourlyAttackDistributionRow struct {
+	Hour         int32 `json:"hour"`
+	AttackCount  int32 `json:"attack_count"`
+	BlockedCount int32 `json:"blocked_count"`
+}
+
+func (q *Queries) GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error) {
+	rows, err := q.db.Query(ctx, getHourlyAttackDistribution, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetHourlyAttackDistributionRow{}
+	for rows.Next() {
+		var i GetHourlyAttackDistributionRow
+		if err := rows.Scan(&i.Hour, &i.AttackCount, &i.BlockedCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getPlanByName = `-- name: GetPlanByName :one
@@ -429,9 +592,9 @@ func (q *Queries) GetServerByUserAndIP(ctx context.Context, arg GetServerByUserA
 
 const getServerStats = `-- name: GetServerStats :one
 SELECT 
-    COUNT(*)::bigint as total_events,
-    COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::bigint as events_last_24h,
-    COUNT(*) FILTER (WHERE threat_level IN ('suspicious', 'malicious'))::int as threat_events,
+    COALESCE(SUM(hit_count), 0)::bigint as total_events,
+    COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int as events_last_24h,
+    COUNT(*) FILTER (WHERE threat_level = 'malicious')::int as threat_events,
     COALESCE(SUM(bytes_in), 0)::bigint as total_bytes_in,
     COALESCE(SUM(bytes_out), 0)::bigint as total_bytes_out
 FROM traffic_events
@@ -440,7 +603,7 @@ WHERE server_id = $1
 
 type GetServerStatsRow struct {
 	TotalEvents   int64 `json:"total_events"`
-	EventsLast24h int64 `json:"events_last_24h"`
+	EventsLast24h int32 `json:"events_last_24h"`
 	ThreatEvents  int32 `json:"threat_events"`
 	TotalBytesIn  int64 `json:"total_bytes_in"`
 	TotalBytesOut int64 `json:"total_bytes_out"`
@@ -459,68 +622,363 @@ func (q *Queries) GetServerStats(ctx context.Context, serverID pgtype.UUID) (Get
 	return i, err
 }
 
+const getSourceIPTimeline = `-- name: GetSourceIPTimeline :many
+SELECT 
+    te.source_ip::text as ip,
+    DATE_TRUNC('hour', te.created_at)::timestamp as time_bucket,
+    SUM(te.hit_count)::int as count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.source_ip = $2::inet
+  AND te.created_at >= NOW() - INTERVAL '24 hours'
+GROUP BY te.source_ip, DATE_TRUNC('hour', te.created_at)
+ORDER BY time_bucket
+`
+
+type GetSourceIPTimelineParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	Column2 netip.Addr  `json:"column_2"`
+}
+
+type GetSourceIPTimelineRow struct {
+	Ip         string           `json:"ip"`
+	TimeBucket pgtype.Timestamp `json:"time_bucket"`
+	Count      int32            `json:"count"`
+}
+
+func (q *Queries) GetSourceIPTimeline(ctx context.Context, arg GetSourceIPTimelineParams) ([]GetSourceIPTimelineRow, error) {
+	rows, err := q.db.Query(ctx, getSourceIPTimeline, arg.UserID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSourceIPTimelineRow{}
+	for rows.Next() {
+		var i GetSourceIPTimelineRow
+		if err := rows.Scan(&i.Ip, &i.TimeBucket, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStatsAlertCounts = `-- name: GetStatsAlertCounts :one
 SELECT 
     COUNT(*)::int as total_alerts,
-    COUNT(*) FILTER (WHERE a.created_at > NOW() - INTERVAL '24 hours')::int as alerts_last_24h,
-    COUNT(*) FILTER (WHERE a.status = 'active')::int as active_threats
+    COUNT(*) FILTER (WHERE severity = 'critical')::int as critical_alerts,
+    COUNT(*) FILTER (WHERE severity = 'warning')::int as warning_alerts
 FROM alerts a
 JOIN servers s ON a.server_id = s.id
 WHERE s.user_id = $1
+  AND a.created_at >= NOW() - INTERVAL '24 hours'
 `
 
 type GetStatsAlertCountsRow struct {
-	TotalAlerts   int32 `json:"total_alerts"`
-	AlertsLast24h int32 `json:"alerts_last_24h"`
-	ActiveThreats int32 `json:"active_threats"`
+	TotalAlerts    int32 `json:"total_alerts"`
+	CriticalAlerts int32 `json:"critical_alerts"`
+	WarningAlerts  int32 `json:"warning_alerts"`
 }
 
 func (q *Queries) GetStatsAlertCounts(ctx context.Context, userID pgtype.UUID) (GetStatsAlertCountsRow, error) {
 	row := q.db.QueryRow(ctx, getStatsAlertCounts, userID)
 	var i GetStatsAlertCountsRow
-	err := row.Scan(&i.TotalAlerts, &i.AlertsLast24h, &i.ActiveThreats)
+	err := row.Scan(&i.TotalAlerts, &i.CriticalAlerts, &i.WarningAlerts)
 	return i, err
 }
 
 const getStatsEventCounts = `-- name: GetStatsEventCounts :one
 SELECT 
-    COUNT(*)::bigint as total_events,
-    COUNT(*) FILTER (WHERE te.created_at > NOW() - INTERVAL '24 hours')::bigint as events_last_24h
+    COALESCE(SUM(hit_count), 0)::bigint as total_events,
+    COUNT(DISTINCT te.source_ip)::int as unique_sources
 FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1
+  AND te.created_at >= NOW() - INTERVAL '24 hours'
 `
 
 type GetStatsEventCountsRow struct {
 	TotalEvents   int64 `json:"total_events"`
-	EventsLast24h int64 `json:"events_last_24h"`
+	UniqueSources int32 `json:"unique_sources"`
 }
 
 func (q *Queries) GetStatsEventCounts(ctx context.Context, userID pgtype.UUID) (GetStatsEventCountsRow, error) {
 	row := q.db.QueryRow(ctx, getStatsEventCounts, userID)
 	var i GetStatsEventCountsRow
-	err := row.Scan(&i.TotalEvents, &i.EventsLast24h)
+	err := row.Scan(&i.TotalEvents, &i.UniqueSources)
 	return i, err
 }
 
 const getStatsServerCounts = `-- name: GetStatsServerCounts :one
 SELECT 
     COUNT(*)::int as total_servers,
-    COUNT(*) FILTER (WHERE status = 'active')::int as active_servers
-FROM servers 
+    COUNT(*) FILTER (WHERE status = 'active')::int as active_servers,
+    COUNT(*) FILTER (WHERE status = 'inactive')::int as inactive_servers
+FROM servers
 WHERE user_id = $1
 `
 
 type GetStatsServerCountsRow struct {
-	TotalServers  int32 `json:"total_servers"`
-	ActiveServers int32 `json:"active_servers"`
+	TotalServers    int32 `json:"total_servers"`
+	ActiveServers   int32 `json:"active_servers"`
+	InactiveServers int32 `json:"inactive_servers"`
 }
 
 func (q *Queries) GetStatsServerCounts(ctx context.Context, userID pgtype.UUID) (GetStatsServerCountsRow, error) {
 	row := q.db.QueryRow(ctx, getStatsServerCounts, userID)
 	var i GetStatsServerCountsRow
-	err := row.Scan(&i.TotalServers, &i.ActiveServers)
+	err := row.Scan(&i.TotalServers, &i.ActiveServers, &i.InactiveServers)
 	return i, err
+}
+
+const getThreatTrends = `-- name: GetThreatTrends :many
+SELECT 
+    DATE_TRUNC('day', te.created_at)::date as date,
+    SUM(CASE WHEN te.threat_level = 'normal' THEN te.hit_count ELSE 0 END)::int as normal,
+    SUM(CASE WHEN te.threat_level = 'suspicious' THEN te.hit_count ELSE 0 END)::int as suspicious,
+    SUM(CASE WHEN te.threat_level = 'malicious' THEN te.hit_count ELSE 0 END)::int as malicious
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+GROUP BY DATE_TRUNC('day', te.created_at)
+ORDER BY date DESC
+`
+
+type GetThreatTrendsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+}
+
+type GetThreatTrendsRow struct {
+	Date       pgtype.Date `json:"date"`
+	Normal     int32       `json:"normal"`
+	Suspicious int32       `json:"suspicious"`
+	Malicious  int32       `json:"malicious"`
+}
+
+func (q *Queries) GetThreatTrends(ctx context.Context, arg GetThreatTrendsParams) ([]GetThreatTrendsRow, error) {
+	rows, err := q.db.Query(ctx, getThreatTrends, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetThreatTrendsRow{}
+	for rows.Next() {
+		var i GetThreatTrendsRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.Normal,
+			&i.Suspicious,
+			&i.Malicious,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopASNs = `-- name: GetTopASNs :many
+SELECT 
+    COALESCE(te.asn, 'Unknown') as asn,
+    COALESCE(te.isp, 'Unknown') as isp_name,
+    COALESCE(te.country, 'Unknown') as country,
+    SUM(te.hit_count)::int as count,
+    COUNT(DISTINCT te.source_ip)::int as unique_ips
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+  AND te.asn IS NOT NULL
+GROUP BY te.asn, te.isp, te.country
+ORDER BY count DESC
+LIMIT $4
+`
+
+type GetTopASNsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+	Limit       int32              `json:"limit"`
+}
+
+type GetTopASNsRow struct {
+	Asn       string `json:"asn"`
+	IspName   string `json:"isp_name"`
+	Country   string `json:"country"`
+	Count     int32  `json:"count"`
+	UniqueIps int32  `json:"unique_ips"`
+}
+
+func (q *Queries) GetTopASNs(ctx context.Context, arg GetTopASNsParams) ([]GetTopASNsRow, error) {
+	rows, err := q.db.Query(ctx, getTopASNs,
+		arg.UserID,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopASNsRow{}
+	for rows.Next() {
+		var i GetTopASNsRow
+		if err := rows.Scan(
+			&i.Asn,
+			&i.IspName,
+			&i.Country,
+			&i.Count,
+			&i.UniqueIps,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopSourceCountries = `-- name: GetTopSourceCountries :many
+SELECT 
+    COALESCE(te.country, 'Unknown') as country,
+    COUNT(*)::int as attack_count,
+    COUNT(DISTINCT te.source_ip)::int as unique_ips,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) as percentage
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+GROUP BY te.country
+ORDER BY attack_count DESC
+LIMIT $4
+`
+
+type GetTopSourceCountriesParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+	Limit       int32              `json:"limit"`
+}
+
+type GetTopSourceCountriesRow struct {
+	Country     string         `json:"country"`
+	AttackCount int32          `json:"attack_count"`
+	UniqueIps   int32          `json:"unique_ips"`
+	Percentage  pgtype.Numeric `json:"percentage"`
+}
+
+func (q *Queries) GetTopSourceCountries(ctx context.Context, arg GetTopSourceCountriesParams) ([]GetTopSourceCountriesRow, error) {
+	rows, err := q.db.Query(ctx, getTopSourceCountries,
+		arg.UserID,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopSourceCountriesRow{}
+	for rows.Next() {
+		var i GetTopSourceCountriesRow
+		if err := rows.Scan(
+			&i.Country,
+			&i.AttackCount,
+			&i.UniqueIps,
+			&i.Percentage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopSourceIPs = `-- name: GetTopSourceIPs :many
+SELECT 
+    te.source_ip::text as ip,
+    SUM(te.hit_count)::int as count,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    MIN(te.first_seen) as first_seen,
+    MAX(te.last_seen) as last_seen,
+    COALESCE(te.country, 'Unknown') as country,
+    COALESCE(te.isp, 'Unknown') as isp
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.created_at >= $2
+  AND te.created_at <= $3
+GROUP BY te.source_ip, te.country, te.isp
+ORDER BY count DESC
+LIMIT $4
+`
+
+type GetTopSourceIPsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+	Limit       int32              `json:"limit"`
+}
+
+type GetTopSourceIPsRow struct {
+	Ip          string      `json:"ip"`
+	Count       int32       `json:"count"`
+	UniquePorts int32       `json:"unique_ports"`
+	FirstSeen   interface{} `json:"first_seen"`
+	LastSeen    interface{} `json:"last_seen"`
+	Country     string      `json:"country"`
+	Isp         string      `json:"isp"`
+}
+
+func (q *Queries) GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams) ([]GetTopSourceIPsRow, error) {
+	rows, err := q.db.Query(ctx, getTopSourceIPs,
+		arg.UserID,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopSourceIPsRow{}
+	for rows.Next() {
+		var i GetTopSourceIPsRow
+		if err := rows.Scan(
+			&i.Ip,
+			&i.Count,
+			&i.UniquePorts,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.Country,
+			&i.Isp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
@@ -637,15 +1095,11 @@ func (q *Queries) GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID)
 }
 
 const listActivePlans = `-- name: ListActivePlans :many
-
 SELECT id, name, display_name, description, price_cents, currency, billing_interval, max_servers, data_retention_days, features, polar_product_id, polar_price_id, is_active, is_default, created_at, updated_at FROM subscription_plans
-WHERE is_active = TRUE
+WHERE is_active = true
 ORDER BY price_cents ASC
 `
 
-// ============================================
-// Subscription Queries
-// ============================================
 func (q *Queries) ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error) {
 	rows, err := q.db.Query(ctx, listActivePlans)
 	if err != nil {
@@ -684,7 +1138,8 @@ func (q *Queries) ListActivePlans(ctx context.Context) ([]SubscriptionPlan, erro
 }
 
 const listAlerts = `-- name: ListAlerts :many
-SELECT a.id, a.server_id, a.source_ip, a.threat_score, a.reason, a.severity, a.status, a.auto_blocked, a.blocked_until, a.created_at, a.acknowledged_at, a.resolved_at FROM alerts a
+SELECT a.id, a.server_id, a.source_ip, a.threat_score, a.reason, a.severity, a.status, a.auto_blocked, a.blocked_until, a.created_at, a.acknowledged_at, a.resolved_at, s.hostname as server_hostname
+FROM alerts a
 JOIN servers s ON a.server_id = s.id
 WHERE s.user_id = $1
 ORDER BY a.created_at DESC
@@ -696,15 +1151,31 @@ type ListAlertsParams struct {
 	Limit  int32       `json:"limit"`
 }
 
-func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]Alert, error) {
+type ListAlertsRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	ServerID       pgtype.UUID        `json:"server_id"`
+	SourceIp       netip.Addr         `json:"source_ip"`
+	ThreatScore    int32              `json:"threat_score"`
+	Reason         string             `json:"reason"`
+	Severity       string             `json:"severity"`
+	Status         string             `json:"status"`
+	AutoBlocked    pgtype.Bool        `json:"auto_blocked"`
+	BlockedUntil   pgtype.Timestamptz `json:"blocked_until"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	AcknowledgedAt pgtype.Timestamptz `json:"acknowledged_at"`
+	ResolvedAt     pgtype.Timestamptz `json:"resolved_at"`
+	ServerHostname string             `json:"server_hostname"`
+}
+
+func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error) {
 	rows, err := q.db.Query(ctx, listAlerts, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Alert{}
+	items := []ListAlertsRow{}
 	for rows.Next() {
-		var i Alert
+		var i ListAlertsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ServerID,
@@ -718,6 +1189,7 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]Alert
 			&i.CreatedAt,
 			&i.AcknowledgedAt,
 			&i.ResolvedAt,
+			&i.ServerHostname,
 		); err != nil {
 			return nil, err
 		}
@@ -769,11 +1241,11 @@ func (q *Queries) ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]
 }
 
 const listThreats = `-- name: ListThreats :many
-SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip FROM traffic_events te
+SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1 
   AND te.threat_level IN ('suspicious', 'malicious')
-ORDER BY te.threat_score DESC, te.created_at DESC
+ORDER BY te.threat_score DESC, te.last_seen DESC
 LIMIT $2
 `
 
@@ -814,6 +1286,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 			&i.HitCount,
 			&i.Direction,
 			&i.DestinationIp,
+			&i.Asn,
 		); err != nil {
 			return nil, err
 		}
@@ -826,7 +1299,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 }
 
 const listTrafficEventsByServer = `-- name: ListTrafficEventsByServer :many
-SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip FROM traffic_events
+SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn FROM traffic_events
 WHERE server_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -869,6 +1342,7 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 			&i.HitCount,
 			&i.Direction,
 			&i.DestinationIp,
+			&i.Asn,
 		); err != nil {
 			return nil, err
 		}
@@ -962,12 +1436,13 @@ func (q *Queries) UpdateServerStatus(ctx context.Context, arg UpdateServerStatus
 const updateUserSubscription = `-- name: UpdateUserSubscription :exec
 UPDATE users
 SET plan = $2,
-    polar_subscription_id = $3,
-    subscription_status = $4,
-    subscription_current_period_start = $5,
-    subscription_current_period_end = $6,
-    subscription_cancel_at_period_end = $7,
-    trial_ends_at = $8,
+    polar_customer_id = COALESCE($3, polar_customer_id),
+    polar_subscription_id = COALESCE($4, polar_subscription_id),
+    subscription_status = COALESCE($5, subscription_status),
+    subscription_current_period_start = COALESCE($6, subscription_current_period_start),
+    subscription_current_period_end = COALESCE($7, subscription_current_period_end),
+    subscription_cancel_at_period_end = COALESCE($8, subscription_cancel_at_period_end),
+    trial_ends_at = COALESCE($9, trial_ends_at),
     updated_at = NOW()
 WHERE id = $1
 `
@@ -975,6 +1450,7 @@ WHERE id = $1
 type UpdateUserSubscriptionParams struct {
 	ID                             pgtype.UUID        `json:"id"`
 	Plan                           string             `json:"plan"`
+	PolarCustomerID                pgtype.Text        `json:"polar_customer_id"`
 	PolarSubscriptionID            pgtype.Text        `json:"polar_subscription_id"`
 	SubscriptionStatus             pgtype.Text        `json:"subscription_status"`
 	SubscriptionCurrentPeriodStart pgtype.Timestamptz `json:"subscription_current_period_start"`
@@ -987,6 +1463,7 @@ func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubs
 	_, err := q.db.Exec(ctx, updateUserSubscription,
 		arg.ID,
 		arg.Plan,
+		arg.PolarCustomerID,
 		arg.PolarSubscriptionID,
 		arg.SubscriptionStatus,
 		arg.SubscriptionCurrentPeriodStart,
@@ -1019,8 +1496,8 @@ INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
     syn_count, ack_count, failed_handshakes, unique_ports,
     bytes_in, bytes_out, threat_score, threat_level,
-    first_seen, last_seen, country, city, isp, hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 1)
+    first_seen, last_seen, country, city, isp, asn, hit_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -1035,7 +1512,7 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     END,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
-RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip
+RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn
 `
 
 type UpsertTrafficEventParams struct {
@@ -1058,6 +1535,7 @@ type UpsertTrafficEventParams struct {
 	Country          pgtype.Text        `json:"country"`
 	City             pgtype.Text        `json:"city"`
 	Isp              pgtype.Text        `json:"isp"`
+	Asn              pgtype.Text        `json:"asn"`
 }
 
 func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error) {
@@ -1081,6 +1559,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		arg.Country,
 		arg.City,
 		arg.Isp,
+		arg.Asn,
 	)
 	var i TrafficEvent
 	err := row.Scan(
@@ -1106,6 +1585,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.HitCount,
 		&i.Direction,
 		&i.DestinationIp,
+		&i.Asn,
 	)
 	return i, err
 }

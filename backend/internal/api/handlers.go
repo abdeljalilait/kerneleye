@@ -186,11 +186,11 @@ func HandleStatsOverview(queries *database.Queries) fiber.Handler {
 			"total_servers":   serverStats.TotalServers,
 			"active_servers":  serverStats.ActiveServers,
 			"total_events":    eventStats.TotalEvents,
+			"unique_sources":  eventStats.UniqueSources,
 			"total_alerts":    alertStats.TotalAlerts,
-			"active_threats":  alertStats.ActiveThreats,
+			"critical_alerts": alertStats.CriticalAlerts,
+			"warning_alerts":  alertStats.WarningAlerts,
 			"blocked_ips":     0,
-			"events_last_24h": eventStats.EventsLast24h,
-			"alerts_last_24h": alertStats.AlertsLast24h,
 		})
 	}
 }
@@ -330,10 +330,14 @@ func HandleDeleteServer(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusUnauthorized, "User not authenticated")
 		}
 
-		err := queries.DeleteServer(c.Context(), database.DeleteServerParams{
-			ID:     database.ToPgUUID(serverID),
-			UserID: database.ToPgUUID(userID.(string)),
-		})
+		// First verify the server belongs to this user
+		_, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
+		if err != nil {
+			log.Printf("[HandleDeleteServer] Server not found: %v", err)
+			return fiber.NewError(fiber.StatusNotFound, "Server not found")
+		}
+		
+		err = queries.DeleteServer(c.Context(), database.ToPgUUID(serverID))
 
 		if err != nil {
 			log.Printf("[HandleDeleteServer] Error: %v", err)

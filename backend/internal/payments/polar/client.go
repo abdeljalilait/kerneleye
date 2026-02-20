@@ -112,6 +112,11 @@ func (c *Client) GetCustomer(ctx context.Context, customerID string) (*component
 
 // CreateCheckoutSession creates a new checkout session for a subscription with trial
 func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID string, customerEmail *string, successURL string) (*components.CheckoutLegacy, error) {
+	// Safety check: ensure client is configured
+	if c.client == nil {
+		return nil, fmt.Errorf("polar client not configured: missing access token")
+	}
+
 	req := components.CheckoutLegacyCreate{
 		ProductPriceID: productPriceID,
 		SuccessURL:     successURL,
@@ -126,6 +131,11 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 	res, err := c.client.Checkouts.Create(ctx, req, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create checkout session: %w", err)
+	}
+
+	// Handle nil response from SDK
+	if res == nil {
+		return nil, fmt.Errorf("polar SDK returned nil response")
 	}
 
 	// Transform URL for sandbox environment if needed
@@ -149,6 +159,11 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 
 // CreateCheckoutSessionWithTrial creates a checkout session with a trial period
 func (c *Client) CreateCheckoutSessionWithTrial(ctx context.Context, productPriceID string, customerEmail *string, successURL string, trialDays int) (*components.CheckoutLegacy, error) {
+	// Safety check: ensure client is configured
+	if c.client == nil {
+		return nil, fmt.Errorf("polar client not configured: missing access token")
+	}
+
 	req := components.CheckoutLegacyCreate{
 		ProductPriceID: productPriceID,
 		SuccessURL:     successURL,
@@ -160,9 +175,14 @@ func (c *Client) CreateCheckoutSessionWithTrial(ctx context.Context, productPric
 
 	// Note: Trial configuration is typically set at the product level in Polar
 	// This method ensures the product has trial settings configured
-	res, err := c.client.Checkouts.Create(ctx, req, nil)
+	res, err := c.client.Checkouts.Create(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create checkout session with trial: %w", err)
+	}
+
+	// Handle nil response from SDK
+	if res == nil {
+		return nil, fmt.Errorf("polar SDK returned nil response")
 	}
 
 	return res.CheckoutLegacy, nil

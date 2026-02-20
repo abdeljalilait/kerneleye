@@ -43,58 +43,20 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
-import { useStats, useThreats, useServers } from '../hooks/useQueries';
+import { 
+  useStats, 
+  useServers,
+  useDailyAttackStats,
+  useAttackTypeBreakdown,
+  useTopSourceCountries,
+  useHourlyAttackDistribution,
+} from '../hooks/useQueries';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
-// Mock data for reports - in production this would come from API
-const generateDailyData = (startDate: Date, days: number) => {
-  const data = [];
-  
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() - i);
-    const baseAttacks = Math.floor(Math.random() * 5000) + 1000;
-    
-    data.push({
-      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      fullDate: date.toISOString().split('T')[0],
-      sshBruteforce: Math.floor(baseAttacks * 0.6),
-      httpScan: Math.floor(baseAttacks * 0.15),
-      httpBruteforce: Math.floor(baseAttacks * 0.12),
-      httpExploit: Math.floor(baseAttacks * 0.08),
-      portScan: Math.floor(baseAttacks * 0.05),
-      total: baseAttacks,
-      blocked: Math.floor(baseAttacks * 0.95),
-      uniqueIPs: Math.floor(baseAttacks * 0.3),
-    });
-  }
-  return data;
-};
-
-const threatTypeData = [
-  { name: 'SSH Bruteforce', value: 263000, color: '#6366f1' },
-  { name: 'HTTP Scan', value: 39200, color: '#f59e0b' },
-  { name: 'HTTP Bruteforce', value: 29600, color: '#8b5cf6' },
-  { name: 'HTTP Exploit', value: 27000, color: '#06b6d4' },
-  { name: 'Port Scan', value: 18500, color: '#10b981' },
-  { name: 'Other', value: 12000, color: '#64748b' },
-];
-
-const topCountries = [
-  { country: 'China', attacks: 125420, percentage: 28.5 },
-  { country: 'Russia', attacks: 98200, percentage: 22.3 },
-  { country: 'United States', attacks: 65400, percentage: 14.8 },
-  { country: 'Brazil', attacks: 42300, percentage: 9.6 },
-  { country: 'India', attacks: 32100, percentage: 7.3 },
-];
-
-const hourlyData = Array.from({ length: 24 }, (_, i) => ({
-  hour: `${i}:00`,
-  attacks: Math.floor(Math.random() * 1000) + 200,
-  blocked: Math.floor(Math.random() * 900) + 180,
-}));
+// Color palette for charts
+const COLORS = ['#6366f1', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981', '#64748b'];
 
 export default function Reports() {
   const navigate = useNavigate();
@@ -106,17 +68,71 @@ export default function Reports() {
   const [selectedServer, setSelectedServer] = useState<string>('all');
   
   const { data: stats, isLoading: statsLoading } = useStats();
-  const { data: threats, isLoading: threatsLoading } = useThreats();
   const { data: servers, isLoading: serversLoading } = useServers();
 
-  const dailyData = useMemo(() => {
-    const days = dateRange[1].diff(dateRange[0], 'day') + 1;
-    return generateDailyData(dateRange[1].toDate(), days);
-  }, [dateRange]);
+  // Format dates for API
+  const startDate = dateRange[0].format('YYYY-MM-DD');
+  const endDate = dateRange[1].format('YYYY-MM-DD');
 
-  const totalAttacks = dailyData.reduce((sum, d) => sum + d.total, 0);
-  const totalBlocked = dailyData.reduce((sum, d) => sum + d.blocked, 0);
-  const avgAttacksPerDay = Math.round(totalAttacks / dailyData.length);
+  // Fetch analytics data
+  const { data: dailyStats, isLoading: dailyStatsLoading } = useDailyAttackStats(startDate, endDate);
+  const { data: attackTypes, isLoading: attackTypesLoading } = useAttackTypeBreakdown(startDate, endDate);
+  const { data: topCountries, isLoading: countriesLoading } = useTopSourceCountries(startDate, endDate, 5);
+  const { data: hourlyData, isLoading: hourlyLoading } = useHourlyAttackDistribution(startDate, endDate);
+
+  // Transform daily stats for chart display
+  const dailyData = useMemo(() => {
+    if (!dailyStats) return [];
+    return dailyStats.map((day: any) => ({
+      date: dayjs(day.date).format('MMM D'),
+      fullDate: day.date,
+      total: day.total_attacks || 0,
+      blocked: day.blocked || 0,
+      uniqueIPs: day.unique_sources || 0,
+      sshBruteforce: day.ssh_attacks || 0,
+      httpScan: day.http_attacks || 0,
+      httpBruteforce: Math.floor((day.http_attacks || 0) * 0.3),
+      httpExploit: Math.floor((day.http_attacks || 0) * 0.2),
+      portScan: day.other_attacks || 0,
+    })).reverse();
+  }, [dailyStats]);
+
+  // Transform attack types for pie chart
+  const threatTypeData = useMemo(() => {
+    if (!attackTypes) return [];
+    return attackTypes.map((type: any, index: number) => ({
+      name: type.attack_type,
+      value: type.count || 0,
+      color: COLORS[index % COLORS.length],
+    }));
+  }, [attackTypes]);
+
+  // Transform hourly data
+  const hourlyChartData = useMemo(() => {
+    if (!hourlyData) {
+      // Return empty 24-hour structure if no data
+      return Array.from({ length: 24 }, (_, i) => ({
+        hour: `${i}:00`,
+        attacks: 0,
+        blocked: 0,
+      }));
+    }
+    const dataMap = new Map(hourlyData.map((h: any) => [h.hour, h]));
+    return Array.from({ length: 24 }, (_, i) => {
+      const hourData = dataMap.get(i);
+      return {
+        hour: `${i}:00`,
+        attacks: hourData?.attack_count || 0,
+        blocked: hourData?.blocked_count || 0,
+      };
+    });
+  }, [hourlyData]);
+
+  // Calculate totals
+  const totalAttacks = dailyData.reduce((sum: number, d: any) => sum + d.total, 0);
+  const totalBlocked = dailyData.reduce((sum: number, d: any) => sum + d.blocked, 0);
+  const avgAttacksPerDay = dailyData.length > 0 ? Math.round(totalAttacks / dailyData.length) : 0;
+  const totalUniqueIPs = dailyData.reduce((sum: number, d: any) => sum + d.uniqueIPs, 0);
 
   const handleDateChange = (dates: [Dayjs | null, Dayjs | null] | null, _dateStrings: [string, string]) => {
     if (dates && dates[0] && dates[1]) {
@@ -138,7 +154,7 @@ export default function Reports() {
       render: (value: number) => value.toLocaleString(),
     },
     {
-      title: 'SSH Bruteforce',
+      title: 'SSH Attacks',
       dataIndex: 'sshBruteforce',
       key: 'ssh',
       render: (value: number) => (
@@ -146,19 +162,11 @@ export default function Reports() {
       ),
     },
     {
-      title: 'HTTP Scan',
+      title: 'HTTP Attacks',
       dataIndex: 'httpScan',
-      key: 'scan',
+      key: 'http',
       render: (value: number) => (
         <Badge color="#f59e0b" text={value.toLocaleString()} />
-      ),
-    },
-    {
-      title: 'HTTP Bruteforce',
-      dataIndex: 'httpBruteforce',
-      key: 'httpBrute',
-      render: (value: number) => (
-        <Badge color="#8b5cf6" text={value.toLocaleString()} />
       ),
     },
     {
@@ -167,13 +175,14 @@ export default function Reports() {
       key: 'blocked',
       render: (value: number, record: any) => (
         <Text style={{ color: '#10b981' }}>
-          {value.toLocaleString()} ({((value / record.total) * 100).toFixed(1)}%)
+          {value.toLocaleString()} ({record.total > 0 ? ((value / record.total) * 100).toFixed(1) : 0}%)
         </Text>
       ),
     },
   ];
 
-  const isLoading = statsLoading || threatsLoading || serversLoading;
+  const isLoading = statsLoading || serversLoading || dailyStatsLoading || 
+                    attackTypesLoading || countriesLoading || hourlyLoading;
 
   return (
     <div style={{ padding: '24px 48px', maxWidth: 1600, margin: '0 auto' }}>
@@ -238,7 +247,7 @@ export default function Reports() {
               style={{ width: 200 }}
               options={[
                 { value: 'all', label: 'All Servers' },
-                ...(servers?.map(s => ({ value: s.id, label: s.hostname })) || []),
+                ...(servers?.map((s: any) => ({ value: s.id, label: s.hostname })) || []),
               ]}
             />
           </Col>
@@ -278,7 +287,7 @@ export default function Reports() {
                   prefix={<TrendingUp size={20} style={{ marginRight: 8 }} />}
                 />
                 <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
-                  {((totalBlocked / totalAttacks) * 100).toFixed(1)}% blocked rate
+                  {totalAttacks > 0 ? ((totalBlocked / totalAttacks) * 100).toFixed(1) : 0}% blocked rate
                 </Text>
               </Card>
             </Col>
@@ -323,14 +332,14 @@ export default function Reports() {
                   title={
                     <Space>
                       <Ban size={16} color="#ef4444" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Blocked IPs</Text>
+                      <Text style={{ color: 'var(--text-secondary)' }}>Unique Sources</Text>
                     </Space>
                   }
-                  value={stats?.blocked_ips || 0}
+                  value={totalUniqueIPs.toLocaleString()}
                   valueStyle={{ color: '#ef4444', fontSize: 28, fontWeight: 700 }}
                 />
                 <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
-                  Active in last 24h
+                  From {topCountries?.length || 0} countries
                 </Text>
               </Card>
             </Col>
@@ -349,14 +358,14 @@ export default function Reports() {
                   title={
                     <Space>
                       <Globe size={16} color="#06b6d4" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Unique Sources</Text>
+                      <Text style={{ color: 'var(--text-secondary)' }}>Top Country</Text>
                     </Space>
                   }
-                  value={dailyData.reduce((sum, d) => sum + d.uniqueIPs, 0).toLocaleString()}
-                  valueStyle={{ color: '#06b6d4', fontSize: 28, fontWeight: 700 }}
+                  value={topCountries?.[0]?.country || 'N/A'}
+                  valueStyle={{ color: '#06b6d4', fontSize: 24, fontWeight: 700 }}
                 />
                 <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
-                  From {topCountries.length} countries
+                  {topCountries?.[0]?.percentage || 0}% of attacks
                 </Text>
               </Card>
             </Col>
@@ -410,18 +419,16 @@ export default function Reports() {
                         labelStyle={{ color: 'var(--text-primary)' }}
                       />
                       <Legend />
-                      <Bar dataKey="sshBruteforce" name="SSH Bruteforce" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
-                      <Bar dataKey="httpScan" name="HTTP Scan" stackId="a" fill="#f59e0b" />
-                      <Bar dataKey="httpBruteforce" name="HTTP Bruteforce" stackId="a" fill="#8b5cf6" />
-                      <Bar dataKey="httpExploit" name="HTTP Exploit" stackId="a" fill="#06b6d4" />
-                      <Bar dataKey="portScan" name="Port Scan" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="sshBruteforce" name="SSH Attacks" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
+                      <Bar dataKey="httpScan" name="HTTP Attacks" stackId="a" fill="#f59e0b" />
+                      <Bar dataKey="portScan" name="Other" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
                 {/* Threat Type Breakdown Table */}
                 <div style={{ marginTop: 24 }}>
-                  {threatTypeData.map((threat, index) => (
+                  {threatTypeData.map((threat: any, index: number) => (
                     <Row
                       key={threat.name}
                       justify="space-between"
@@ -444,10 +451,10 @@ export default function Reports() {
                       </Space>
                       <Space size={32}>
                         <Text style={{ color: 'var(--text-secondary)', width: 80, textAlign: 'right' }}>
-                          {(threat.value / 1000).toFixed(1)}k
+                          {threat.value >= 1000 ? `${(threat.value / 1000).toFixed(1)}k` : threat.value}
                         </Text>
                         <Text style={{ color: 'var(--text-tertiary)', width: 60, textAlign: 'right' }}>
-                          {((threat.value / threatTypeData.reduce((s, t) => s + t.value, 0)) * 100).toFixed(1)}%
+                          {totalAttacks > 0 ? ((threat.value / totalAttacks) * 100).toFixed(1) : 0}%
                         </Text>
                       </Space>
                     </Row>
@@ -487,7 +494,7 @@ export default function Reports() {
                         paddingAngle={2}
                         dataKey="value"
                       >
-                        {threatTypeData.map((entry, index) => (
+                        {threatTypeData.map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
@@ -521,7 +528,7 @@ export default function Reports() {
                 }
               >
                 <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                  {topCountries.map((country, index) => (
+                  {topCountries?.map((country: any, index: number) => (
                     <Row key={country.country} justify="space-between" align="middle">
                       <Space>
                         <Text style={{ color: 'var(--text-tertiary)', width: 20 }}>
@@ -531,7 +538,7 @@ export default function Reports() {
                       </Space>
                       <Space size={16}>
                         <Text style={{ color: 'var(--text-secondary)' }}>
-                          {(country.attacks / 1000).toFixed(1)}k
+                          {country.attack_count >= 1000 ? `${(country.attack_count / 1000).toFixed(1)}k` : country.attack_count}
                         </Text>
                         <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
                           {country.percentage}%
@@ -557,14 +564,14 @@ export default function Reports() {
               <Space>
                 <Clock size={18} color="#818cf8" />
                 <Text strong style={{ color: 'var(--text-primary)' }}>
-                  Hourly Activity (Last 24h)
+                  Hourly Activity Pattern
                 </Text>
               </Space>
             }
           >
             <div style={{ height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hourlyData}>
+                <AreaChart data={hourlyChartData}>
                   <defs>
                     <linearGradient id="colorAttacks" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />

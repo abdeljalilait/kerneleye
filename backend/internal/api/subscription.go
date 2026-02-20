@@ -314,10 +314,12 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 
 		// Wrap SDK call in panic recovery
 		var sessionURL string
+		var sdkErr error
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("[API] POST /subscription/checkout - PANIC in Polar SDK: %v", r)
+					sdkErr = fmt.Errorf("panic in Polar SDK: %v", r)
 				}
 			}()
 
@@ -330,14 +332,17 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 
 			if err != nil {
 				log.Printf("[API] POST /subscription/checkout - ERROR: Polar SDK CreateCheckoutSession failed: %v", err)
+				sdkErr = err
 				return
 			}
 			if session == nil {
 				log.Printf("[API] POST /subscription/checkout - ERROR: Polar SDK returned nil session")
+				sdkErr = fmt.Errorf("Polar SDK returned nil session")
 				return
 			}
 			if session.URL == nil {
 				log.Printf("[API] POST /subscription/checkout - ERROR: Polar SDK returned session with nil URL")
+				sdkErr = fmt.Errorf("Polar SDK returned session with nil URL")
 				return
 			}
 
@@ -345,6 +350,11 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 			log.Printf("[API] POST /subscription/checkout - Checkout URL: %s", *session.URL)
 			sessionURL = *session.URL
 		}()
+
+		if sdkErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, 
+				fmt.Sprintf("Failed to create checkout session: %v", sdkErr))
+		}
 
 		if sessionURL == "" {
 			return fiber.NewError(fiber.StatusInternalServerError, 
@@ -620,7 +630,6 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			PolarEventID: database.ToPgText(polarEventID),
 			EventType:    event.Type,
 			Payload:      payload,
-			Processed:    database.ToPgBool(true),
 			ProcessedAt:  database.ToPgTimestamptz(time.Now()),
 		})
 		if err != nil {

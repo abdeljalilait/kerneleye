@@ -103,7 +103,7 @@ type SubscriptionEvent struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
-// Available subscription plans with Polar integration
+// Available subscription plans with Polar integration. Set polar_price_id after creating products in Polar dashboard
 type SubscriptionPlan struct {
 	ID                pgtype.UUID        `json:"id"`
 	Name              string             `json:"name"`
@@ -147,6 +147,7 @@ type TrafficEvent struct {
 	HitCount         int32              `json:"hit_count"`
 	Direction        string             `json:"direction"`
 	DestinationIp    *netip.Addr        `json:"destination_ip"`
+	Asn              pgtype.Text        `json:"asn"`
 }
 
 // KernelEye customer accounts

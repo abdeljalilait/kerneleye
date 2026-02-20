@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI } from '../api/client';
+import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI } from '../api/client';
 import { Server, Threat, Alert, StatsOverview } from '../types';
 
 export const useServers = () => {
@@ -287,5 +287,100 @@ export const useCreateCustomerPortal = () => {
       const { data } = await subscriptionAPI.createCustomerPortal();
       return data as { portal_url: string };
     },
+  });
+};
+
+// ============================================
+// ANALYTICS HOOKS (Reports & Visualizer)
+// ============================================
+
+// Reports hooks
+export const useDailyAttackStats = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ['analytics', 'daily-attacks', startDate, endDate],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getDailyAttacks(startDate, endDate);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+export const useAttackTypeBreakdown = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ['analytics', 'attack-types', startDate, endDate],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getAttackTypes(startDate, endDate);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+export const useTopSourceCountries = (startDate?: string, endDate?: string, limit?: number) => {
+  return useQuery({
+    queryKey: ['analytics', 'top-countries', startDate, endDate, limit],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getTopCountries(startDate, endDate, limit);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+export const useHourlyAttackDistribution = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ['analytics', 'hourly-distribution', startDate, endDate],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getHourlyDistribution(startDate, endDate);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+export const useThreatTrends = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ['analytics', 'threat-trends', startDate, endDate],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getThreatTrends(startDate, endDate);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+// Visualizer hooks
+export const useTopSourceIPs = (startDate?: string, endDate?: string, limit?: number) => {
+  return useQuery({
+    queryKey: ['analytics', 'top-source-ips', startDate, endDate, limit],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getTopSourceIPs(startDate, endDate, limit);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+export const useTopASNs = (startDate?: string, endDate?: string, limit?: number) => {
+  return useQuery({
+    queryKey: ['analytics', 'top-asns', startDate, endDate, limit],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getTopASNs(startDate, endDate, limit);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
+export const useSourceIPTimeline = (ip?: string) => {
+  return useQuery({
+    queryKey: ['analytics', 'ip-timeline', ip],
+    queryFn: async () => {
+      if (!ip) return [];
+      const { data } = await analyticsAPI.getSourceIPTimeline(ip);
+      return data.data;
+    },
+    enabled: !!ip,
   });
 };

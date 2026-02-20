@@ -170,6 +170,16 @@ func main() {
 	protected.Get("/alerts", api.HandleListAlerts(queries))
 	protected.Get("/stats/overview", api.HandleStatsOverview(queries))
 
+	// Analytics endpoints (Reports & Visualizer)
+	protected.Get("/analytics/daily-attacks", api.HandleGetDailyAttackStats(queries))
+	protected.Get("/analytics/attack-types", api.HandleGetAttackTypeBreakdown(queries))
+	protected.Get("/analytics/top-countries", api.HandleGetTopSourceCountries(queries))
+	protected.Get("/analytics/hourly-distribution", api.HandleGetHourlyAttackDistribution(queries))
+	protected.Get("/analytics/threat-trends", api.HandleGetThreatTrends(queries))
+	protected.Get("/analytics/top-source-ips", api.HandleGetTopSourceIPs(queries))
+	protected.Get("/analytics/top-asns", api.HandleGetTopASNs(queries))
+	protected.Get("/analytics/ip-timeline", api.HandleGetSourceIPTimeline(queries))
+
 	// Subscription endpoints (Polar)
 	protected.Get("/subscription/plans", api.HandleListPlans(queries))
 	protected.Get("/subscription/status", api.HandleGetSubscriptionStatus(queries))

@@ -18,7 +18,13 @@ type Querier interface {
 	CreateServerWithAPIKey(ctx context.Context, arg CreateServerWithAPIKeyParams) (Server, error)
 	CreateSubscriptionEvent(ctx context.Context, arg CreateSubscriptionEventParams) (SubscriptionEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteServer(ctx context.Context, arg DeleteServerParams) error
+	DeleteServer(ctx context.Context, id pgtype.UUID) error
+	GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeBreakdownParams) ([]GetAttackTypeBreakdownRow, error)
+	// ============================================
+	// Reports & Analytics Queries
+	// ============================================
+	GetDailyAttackStats(ctx context.Context, arg GetDailyAttackStatsParams) ([]GetDailyAttackStatsRow, error)
+	GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error)
 	GetPlanByName(ctx context.Context, name string) (SubscriptionPlan, error)
 	GetPlanByPolarProductID(ctx context.Context, polarProductID pgtype.Text) (SubscriptionPlan, error)
 	GetServerByAPIKey(ctx context.Context, apiKey pgtype.Text) (Server, error)
@@ -26,17 +32,19 @@ type Querier interface {
 	GetServerByID(ctx context.Context, id pgtype.UUID) (Server, error)
 	GetServerByUserAndIP(ctx context.Context, arg GetServerByUserAndIPParams) (Server, error)
 	GetServerStats(ctx context.Context, serverID pgtype.UUID) (GetServerStatsRow, error)
+	GetSourceIPTimeline(ctx context.Context, arg GetSourceIPTimelineParams) ([]GetSourceIPTimelineRow, error)
 	GetStatsAlertCounts(ctx context.Context, userID pgtype.UUID) (GetStatsAlertCountsRow, error)
 	GetStatsEventCounts(ctx context.Context, userID pgtype.UUID) (GetStatsEventCountsRow, error)
 	GetStatsServerCounts(ctx context.Context, userID pgtype.UUID) (GetStatsServerCountsRow, error)
+	GetThreatTrends(ctx context.Context, arg GetThreatTrendsParams) ([]GetThreatTrendsRow, error)
+	GetTopASNs(ctx context.Context, arg GetTopASNsParams) ([]GetTopASNsRow, error)
+	GetTopSourceCountries(ctx context.Context, arg GetTopSourceCountriesParams) ([]GetTopSourceCountriesRow, error)
+	GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams) ([]GetTopSourceIPsRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error)
-	// ============================================
-	// Subscription Queries
-	// ============================================
 	ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error)
-	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]Alert, error)
+	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
 	ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]Server, error)
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
