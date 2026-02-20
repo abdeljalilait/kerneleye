@@ -111,7 +111,16 @@ func (c *Client) GetCustomer(ctx context.Context, customerID string) (*component
 }
 
 // CreateCheckoutSession creates a new checkout session for a subscription with trial
-func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID string, customerEmail *string, successURL string) (*components.CheckoutLegacy, error) {
+func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID string, customerEmail *string, successURL string) (checkout *components.CheckoutLegacy, err error) {
+	// Defer/recover to catch any panics from the SDK
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[Polar] PANIC in CreateCheckoutSession: %v", r)
+			err = fmt.Errorf("polar SDK panic: %v", r)
+			checkout = nil
+		}
+	}()
+
 	// Safety check: ensure client is configured
 	if c.client == nil {
 		return nil, fmt.Errorf("polar client not configured: missing access token")
@@ -128,9 +137,9 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 
 	log.Printf("[Polar] Creating checkout session - ProductPriceID: %s, SuccessURL: %s", productPriceID, successURL)
 	
-	res, err := c.client.Checkouts.Create(ctx, req, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create checkout session: %w", err)
+	res, sdkErr := c.client.Checkouts.Create(ctx, req, nil)
+	if sdkErr != nil {
+		return nil, fmt.Errorf("failed to create checkout session: %w", sdkErr)
 	}
 
 	// Handle nil response from SDK
@@ -138,8 +147,13 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 		return nil, fmt.Errorf("polar SDK returned nil response")
 	}
 
+	// Handle nil CheckoutLegacy in response
+	if res.CheckoutLegacy == nil {
+		return nil, fmt.Errorf("polar SDK returned nil checkout session")
+	}
+
 	// Transform URL for sandbox environment if needed
-	if res.CheckoutLegacy != nil && res.CheckoutLegacy.URL != nil {
+	if res.CheckoutLegacy.URL != nil {
 		url := *res.CheckoutLegacy.URL
 		log.Printf("[Polar] Raw checkout URL: %s", url)
 		
