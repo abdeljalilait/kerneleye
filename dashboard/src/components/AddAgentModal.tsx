@@ -34,7 +34,8 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   })()
 
   // Derive install domain from build-time env var or window.location
-  const installDomain = (import.meta.env.VITE_INSTALL_DOMAIN as string) || window.location.hostname
+  const installDomainRaw = (import.meta.env.VITE_INSTALL_DOMAIN as string) || window.location.hostname
+  const installDomain = installDomainRaw.replace(/^https?:\/\//, '')
   const installProtocol = window.location.protocol
 
   const installCommand = result 

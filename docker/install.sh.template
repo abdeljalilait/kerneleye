@@ -91,8 +91,9 @@ download_binary() {
         exit 1
     fi
 
-    # Verify we got a real binary (check for ELF header)
-    if ! file "$tmp_file" | grep -q "ELF"; then
+    # Verify we got a real binary (check for ELF magic number 7f 45 4c 46)
+    # Use printf and head for better portability (file command is often missing)
+    if ! head -c 4 "$tmp_file" | grep -q "$(printf '\x7fELF')"; then
         log_error "Downloaded file is not a valid ELF binary. Download may have failed."
         rm -f "$tmp_file"
         exit 1
