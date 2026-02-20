@@ -30,9 +30,6 @@ RUN apk --no-cache add ca-certificates wget tar postgresql-client
 # Create GeoIP directory
 RUN mkdir -p /opt/kerneleye/geoip
 
-# Copy GeoIP data from backend directory
-RUN cp -r backend/geoip/* /opt/kerneleye/geoip/
-
 WORKDIR /root/
 
 # Copy binary from builder
