@@ -48,7 +48,7 @@ func parseConfig() AgentConfig {
 		cfg.GRPCURL = DefaultGRPCURL
 	}
 	if cfg.ServerHost == "" {
-		cfg.ServerHost = "api.kerneleye.cloud:443"
+		log.Fatal("KERNELEYE_SERVER is required. Set via -server flag or KERNELEYE_SERVER environment variable.")
 	}
 
 	// XDP requires an interface
