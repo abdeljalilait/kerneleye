@@ -52,7 +52,19 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
               </Avatar>
             </Badge>
             <div>
-              <Text strong style={{ color: 'var(--text-primary)', fontSize: 14, display: 'block' }}>
+              <Text 
+                strong 
+                style={{ 
+                  color: 'var(--text-primary)', 
+                  fontSize: 14, 
+                  display: 'block',
+                  maxWidth: 180,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={record.hostname || record.name}
+              >
                 {record.hostname || record.name}
               </Text>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	pb "github.com/kerneleye/proto/kerneleye/v1"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,7 +33,7 @@ func NewBufferDB(dbPath string) (*BufferDB, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL")
 	if err != nil {
 		return nil, err
 	}
