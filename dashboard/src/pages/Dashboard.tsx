@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Outlet, useLocation, Link } from '@tanstack/react-router'
+import { Outlet, useLocation, Link, useNavigate } from '@tanstack/react-router'
 import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography } from 'antd'
 import { 
   Shield, 
@@ -58,6 +58,7 @@ const menuItems = [
 
 export default function Dashboard() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const queryClient = useQueryClient()
   const { lastMessage } = useWebSocket()

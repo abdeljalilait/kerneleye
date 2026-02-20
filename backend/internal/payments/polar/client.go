@@ -46,7 +46,7 @@ func NewClient(cfg Config) *Client {
 	// Uses production by default, set POLAR_ENV=sandbox for testing
 	var client *polargo.Polar
 	serverEnv := os.Getenv("POLAR_ENV")
-	
+
 	switch serverEnv {
 	case "sandbox":
 		client = polargo.New(
@@ -110,8 +110,8 @@ func (c *Client) GetCustomer(ctx context.Context, customerID string) (*component
 	return res.Customer, nil
 }
 
-// CreateCheckoutSession creates a new checkout session for a subscription with trial
-func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID string, customerEmail *string, successURL string) (checkout *components.CheckoutLegacy, err error) {
+// CreateCheckoutSession creates a new checkout session for a subscription
+func (c *Client) CreateCheckoutSession(ctx context.Context, productID string, customerEmail *string, successURL string) (checkout *components.Checkout, err error) {
 	// Defer/recover to catch any panics from the SDK
 	defer func() {
 		if r := recover(); r != nil {
@@ -126,18 +126,19 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 		return nil, fmt.Errorf("polar client not configured: missing access token")
 	}
 
-	req := components.CheckoutLegacyCreate{
-		ProductPriceID: productPriceID,
-		SuccessURL:     successURL,
+	// Build the checkout create request (v0.12.0 uses Products list)
+	createReq := components.CheckoutCreate{
+		Products:   []string{productID},
+		SuccessURL: &successURL,
 	}
 
 	if customerEmail != nil && *customerEmail != "" {
-		req.CustomerEmail = customerEmail
+		createReq.CustomerEmail = customerEmail
 	}
 
-	log.Printf("[Polar] Creating checkout session - ProductPriceID: %s, SuccessURL: %s", productPriceID, successURL)
-	
-	res, sdkErr := c.client.Checkouts.Create(ctx, req, nil)
+	log.Printf("[Polar] Creating checkout session - ProductID: %s, SuccessURL: %s", productID, successURL)
+
+	res, sdkErr := c.client.Checkouts.Create(ctx, createReq)
 	if sdkErr != nil {
 		return nil, fmt.Errorf("failed to create checkout session: %w", sdkErr)
 	}
@@ -147,49 +148,43 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productPriceID strin
 		return nil, fmt.Errorf("polar SDK returned nil response")
 	}
 
-	// Handle nil CheckoutLegacy in response
-	if res.CheckoutLegacy == nil {
+	// Handle nil Checkout in response
+	if res.Checkout == nil {
 		return nil, fmt.Errorf("polar SDK returned nil checkout session")
 	}
 
+	checkoutURL := res.Checkout.URL
+	log.Printf("[Polar] Raw checkout URL: %s", checkoutURL)
+
 	// Transform URL for sandbox environment if needed
-	if res.CheckoutLegacy.URL != nil {
-		url := *res.CheckoutLegacy.URL
-		log.Printf("[Polar] Raw checkout URL: %s", url)
-		
-		// If using sandbox, the URL might still point to production
-		// Transform it to sandbox URL
-		if os.Getenv("POLAR_ENV") == "sandbox" {
-			url = strings.Replace(url, "https://polar.sh/", "https://sandbox.polar.sh/", 1)
-			res.CheckoutLegacy.URL = &url
-			log.Printf("[Polar] Transformed sandbox URL: %s", url)
-		}
+	if os.Getenv("POLAR_ENV") == "sandbox" {
+		checkoutURL = strings.Replace(checkoutURL, "https://polar.sh/", "https://sandbox.polar.sh/", 1)
+		res.Checkout.URL = checkoutURL
+		log.Printf("[Polar] Transformed sandbox URL: %s", checkoutURL)
 	}
 
-	return res.CheckoutLegacy, nil
+	return res.Checkout, nil
 }
 
-
-
 // CreateCheckoutSessionWithTrial creates a checkout session with a trial period
-func (c *Client) CreateCheckoutSessionWithTrial(ctx context.Context, productPriceID string, customerEmail *string, successURL string, trialDays int) (*components.CheckoutLegacy, error) {
+func (c *Client) CreateCheckoutSessionWithTrial(ctx context.Context, productID string, customerEmail *string, successURL string, trialDays int) (*components.Checkout, error) {
 	// Safety check: ensure client is configured
 	if c.client == nil {
 		return nil, fmt.Errorf("polar client not configured: missing access token")
 	}
 
-	req := components.CheckoutLegacyCreate{
-		ProductPriceID: productPriceID,
-		SuccessURL:     successURL,
+	// Build the checkout create request (v0.12.0 uses Products list)
+	createReq := components.CheckoutCreate{
+		Products:   []string{productID},
+		SuccessURL: &successURL,
 	}
 
 	if customerEmail != nil && *customerEmail != "" {
-		req.CustomerEmail = customerEmail
+		createReq.CustomerEmail = customerEmail
 	}
 
 	// Note: Trial configuration is typically set at the product level in Polar
-	// This method ensures the product has trial settings configured
-	res, err := c.client.Checkouts.Create(ctx, req)
+	res, err := c.client.Checkouts.Create(ctx, createReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create checkout session with trial: %w", err)
 	}
@@ -199,16 +194,16 @@ func (c *Client) CreateCheckoutSessionWithTrial(ctx context.Context, productPric
 		return nil, fmt.Errorf("polar SDK returned nil response")
 	}
 
-	return res.CheckoutLegacy, nil
+	return res.Checkout, nil
 }
 
 // GetCheckoutSession retrieves a checkout session by ID
-func (c *Client) GetCheckoutSession(ctx context.Context, sessionID string) (*components.CheckoutLegacy, error) {
+func (c *Client) GetCheckoutSession(ctx context.Context, sessionID string) (*components.Checkout, error) {
 	res, err := c.client.Checkouts.Get(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get checkout session: %w", err)
 	}
-	return res.CheckoutLegacy, nil
+	return res.Checkout, nil
 }
 
 // ListSubscriptions retrieves subscriptions for a customer
@@ -259,9 +254,11 @@ func (c *Client) GetProduct(ctx context.Context, productID string) (*components.
 
 // CreateCustomerPortalSession creates a customer portal session
 func (c *Client) CreateCustomerPortalSession(ctx context.Context, customerID string) (*components.CustomerSession, error) {
-	req := components.CustomerSessionCreate{
-		CustomerID: customerID,
-	}
+	req := operations.CreateCustomerSessionsCreateCustomerSessionCreateCustomerSessionCustomerIDCreate(
+		components.CustomerSessionCustomerIDCreate{
+			CustomerID: customerID,
+		},
+	)
 
 	res, err := c.client.CustomerSessions.Create(ctx, req)
 	if err != nil {

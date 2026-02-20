@@ -281,12 +281,12 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 		}
 		log.Printf("[API] POST /subscription/checkout - Plan found: %s (ID: %v)", plan.DisplayName, plan.ID)
 
-		// Check if we have a Polar price ID
+		// Check if we have a Polar product ID (stored in polar_price_id column)
 		if !plan.PolarPriceID.Valid || plan.PolarPriceID.String == "" {
-			log.Printf("[API] POST /subscription/checkout - ERROR: Plan '%s' has no polar_price_id configured", req.PlanName)
+			log.Printf("[API] POST /subscription/checkout - ERROR: Plan '%s' has no Polar product ID configured", req.PlanName)
 			return fiber.NewError(fiber.StatusInternalServerError, "Plan not configured for checkout")
 		}
-		log.Printf("[API] POST /subscription/checkout - Polar Price ID: %s", plan.PolarPriceID.String)
+		log.Printf("[API] POST /subscription/checkout - Polar Product ID: %s", plan.PolarPriceID.String)
 
 		// Build success URL
 		dashboardURL := os.Getenv("DASHBOARD_URL")
@@ -306,7 +306,7 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 		// Use Polar SDK to create checkout session
 		if polarClient == nil || !polarClient.IsConfigured() {
 			log.Printf("[API] POST /subscription/checkout - ERROR: Polar SDK not configured")
-			return fiber.NewError(fiber.StatusServiceUnavailable, 
+			return fiber.NewError(fiber.StatusServiceUnavailable,
 				"Payment processing is not configured. Please contact support.")
 		}
 
@@ -340,24 +340,24 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 				sdkErr = fmt.Errorf("Polar SDK returned nil session")
 				return
 			}
-			if session.URL == nil {
-				log.Printf("[API] POST /subscription/checkout - ERROR: Polar SDK returned session with nil URL")
-				sdkErr = fmt.Errorf("Polar SDK returned session with nil URL")
+			if session.URL == "" {
+				log.Printf("[API] POST /subscription/checkout - ERROR: Polar SDK returned session with empty URL")
+				sdkErr = fmt.Errorf("Polar SDK returned session with empty URL")
 				return
 			}
 
 			log.Printf("[API] POST /subscription/checkout - SUCCESS: Created checkout session via SDK")
-			log.Printf("[API] POST /subscription/checkout - Checkout URL: %s", *session.URL)
-			sessionURL = *session.URL
+			log.Printf("[API] POST /subscription/checkout - Checkout URL: %s", session.URL)
+			sessionURL = session.URL
 		}()
 
 		if sdkErr != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, 
+			return fiber.NewError(fiber.StatusInternalServerError,
 				fmt.Sprintf("Failed to create checkout session: %v", sdkErr))
 		}
 
 		if sessionURL == "" {
-			return fiber.NewError(fiber.StatusInternalServerError, 
+			return fiber.NewError(fiber.StatusInternalServerError,
 				"Failed to create checkout session. Please try again or contact support.")
 		}
 
@@ -412,7 +412,7 @@ func HandlePolarDebug(polarClient *polar.Client, queries *database.Queries) fibe
 		var polarProducts []map[string]interface{}
 		var testCheckoutURL string
 		var testCheckoutError string
-		
+
 		if isConfigured {
 			products, err := polarClient.ListProducts(c.Context(), 100)
 			if err != nil {
@@ -438,8 +438,8 @@ func HandlePolarDebug(polarClient *polar.Client, queries *database.Queries) fibe
 					)
 					if err != nil {
 						testCheckoutError = err.Error()
-					} else if session != nil && session.URL != nil {
-						testCheckoutURL = *session.URL
+					} else if session != nil && session.URL != "" {
+						testCheckoutURL = session.URL
 					}
 					break
 				}
@@ -447,14 +447,14 @@ func HandlePolarDebug(polarClient *polar.Client, queries *database.Queries) fibe
 		}
 
 		return c.JSON(fiber.Map{
-			"polar_configured":         isConfigured,
-			"polar_access_token_set":   os.Getenv("POLAR_ACCESS_TOKEN") != "",
-			"polar_env":                os.Getenv("POLAR_ENV"),
-			"dashboard_url":            os.Getenv("DASHBOARD_URL"),
-			"plans":                    planInfos,
-			"polar_products":           polarProducts,
-			"test_checkout_url":        testCheckoutURL,
-			"test_checkout_error":      testCheckoutError,
+			"polar_configured":       isConfigured,
+			"polar_access_token_set": os.Getenv("POLAR_ACCESS_TOKEN") != "",
+			"polar_env":              os.Getenv("POLAR_ENV"),
+			"dashboard_url":          os.Getenv("DASHBOARD_URL"),
+			"plans":                  planInfos,
+			"polar_products":         polarProducts,
+			"test_checkout_url":      testCheckoutURL,
+			"test_checkout_error":    testCheckoutError,
 		})
 	}
 }

@@ -11,15 +11,13 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
-	github.com/polarsource/polar-go v0.1.0
-	github.com/soheilhy/cmux v0.1.5
+	github.com/polarsource/polar-go v0.12.0
 	golang.org/x/crypto v0.46.0
 	google.golang.org/grpc v1.77.0
 )
 
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
-	github.com/ericlagergren/decimal v0.0.0-20221120152707-495c53812d05 // indirect
 	github.com/fasthttp/websocket v1.5.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
