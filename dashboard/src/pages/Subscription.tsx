@@ -33,7 +33,7 @@ interface Plan {
   data_retention_days: number;
   features: Record<string, any>;
   is_default: boolean;
-  polar_price_id?: string;
+  polar_product_id?: string;
 }
 
 const Subscription = () => {
@@ -95,7 +95,7 @@ const Subscription = () => {
   const openEmbeddedCheckout = useCallback((url: string) => {
     if (!window.PolarEmbedCheckout) {
       // Fallback to redirect if script not loaded yet
-      window.location.href = url;
+      window.open(url, '_blank');
       return;
     }
 
@@ -132,7 +132,7 @@ const Subscription = () => {
           openEmbeddedCheckout(data.checkout_url);
         } else {
           // Fallback to redirect
-          window.location.href = data.checkout_url;
+          window.open(data.checkout_url, '_blank');
         }
       } else {
         setCheckoutError('No checkout URL received. Please try again.');

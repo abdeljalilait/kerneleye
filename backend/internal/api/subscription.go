@@ -57,7 +57,7 @@ type PlanResponse struct {
 	DataRetentionDays int32                  `json:"data_retention_days"`
 	Features          map[string]interface{} `json:"features"`
 	IsDefault         bool                   `json:"is_default"`
-	PolarPriceID      string                 `json:"polar_price_id,omitempty"`
+	PolarPriceID      string                 `json:"polar_product_id,omitempty"`
 }
 
 // SubscriptionStatusResponse represents user's subscription status
@@ -394,8 +394,8 @@ func HandlePolarDebug(polarClient *polar.Client, queries *database.Queries) fibe
 		type PlanInfo struct {
 			Name         string `json:"name"`
 			DisplayName  string `json:"display_name"`
-			PolarPriceID string `json:"polar_price_id"`
-			HasPriceID   bool   `json:"has_price_id"`
+			PolarPriceID string `json:"polar_product_id"`
+			HasPriceID   bool   `json:"has_product_id"`
 		}
 
 		planInfos := make([]PlanInfo, 0, len(plans))
