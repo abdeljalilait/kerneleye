@@ -127,7 +127,7 @@ func main() {
 	v1.Post("/auth/register", api.HandleRegister(queries))
 	v1.Post("/auth/login", api.HandleLogin(queries))
 	v1.Get("/auth/providers", api.HandleGetAuthProviders())
-	
+
 	// OAuth routes
 	v1.Get("/auth/github", api.HandleGitHubLogin())
 	v1.Get("/auth/github/callback", api.HandleGitHubCallback(queries))

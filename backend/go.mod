@@ -12,6 +12,7 @@ require (
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/polarsource/polar-go v0.1.0
+	github.com/soheilhy/cmux v0.1.5
 	golang.org/x/crypto v0.46.0
 	google.golang.org/grpc v1.77.0
 )
