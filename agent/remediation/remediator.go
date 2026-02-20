@@ -34,6 +34,20 @@ func NewIPSetRemediator() *IPSetRemediator {
 }
 
 func (r *IPSetRemediator) Setup() error {
+	// Check required binaries exist
+	if _, err := exec.LookPath("ipset"); err != nil {
+		return fmt.Errorf("ipset not found in PATH. Install with: sudo apt-get install ipset (Debian/Ubuntu) or sudo yum install ipset (RHEL/CentOS)")
+	}
+	if _, err := exec.LookPath("iptables"); err != nil {
+		return fmt.Errorf("iptables not found in PATH. Install with: sudo apt-get install iptables (Debian/Ubuntu) or sudo yum install iptables (RHEL/CentOS)")
+	}
+	// ip6tables is optional - we'll log if it's missing but continue
+	hasIP6Tables := true
+	if _, err := exec.LookPath("ip6tables"); err != nil {
+		hasIP6Tables = false
+		log.Printf("⚠️  ip6tables not found, IPv6 blocking will be skipped")
+	}
+
 	// Create IPv4 ipsets
 	if err := r.Runner("ipset", "create", BlockSet, "hash:ip", "timeout", "3600", "-exist"); err != nil {
 		return fmt.Errorf("failed to create block ipset: %w", err)
