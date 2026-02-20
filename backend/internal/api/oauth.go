@@ -1,0 +1,514 @@
+package api
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/kerneleye/backend/internal/database"
+)
+
+// OAuthConfig holds OAuth configuration
+type OAuthConfig struct {
+	GitHubClientID     string
+	GitHubClientSecret string
+	GoogleClientID     string
+	GoogleClientSecret string
+	RedirectURL        string
+	DashboardURL       string
+}
+
+// GetOAuthConfig returns OAuth configuration from environment
+func GetOAuthConfig() OAuthConfig {
+	dashboardURL := os.Getenv("DASHBOARD_URL")
+	if dashboardURL == "" {
+		dashboardURL = "http://localhost:3000"
+	}
+
+	return OAuthConfig{
+		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		RedirectURL:        os.Getenv("OAUTH_REDIRECT_URL"),
+		DashboardURL:       dashboardURL,
+	}
+}
+
+// IsOAuthEnabled returns true if any OAuth provider is configured
+func (c OAuthConfig) IsOAuthEnabled() bool {
+	return c.GitHubClientID != "" || c.GoogleClientID != ""
+}
+
+// OAuthState stores state for OAuth flow
+type OAuthState struct {
+	Provider string `json:"provider"`
+	Nonce    string `json:"nonce"`
+}
+
+// generateState generates a random state string
+func generateState() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// GitHubUser represents GitHub user info
+type GitHubUser struct {
+	ID        int64  `json:"id"`
+	Email     string `json:"email"`
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// GoogleUser represents Google user info
+type GoogleUser struct {
+	ID      string `json:"sub"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Picture string `json:"picture"`
+}
+
+// HandleGetAuthProviders returns available OAuth providers
+func HandleGetAuthProviders() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		config := GetOAuthConfig()
+		
+		providers := []map[string]interface{}{}
+		
+		if config.GitHubClientID != "" {
+			providers = append(providers, map[string]interface{}{
+				"id":   "github",
+				"name": "GitHub",
+				"icon": "github",
+			})
+		}
+		
+		if config.GoogleClientID != "" {
+			providers = append(providers, map[string]interface{}{
+				"id":   "google",
+				"name": "Google",
+				"icon": "google",
+			})
+		}
+		
+		return c.JSON(fiber.Map{
+			"providers": providers,
+		})
+	}
+}
+
+// HandleGitHubLogin initiates GitHub OAuth flow
+func HandleGitHubLogin() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		config := GetOAuthConfig()
+		if config.GitHubClientID == "" {
+			return fiber.NewError(fiber.StatusServiceUnavailable, "GitHub OAuth not configured")
+		}
+
+		state, err := generateState()
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate state")
+		}
+
+		// Store state in cookie
+		c.Cookie(&fiber.Cookie{
+			Name:     "oauth_state",
+			Value:    state,
+			MaxAge:   600,
+			HTTPOnly: true,
+			Secure:   os.Getenv("ENV") == "production",
+			SameSite: "Lax",
+		})
+
+		// Build authorization URL
+		authURL := fmt.Sprintf(
+			"https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&state=%s&scope=user:email",
+			config.GitHubClientID,
+			url.QueryEscape(config.RedirectURL+"/api/v1/auth/github/callback"),
+			state,
+		)
+
+		return c.Redirect(authURL, fiber.StatusTemporaryRedirect)
+	}
+}
+
+// HandleGitHubCallback handles GitHub OAuth callback
+func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		config := GetOAuthConfig()
+		
+		// Verify state
+		state := c.Query("state")
+		cookieState := c.Cookies("oauth_state")
+		if state == "" || state != cookieState {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid state parameter")
+		}
+
+		// Clear state cookie
+		c.Cookie(&fiber.Cookie{
+			Name:   "oauth_state",
+			Value:  "",
+			MaxAge: -1,
+		})
+
+		code := c.Query("code")
+		if code == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Missing authorization code")
+		}
+
+		// Exchange code for access token
+		tokenResp, err := exchangeGitHubCode(config, code)
+		if err != nil {
+			log.Printf("[OAuth] Failed to exchange GitHub code: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to authenticate with GitHub")
+		}
+
+		// Get user info
+		githubUser, err := getGitHubUser(tokenResp.AccessToken)
+		if err != nil {
+			log.Printf("[OAuth] Failed to get GitHub user: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to get user info")
+		}
+
+		// Get email if not provided
+		if githubUser.Email == "" {
+			email, err := getGitHubEmail(tokenResp.AccessToken)
+			if err != nil {
+				log.Printf("[OAuth] Failed to get GitHub email: %v", err)
+			} else {
+				githubUser.Email = email
+			}
+		}
+
+		if githubUser.Email == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Email is required")
+		}
+
+		// Find or create user
+		user, err := queries.GetUserByEmail(c.Context(), githubUser.Email)
+		if err != nil {
+			// Create new user
+			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
+				Email:        githubUser.Email,
+				PasswordHash: "oauth", // OAuth users don't have passwords
+				Plan:         "starter",
+			})
+			if err != nil {
+				log.Printf("[OAuth] Failed to create user: %v", err)
+				return fiber.NewError(fiber.StatusInternalServerError, "Failed to create user")
+			}
+		}
+
+		// Generate JWT token
+		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
+		}
+
+		// Redirect to dashboard with token
+		redirectURL := fmt.Sprintf("%s/oauth/callback?token=%s", config.DashboardURL, token)
+		return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
+	}
+}
+
+// GitHubTokenResponse represents GitHub access token response
+type GitHubTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
+}
+
+func exchangeGitHubCode(config OAuthConfig, code string) (*GitHubTokenResponse, error) {
+	data := url.Values{}
+	data.Set("client_id", config.GitHubClientID)
+	data.Set("client_secret", config.GitHubClientSecret)
+	data.Set("code", code)
+	data.Set("redirect_uri", config.RedirectURL+"/api/v1/auth/github/callback")
+
+	req, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.URL.RawQuery = data.Encode()
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var tokenResp GitHubTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return nil, err
+	}
+
+	if tokenResp.AccessToken == "" {
+		return nil, fmt.Errorf("no access token received")
+	}
+
+	return &tokenResp, nil
+}
+
+func getGitHubUser(accessToken string) (*GitHubUser, error) {
+	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var user GitHubUser
+	if err := json.Unmarshal(body, &user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func getGitHubEmail(accessToken string) (string, error) {
+	req, err := http.NewRequest("GET", "https://api.github.com/user/emails", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var emails []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+	if err := json.Unmarshal(body, &emails); err != nil {
+		return "", err
+	}
+
+	for _, email := range emails {
+		if email.Primary && email.Verified {
+			return email.Email, nil
+		}
+	}
+
+	for _, email := range emails {
+		if email.Verified {
+			return email.Email, nil
+		}
+	}
+
+	return "", fmt.Errorf("no verified email found")
+}
+
+// HandleGoogleLogin initiates Google OAuth flow
+func HandleGoogleLogin() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		config := GetOAuthConfig()
+		if config.GoogleClientID == "" {
+			return fiber.NewError(fiber.StatusServiceUnavailable, "Google OAuth not configured")
+		}
+
+		state, err := generateState()
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate state")
+		}
+
+		// Store state in cookie
+		c.Cookie(&fiber.Cookie{
+			Name:     "oauth_state",
+			Value:    state,
+			MaxAge:   600,
+			HTTPOnly: true,
+			Secure:   os.Getenv("ENV") == "production",
+			SameSite: "Lax",
+		})
+
+		// Build authorization URL
+		authURL := fmt.Sprintf(
+			"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=openid+email+profile&state=%s",
+			config.GoogleClientID,
+			url.QueryEscape(config.RedirectURL+"/api/v1/auth/google/callback"),
+			state,
+		)
+
+		return c.Redirect(authURL, fiber.StatusTemporaryRedirect)
+	}
+}
+
+// HandleGoogleCallback handles Google OAuth callback
+func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		config := GetOAuthConfig()
+
+		// Verify state
+		state := c.Query("state")
+		cookieState := c.Cookies("oauth_state")
+		if state == "" || state != cookieState {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid state parameter")
+		}
+
+		// Clear state cookie
+		c.Cookie(&fiber.Cookie{
+			Name:   "oauth_state",
+			Value:  "",
+			MaxAge: -1,
+		})
+
+		code := c.Query("code")
+		if code == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Missing authorization code")
+		}
+
+		// Exchange code for access token
+		tokenResp, err := exchangeGoogleCode(config, code)
+		if err != nil {
+			log.Printf("[OAuth] Failed to exchange Google code: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to authenticate with Google")
+		}
+
+		// Get user info
+		googleUser, err := getGoogleUser(tokenResp.IDToken)
+		if err != nil {
+			log.Printf("[OAuth] Failed to get Google user: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to get user info")
+		}
+
+		if googleUser.Email == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Email is required")
+		}
+
+		// Find or create user
+		user, err := queries.GetUserByEmail(c.Context(), googleUser.Email)
+		if err != nil {
+			// Create new user
+			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
+				Email:        googleUser.Email,
+				PasswordHash: "oauth", // OAuth users don't have passwords
+				Plan:         "starter",
+			})
+			if err != nil {
+				log.Printf("[OAuth] Failed to create user: %v", err)
+				return fiber.NewError(fiber.StatusInternalServerError, "Failed to create user")
+			}
+		}
+
+		// Generate JWT token
+		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
+		}
+
+		// Redirect to dashboard with token
+		redirectURL := fmt.Sprintf("%s/oauth/callback?token=%s", config.DashboardURL, token)
+		return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
+	}
+}
+
+// GoogleTokenResponse represents Google token response
+type GoogleTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	IDToken     string `json:"id_token"`
+	TokenType   string `json:"token_type"`
+}
+
+func exchangeGoogleCode(config OAuthConfig, code string) (*GoogleTokenResponse, error) {
+	data := url.Values{}
+	data.Set("client_id", config.GoogleClientID)
+	data.Set("client_secret", config.GoogleClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", config.RedirectURL+"/api/v1/auth/google/callback")
+
+	resp, err := http.PostForm("https://oauth2.googleapis.com/token", data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var tokenResp GoogleTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return nil, err
+	}
+
+	if tokenResp.AccessToken == "" {
+		return nil, fmt.Errorf("no access token received")
+	}
+
+	return &tokenResp, nil
+}
+
+func getGoogleUser(idToken string) (*GoogleUser, error) {
+	// Decode JWT payload (base64)
+	parts := make([]string, 3)
+	idx := 0
+	for i, count := 0, 0; i < len(idToken) && count < 2; i++ {
+		if idToken[i] == '.' {
+			parts[count] = idToken[idx:i]
+			idx = i + 1
+			count++
+		}
+	}
+	parts[2] = idToken[idx:]
+
+	if parts[1] == "" {
+		return nil, fmt.Errorf("invalid ID token")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, err
+	}
+
+	var user GoogleUser
+	if err := json.Unmarshal(payload, &user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}

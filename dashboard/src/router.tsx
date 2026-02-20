@@ -8,31 +8,34 @@ import Servers from './pages/Servers'
 import Threats from './pages/Threats'
 import Alerts from './pages/Alerts'
 import ServerDetail from './pages/ServerDetail'
+import Subscription from './pages/Subscription'
+import OAuthCallback from './pages/OAuthCallback'
+import ForgotPassword from './pages/ForgotPassword'
 import { WebSocketProvider } from './context/WebSocketContext'
+import { AuthProvider } from './context/AuthContext'
 
-// Auth check helper
-const authCheck = (location: any) => {
+// 1. Create a root route with AuthProvider
+const rootRoute = createRootRoute({
+  component: () => (
+    <AuthProvider>
+      <Outlet />
+      {/* <TanStackRouterDevtools /> */}
+    </AuthProvider>
+  ),
+})
+
+// Auth check using AuthContext
+const authCheck = () => {
   const token = localStorage.getItem('kerneleye_token')
   if (!token) {
     throw redirect({
       to: '/login',
       search: {
-        // Use the current location so we can redirect back after login (if we implement that)
-        redirect: location.href,
+        redirect: window.location.href,
       },
     })
   }
 }
-
-// 1. Create a root route
-const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <Outlet />
-      {/* <TanStackRouterDevtools /> */}
-    </>
-  ),
-})
 
 // 2. Create the route tree
 const loginRoute = createRoute({
@@ -55,7 +58,7 @@ const indexRoute = createRoute({
       <Dashboard />
     </WebSocketProvider>
   ), 
-  beforeLoad: ({ location }) => authCheck(location),
+  beforeLoad: authCheck,
 })
 
 const dashboardRoute = createRoute({
@@ -66,7 +69,7 @@ const dashboardRoute = createRoute({
       <Dashboard />
     </WebSocketProvider>
   ),
-  beforeLoad: ({ location }) => authCheck(location),
+  beforeLoad: authCheck,
 })
 
 const overviewRoute = createRoute({
@@ -99,10 +102,32 @@ const alertsRoute = createRoute({
   component: Alerts,
 })
 
+const subscriptionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/subscription',
+  component: Subscription,
+  beforeLoad: authCheck,
+})
+
+const oauthCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/oauth/callback',
+  component: OAuthCallback,
+})
+
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/forgot-password',
+  component: ForgotPassword,
+})
+
 // 3. Register the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
+  forgotPasswordRoute,
+  oauthCallbackRoute,
+  subscriptionRoute,
   dashboardRoute.addChildren([
     overviewRoute,
     serversRoute,

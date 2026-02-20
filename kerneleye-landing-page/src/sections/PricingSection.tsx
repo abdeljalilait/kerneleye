@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, ArrowRight } from 'lucide-react';
 import { Reveal } from '../components/Reveal';
 
 interface Plan {
@@ -11,7 +11,7 @@ interface Plan {
   features: string[];
   cta: string;
   featured: boolean;
-  polarPriceId?: string;
+  planName: string;
 }
 
 const plans: Plan[] = [
@@ -27,9 +27,9 @@ const plans: Plan[] = [
       '7-day data retention',
       'Community support',
     ],
-    cta: 'Start free trial',
+    cta: 'Get started',
     featured: false,
-    polarPriceId: 'price_starter', // Replace with actual Polar price ID
+    planName: 'starter',
   },
   {
     name: 'Professional',
@@ -45,86 +45,29 @@ const plans: Plan[] = [
       'API access',
       'Custom rules',
     ],
-    cta: 'Start free trial',
+    cta: 'Get started',
     featured: true,
-    polarPriceId: 'price_pro', // Replace with actual Polar price ID
-  },
-  {
-    name: 'Enterprise',
-    description: 'For large organizations',
-    price: 'Custom',
-    period: '',
-    features: [
-      'Unlimited servers',
-      'ML-powered analytics',
-      '24/7 phone support',
-      '1-year data retention',
-      'Dedicated engineer',
-      'SSO & audit logs',
-      'Custom integrations',
-      'SLA guarantee',
-    ],
-    cta: 'Contact sales',
-    featured: false,
+    planName: 'pro',
   },
 ];
 
-// Polar checkout configuration
-const POLAR_CHECKOUT_URL = 'https://polar.sh/checkout/';
-const POLAR_ORG = 'kerneleye'; // Your Polar organization slug
+// Dashboard URL - update this to your actual dashboard URL
+const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || 'https://app.kerneleye.cloud';
 
 const PricingSection = () => {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
   const handleCheckout = async (plan: Plan) => {
-    if (plan.name === 'Enterprise') {
-      // Scroll to contact section for enterprise
-      document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
-      return;
-    }
-
-    if (!plan.polarPriceId) {
-      console.error('No price ID configured for plan:', plan.name);
-      return;
-    }
-
     setLoadingPlan(plan.name);
 
-    try {
-      // Call backend to create checkout session
-      const response = await fetch('/api/v1/subscription/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          plan_name: plan.name.toLowerCase(),
-          price_id: plan.polarPriceId,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create checkout session');
-      }
-
-      const data = await response.json();
-
-      // Redirect to Polar checkout
-      if (data.checkout_url) {
-        window.location.href = data.checkout_url;
-      } else {
-        // Fallback to direct Polar checkout
-        const checkoutUrl = `${POLAR_CHECKOUT_URL}${plan.polarPriceId}?organization=${POLAR_ORG}`;
-        window.location.href = checkoutUrl;
-      }
-    } catch (error) {
-      console.error('Checkout error:', error);
-      // Fallback to direct Polar checkout on error
-      const checkoutUrl = `${POLAR_CHECKOUT_URL}${plan.polarPriceId}?organization=${POLAR_ORG}`;
+    // Redirect to dashboard for authenticated checkout
+    // The dashboard will handle login and then proceed to checkout
+    const checkoutUrl = `${DASHBOARD_URL}/subscription/checkout?plan=${plan.planName}`;
+    
+    // Small delay to show loading state
+    setTimeout(() => {
       window.location.href = checkoutUrl;
-    } finally {
-      setLoadingPlan(null);
-    }
+    }, 300);
   };
 
   return (
@@ -144,12 +87,12 @@ const PricingSection = () => {
           </Reveal>
           <Reveal delay={0.2}>
             <p className="text-body text-large">
-              Start free for 14 days. No credit card required.
+              Sign up free with GitHub or Google. Start monitoring in minutes.
             </p>
           </Reveal>
         </div>
 
-        <div className="grid-3">
+        <div className="grid-2" style={{ maxWidth: '800px', margin: '0 auto' }}>
           {plans.map((plan, i) => (
             <motion.div
               key={i}
@@ -248,7 +191,10 @@ const PricingSection = () => {
                       Loading...
                     </>
                   ) : (
-                    plan.cta
+                    <>
+                      {plan.cta}
+                      <ArrowRight size={16} />
+                    </>
                   )}
                 </motion.button>
               </motion.div>

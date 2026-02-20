@@ -137,48 +137,10 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	})
 }
 
-// HandleRegister creates a new user account
+// HandleRegister creates a new user account (DISABLED - OAuth only)
 func HandleRegister(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		type RegisterRequest struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
-		}
-
-		var req RegisterRequest
-		if err := c.BodyParser(&req); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
-		}
-
-		if req.Email == "" || req.Password == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "Email and password are required")
-		}
-
-		// Hash password
-		passwordHash, err := HashPassword(req.Password)
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to process password")
-		}
-
-		user, err := queries.CreateUser(c.Context(), database.CreateUserParams{
-			Email:        req.Email,
-			PasswordHash: passwordHash,
-			Plan:         "free",
-		})
-		if err != nil {
-			return fiber.NewError(fiber.StatusConflict, "User already exists")
-		}
-
-		// Generate JWT token
-		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
-		}
-
-		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-			"user":  user,
-			"token": token,
-		})
+		return fiber.NewError(fiber.StatusForbidden, "Account registration is only available via GitHub or Google OAuth. Please use the social login buttons above.")
 	}
 }
 

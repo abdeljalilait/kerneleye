@@ -1,6 +1,7 @@
 import { Layout, Menu, Button } from 'antd'
-import { Shield, Activity, Server, AlertTriangle, LogOut } from 'lucide-react'
+import { Shield, Activity, Server, AlertTriangle, LogOut, CreditCard } from 'lucide-react'
 import { Link, useLocation } from '@tanstack/react-router'
+import { useAuth } from '../context/AuthContext'
 
 const { Sider } = Layout
 
@@ -14,18 +15,19 @@ const navItems = [
   { key: '/dashboard/servers', label: 'Servers', icon: <Server size={16} /> },
   { key: '/dashboard/threats', label: 'Threats', icon: <Shield size={16} /> },
   { key: '/dashboard/alerts', label: 'Alerts', icon: <AlertTriangle size={16} /> },
+  { key: '/subscription', label: 'Subscription', icon: <CreditCard size={16} /> },
 ]
 
 export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const { pathname } = useLocation()
+  const { logout } = useAuth()
   
   // Find selected key. Assuming logic: exact match or prefix
   // Simplified for MVP: exact match usually or check startsWith
   const selectedKey = navItems.find(item => pathname === item.key || (item.key !== '/dashboard' && pathname.startsWith(item.key)))?.key || '/dashboard'
 
   const handleLogout = () => {
-    localStorage.removeItem('kerneleye_token')
-    window.location.href = '/login'
+    logout()
   }
 
   const menuItems = navItems.map(item => ({

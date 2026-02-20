@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation, Link } from '@tanstack/react-router'
-import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography, Divider } from 'antd'
+import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography } from 'antd'
 import { 
   Shield, 
   Activity, 
@@ -46,7 +46,6 @@ const menuItems = [
 export default function Dashboard() {
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const queryClient = useQueryClient()
   const { lastMessage } = useWebSocket()
 

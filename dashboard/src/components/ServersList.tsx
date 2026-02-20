@@ -3,7 +3,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { Server } from '../types'
 import { Link } from '@tanstack/react-router'
 import { useDeleteServer } from '../hooks/useQueries'
-import { Trash2, Server as ServerIcon, Activity, ChevronRight, Cpu, HardDrive } from 'lucide-react'
+import { Trash2, Server as ServerIcon, Activity, ChevronRight } from 'lucide-react'
 
 const { Text } = Typography
 

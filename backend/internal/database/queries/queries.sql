@@ -184,6 +184,13 @@ SET plan = $2,
     subscription_current_period_start = $5,
     subscription_current_period_end = $6,
     subscription_cancel_at_period_end = $7,
+    trial_ends_at = $8,
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: UpdateUserTrial :exec
+UPDATE users
+SET trial_ends_at = $2,
     updated_at = NOW()
 WHERE id = $1;
 

@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/email"
+	"github.com/kerneleye/backend/internal/payments/polar"
 )
 
 // PolarWebhookPayload represents a webhook event from Polar
@@ -23,15 +24,18 @@ type PolarWebhookPayload struct {
 
 // PolarSubscription represents Polar subscription data
 type PolarSubscription struct {
-	ID                    string    `json:"id"`
-	Status                string    `json:"status"`
-	CurrentPeriodStart    time.Time `json:"current_period_start"`
-	CurrentPeriodEnd      time.Time `json:"current_period_end"`
-	CancelAtPeriodEnd     bool      `json:"cancel_at_period_end"`
-	CustomerID            string    `json:"customer_id"`
-	ProductID             string    `json:"product_id"`
-	PriceID               string    `json:"price_id"`
-	Metadata              map[string]string `json:"metadata"`
+	ID                 string            `json:"id"`
+	Status             string            `json:"status"`
+	CurrentPeriodStart time.Time         `json:"current_period_start"`
+	CurrentPeriodEnd   time.Time         `json:"current_period_end"`
+	CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
+	CustomerID         string            `json:"customer_id"`
+	ProductID          string            `json:"product_id"`
+	PriceID            string            `json:"price_id"`
+	Metadata           map[string]string `json:"metadata"`
+	// Trial fields
+	IsTrialing         bool              `json:"is_trialing,omitempty"`
+	TrialEndsAt        *time.Time        `json:"trial_ends_at,omitempty"`
 }
 
 // PolarCustomer represents Polar customer data
@@ -53,6 +57,7 @@ type PlanResponse struct {
 	DataRetentionDays int32                  `json:"data_retention_days"`
 	Features          map[string]interface{} `json:"features"`
 	IsDefault         bool                   `json:"is_default"`
+	PolarPriceID      string                 `json:"polar_price_id,omitempty"`
 }
 
 // SubscriptionStatusResponse represents user's subscription status
@@ -69,6 +74,7 @@ type SubscriptionStatusResponse struct {
 	CancelAtPeriodEnd     bool                   `json:"cancel_at_period_end"`
 	TrialEndsAt           *time.Time             `json:"trial_ends_at,omitempty"`
 	IsTrialing            bool                   `json:"is_trialing"`
+	CustomerPortalURL     string                 `json:"customer_portal_url,omitempty"`
 }
 
 // getPolarWebhookSecret returns the Polar webhook secret from environment
@@ -124,6 +130,7 @@ func HandleListPlans(queries *database.Queries) fiber.Handler {
 				DataRetentionDays: plan.DataRetentionDays,
 				Features:          features,
 				IsDefault:         plan.IsDefault.Bool,
+				PolarPriceID:      plan.PolarPriceID.String,
 			}
 		}
 
@@ -194,8 +201,8 @@ func HandleGetSubscriptionStatus(queries *database.Queries) fiber.Handler {
 	}
 }
 
-// HandleCreateCheckout creates a Polar checkout session
-func HandleCreateCheckout(queries *database.Queries) fiber.Handler {
+// HandleCreateCheckout creates a Polar checkout session using the SDK
+func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		type Request struct {
 			PlanName string `json:"plan_name"`
@@ -220,10 +227,59 @@ func HandleCreateCheckout(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusBadRequest, "Invalid plan")
 		}
 
-		// In a real implementation, you would call Polar's API to create a checkout session
-		// For now, return the Polar product/price IDs for the frontend to use
+		// Check if we have a Polar price ID
+		if !plan.PolarPriceID.Valid || plan.PolarPriceID.String == "" {
+			return fiber.NewError(fiber.StatusInternalServerError, "Plan not configured for checkout")
+		}
+
+		// Build success URL
+		dashboardURL := os.Getenv("DASHBOARD_URL")
+		if dashboardURL == "" {
+			dashboardURL = "http://localhost:3000"
+		}
+		successURL := dashboardURL + "/subscription/success"
+
+		// If Polar client is not configured, fallback to legacy URL
+		if polarClient == nil || !polarClient.IsConfigured() {
+			// Fallback: return the Polar checkout URL directly
+			return c.JSON(fiber.Map{
+				"checkout_url":   fmt.Sprintf("https://polar.sh/checkout/%s?success_url=%s", plan.PolarPriceID.String, successURL),
+				"customer_email": user.Email,
+				"metadata": fiber.Map{
+					"user_id": userID,
+					"plan":    req.PlanName,
+				},
+			})
+		}
+
+		// Create checkout session via Polar SDK
+		session, err := polarClient.CreateCheckoutSession(
+			c.Context(),
+			plan.PolarPriceID.String,
+			&user.Email,
+			successURL,
+		)
+		if err != nil {
+			log.Printf("[Polar] Failed to create checkout session: %v", err)
+			// Fallback to legacy URL
+			return c.JSON(fiber.Map{
+				"checkout_url":   fmt.Sprintf("https://polar.sh/checkout/%s?success_url=%s", plan.PolarPriceID.String, successURL),
+				"customer_email": user.Email,
+				"metadata": fiber.Map{
+					"user_id": userID,
+					"plan":    req.PlanName,
+				},
+			})
+		}
+
+		checkoutURL := ""
+		if session.URL != nil {
+			checkoutURL = *session.URL
+		}
+
 		return c.JSON(fiber.Map{
-			"checkout_url": fmt.Sprintf("https://polar.sh/checkout/%s", plan.PolarPriceID.String),
+			"checkout_url":   checkoutURL,
+			"session_id":     session.ID,
 			"customer_email": user.Email,
 			"metadata": fiber.Map{
 				"user_id": userID,
@@ -233,8 +289,45 @@ func HandleCreateCheckout(queries *database.Queries) fiber.Handler {
 	}
 }
 
+// HandleCreateCustomerPortal creates a Polar customer portal session
+func HandleCreateCustomerPortal(queries *database.Queries, polarClient *polar.Client) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id").(string)
+
+		// Get user details
+		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to fetch user")
+		}
+
+		// Check if user has a Polar customer ID
+		if !user.PolarCustomerID.Valid || user.PolarCustomerID.String == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "No Polar customer found for this user")
+		}
+
+		// If Polar client is not configured, return error
+		if polarClient == nil || !polarClient.IsConfigured() {
+			return fiber.NewError(fiber.StatusServiceUnavailable, "Polar integration not configured")
+		}
+
+		// Create customer portal session
+		portalSession, err := polarClient.CreateCustomerPortalSession(
+			c.Context(),
+			user.PolarCustomerID.String,
+		)
+		if err != nil {
+			log.Printf("[Polar] Failed to create customer portal session: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to create customer portal session")
+		}
+
+		return c.JSON(fiber.Map{
+			"portal_url": portalSession.CustomerPortalURL,
+		})
+	}
+}
+
 // HandlePolarWebhook handles webhook events from Polar
-func HandlePolarWebhook(queries *database.Queries, emailService *email.Service) fiber.Handler {
+func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, polarClient *polar.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Get the signature from header
 		signature := c.Get("Polar-Signature")
@@ -257,12 +350,23 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service) 
 
 		log.Printf("[Polar] Received webhook event: %s", event.Type)
 
+		// Use the webhook handler from the polar package if available
+		if polarClient != nil && polarClient.IsConfigured() {
+			handler := polar.NewWebhookHandler(polarClient, queries)
+			if err := handler.HandleWebhook(c.Context(), event.Type, payload); err != nil {
+				log.Printf("[Polar] Failed to process webhook: %v", err)
+			}
+		} else {
+			// Fallback to legacy webhook handling
+			log.Println("[Polar] SDK not configured, using legacy webhook handling")
+		}
+
 		// Store the event for audit trail
 		var polarEventID string
 		var userID string
 
 		switch event.Type {
-		case "subscription.created", "subscription.updated", "subscription.active":
+		case "subscription.created", "subscription.updated", "subscription.active", "subscription.trialing":
 			var sub PolarSubscription
 			if err := json.Unmarshal(event.Data, &sub); err != nil {
 				log.Printf("[Polar] Failed to parse subscription: %v", err)
@@ -273,12 +377,12 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service) 
 				userID = uid
 			}
 
-			// Update user's subscription
+			// Update user's subscription (legacy handling)
 			if userID != "" {
 				if err := updateUserSubscription(queries, c, userID, sub); err != nil {
 					log.Printf("[Polar] Failed to update user subscription: %v", err)
 				} else {
-					// Send welcome email after successful subscription
+					// Send welcome email after successful subscription or trial start
 					if emailService != nil && emailService.IsEnabled() {
 						go func() {
 							// Get user details for email
@@ -287,12 +391,12 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service) 
 								log.Printf("[Polar] Failed to get user for welcome email: %v", err)
 								return
 							}
-							
+
 							planName := "Starter"
 							if p, ok := sub.Metadata["plan"]; ok {
 								planName = p
 							}
-							
+
 							if err := emailService.SendWelcomeEmail(user.Email, user.Email, planName); err != nil {
 								log.Printf("[Polar] Failed to send welcome email: %v", err)
 							} else {
@@ -369,21 +473,28 @@ func updateUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 		planName = p
 	}
 
+	// Handle trial status
+	status := sub.Status
+	if sub.IsTrialing {
+		status = "trialing"
+	}
+
 	params := database.UpdateUserSubscriptionParams{
-		ID:                            database.ToPgUUID(userID),
-		Plan:                          planName,
-		PolarSubscriptionID:           database.ToPgText(sub.ID),
-		SubscriptionStatus:            database.ToPgText(sub.Status),
+		ID:                             database.ToPgUUID(userID),
+		Plan:                           planName,
+		PolarSubscriptionID:            database.ToPgText(sub.ID),
+		SubscriptionStatus:             database.ToPgText(status),
 		SubscriptionCurrentPeriodStart: database.ToPgTimestamptz(sub.CurrentPeriodStart),
 		SubscriptionCurrentPeriodEnd:   database.ToPgTimestamptz(sub.CurrentPeriodEnd),
 		SubscriptionCancelAtPeriodEnd:  database.ToPgBool(sub.CancelAtPeriodEnd),
+		TrialEndsAt:                    database.ToPgTimestamptzPtr(sub.TrialEndsAt),
 	}
 
 	if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
 		return fmt.Errorf("failed to update subscription: %w", err)
 	}
 
-	log.Printf("[Polar] Updated subscription for user %s to plan %s", userID, planName)
+	log.Printf("[Polar] Updated subscription for user %s to plan %s (status: %s, trial: %v)", userID, planName, status, sub.IsTrialing)
 	return nil
 }
 
@@ -394,8 +505,8 @@ func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 		Plan:                          "starter", // Downgrade to starter
 		PolarSubscriptionID:           database.ToPgText(sub.ID),
 		SubscriptionStatus:            database.ToPgText("canceled"),
-		SubscriptionCurrentPeriodEnd:   database.ToPgTimestamptz(sub.CurrentPeriodEnd),
-		SubscriptionCancelAtPeriodEnd:  database.ToPgBool(true),
+		SubscriptionCurrentPeriodEnd:  database.ToPgTimestamptz(sub.CurrentPeriodEnd),
+		SubscriptionCancelAtPeriodEnd: database.ToPgBool(true),
 	}
 
 	if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
@@ -409,10 +520,10 @@ func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 // uncancelUserSubscription reactivates a user's subscription
 func uncancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID string, sub PolarSubscription) error {
 	params := database.UpdateUserSubscriptionParams{
-		ID:                            database.ToPgUUID(userID),
-		Plan:                          sub.Metadata["plan"],
-		PolarSubscriptionID:           database.ToPgText(sub.ID),
-		SubscriptionStatus:            database.ToPgText(sub.Status),
+		ID:                             database.ToPgUUID(userID),
+		Plan:                           sub.Metadata["plan"],
+		PolarSubscriptionID:            database.ToPgText(sub.ID),
+		SubscriptionStatus:             database.ToPgText(sub.Status),
 		SubscriptionCurrentPeriodStart: database.ToPgTimestamptz(sub.CurrentPeriodStart),
 		SubscriptionCurrentPeriodEnd:   database.ToPgTimestamptz(sub.CurrentPeriodEnd),
 		SubscriptionCancelAtPeriodEnd:  database.ToPgBool(false),
@@ -451,10 +562,10 @@ func CheckServerLimit(queries *database.Queries) fiber.Handler {
 		// Check if limit reached
 		if int32(serverCount) >= user.MaxServers {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "Server limit reached",
-				"message": fmt.Sprintf("Your %s plan allows up to %d servers. Please upgrade to add more.", user.Plan, user.MaxServers),
-				"current": serverCount,
-				"limit":   user.MaxServers,
+				"error":       "Server limit reached",
+				"message":     fmt.Sprintf("Your %s plan allows up to %d servers. Please upgrade to add more.", user.Plan, user.MaxServers),
+				"current":     serverCount,
+				"limit":       user.MaxServers,
 				"upgrade_url": "/subscription/plans",
 			})
 		}

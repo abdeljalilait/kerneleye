@@ -1,4 +1,4 @@
-import { Card, Statistic, Typography } from 'antd'
+import { Card, Typography } from 'antd'
 import { LucideIcon } from 'lucide-react'
 import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from '@ant-design/icons'
 

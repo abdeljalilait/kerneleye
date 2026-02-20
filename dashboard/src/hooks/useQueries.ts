@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI } from '../api/client';
+import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI } from '../api/client';
 import { Server, Threat, Alert, StatsOverview } from '../types';
 
 export const useServers = () => {
@@ -125,6 +125,23 @@ export const useProfile = () => {
   });
 };
 
+export interface OAuthProvider {
+  id: string;
+  name: string;
+  icon: string;
+}
+
+export const useOAuthProviders = () => {
+  return useQuery({
+    queryKey: ['auth', 'providers'],
+    queryFn: async () => {
+      const { data } = await authAPI.getProviders();
+      return data.providers as OAuthProvider[];
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - providers don't change often
+  });
+};
+
 export const useLogin = () => {
   return useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
@@ -191,6 +208,76 @@ export const useDeleteServer = () => {
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       queryClient.invalidateQueries({ queryKey: ['threats'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+    },
+  });
+};
+
+// ============ SUBSCRIPTION HOOKS ============
+
+export interface Plan {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  price_cents: number;
+  currency: string;
+  billing_interval: string;
+  max_servers: number;
+  data_retention_days: number;
+  features: Record<string, any>;
+  is_default: boolean;
+  polar_price_id?: string;
+}
+
+export interface SubscriptionStatus {
+  plan: string;
+  plan_display_name: string;
+  status: string;
+  max_servers: number;
+  current_servers: number;
+  data_retention_days: number;
+  features: Record<string, any>;
+  current_period_start?: string;
+  current_period_end?: string;
+  cancel_at_period_end: boolean;
+  trial_ends_at?: string;
+  is_trialing: boolean;
+}
+
+export const useSubscriptionPlans = () => {
+  return useQuery({
+    queryKey: ['subscription', 'plans'],
+    queryFn: async () => {
+      const { data } = await subscriptionAPI.getPlans();
+      return data as Plan[];
+    },
+  });
+};
+
+export const useSubscriptionStatus = () => {
+  return useQuery({
+    queryKey: ['subscription', 'status'],
+    queryFn: async () => {
+      const { data } = await subscriptionAPI.getStatus();
+      return data as SubscriptionStatus;
+    },
+  });
+};
+
+export const useCreateCheckout = () => {
+  return useMutation({
+    mutationFn: async (planName: string) => {
+      const { data } = await subscriptionAPI.createCheckout(planName);
+      return data as { checkout_url: string; session_id?: string; customer_email: string; metadata: any };
+    },
+  });
+};
+
+export const useCreateCustomerPortal = () => {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await subscriptionAPI.createCustomerPortal();
+      return data as { portal_url: string };
     },
   });
 };

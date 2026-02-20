@@ -1,4 +1,4 @@
-import { Table, Tag, Input, Button, Typography, Card, Space, Progress, Avatar } from 'antd'
+import { Table, Input, Button, Typography, Card, Space, Progress, Avatar } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Globe, Search, Shield, AlertTriangle, Ban, ExternalLink } from 'lucide-react'
 import { Threat } from '../types'

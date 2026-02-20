@@ -21,7 +21,6 @@ interface TrafficLog {
 
 export default function LiveStream() {
   const [logs, setLogs] = useState<TrafficLog[]>([])
-  const [isConnected, setIsConnected] = useState(true)
   const { lastMessage } = useWebSocket()
   const scrollRef = useRef<HTMLDivElement>(null)
 

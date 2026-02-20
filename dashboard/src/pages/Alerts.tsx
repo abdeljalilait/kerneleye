@@ -5,11 +5,7 @@ import {
   ReloadOutlined, 
   CheckCircleOutlined, 
   CloseCircleOutlined, 
-  ExclamationCircleOutlined,
-  BellOutlined,
-  InfoCircleOutlined,
-  WarningOutlined
-} from '@ant-design/icons'
+  InfoCircleOutlined} from '@ant-design/icons'
 import { Bell, Shield, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 import { Alert } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'

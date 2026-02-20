@@ -4,7 +4,7 @@
 # ==========================================
 # Stage 1: Build Landing Page
 # ==========================================
-FROM node:20-alpine AS landing-builder
+FROM node:24-alpine AS landing-builder
 
 WORKDIR /app/landing
 
@@ -21,7 +21,12 @@ RUN npm run build
 # ==========================================
 # Stage 2: Build Dashboard
 # ==========================================
-FROM node:20-alpine AS dashboard-builder
+FROM node:24-alpine AS dashboard-builder
+
+# VITE_API_URL must be baked in at build time (Vite embeds it into the JS bundle)
+# Value is read from dashboard/.env.production and passed via --build-arg in Makefile
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 
 WORKDIR /app/dashboard
 
@@ -32,8 +37,7 @@ RUN npm ci --legacy-peer-deps
 # Copy dashboard source
 COPY dashboard/ ./
 
-# Build dashboard (API URL will be injected at runtime)
-# Skip TypeScript checking for production build (type errors are non-blocking)
+# Build dashboard (VITE_API_URL is embedded into the JS bundle here)
 RUN npx tsc --noEmit --skipLibCheck || true
 RUN npx vite build
 
@@ -59,11 +63,8 @@ COPY --from=dashboard-builder /app/dashboard/dist /usr/share/nginx/html/dashboar
 COPY docker/entrypoint-frontend.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Create config directory for JS config
-RUN mkdir -p /usr/share/nginx/html/dashboard/config
-
 # Expose ports
-EXPOSE 80 443
+EXPOSE 80
 
 # Use custom entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]

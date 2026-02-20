@@ -1,8 +1,7 @@
 # KernelEye Frontend Nginx Configuration
 # Serves both landing page and dashboard as static SPAs
-# API calls go directly to backend, not through nginx
 
-# Landing Page Server (kerneleye.cloud)
+# Landing Page Server
 server {
     listen 80;
     listen [::]:80;
@@ -41,11 +40,11 @@ server {
     }
 }
 
-# Dashboard Server (app.kerneleye.cloud)
+# Dashboard Server (default - catches all other requests)
 server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DASHBOARD_DOMAIN};
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name ${DASHBOARD_DOMAIN} _;
 
     # Gzip compression
     gzip on;
@@ -72,25 +71,10 @@ server {
         }
     }
 
-    # Config endpoint for runtime API URL
-    location /config.js {
-        alias /usr/share/nginx/html/dashboard/config/runtime-config.js;
-        add_header Content-Type application/javascript;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-    }
-
     # Health check
     location /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
     }
-}
-
-# Default server (return 404 for unknown hosts)
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-    return 404;
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/email"
 	"github.com/kerneleye/backend/internal/geoip"
+	"github.com/kerneleye/backend/internal/payments/polar"
 	"github.com/kerneleye/backend/internal/scoring"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"google.golang.org/grpc"
@@ -66,6 +67,17 @@ func main() {
 		log.Println("⚠️  Email service not configured (MAILTRAP_API_TOKEN not set)")
 	}
 
+	// Initialize Polar Payments Client
+	polarClient := polar.NewClient(polar.Config{
+		AccessToken:   os.Getenv("POLAR_ACCESS_TOKEN"),
+		WebhookSecret: os.Getenv("POLAR_WEBHOOK_SECRET"),
+	})
+	if polarClient.IsConfigured() {
+		log.Println("💳 Polar Payments client initialized")
+	} else {
+		log.Println("⚠️  Polar Payments not configured (POLAR_ACCESS_TOKEN not set)")
+	}
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:      "KernelEye API v1.0",
@@ -90,7 +102,7 @@ func main() {
 	}))
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 	if corsOrigins == "" {
-		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.cloud"
+		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.cloud,https://kerneleye.hakiware.com,https://kerneleye-api.hakiware.com"
 	}
 
 	app.Use(cors.New(cors.Config{
@@ -114,6 +126,13 @@ func main() {
 	// Public routes
 	v1.Post("/auth/register", api.HandleRegister(queries))
 	v1.Post("/auth/login", api.HandleLogin(queries))
+	v1.Get("/auth/providers", api.HandleGetAuthProviders())
+	
+	// OAuth routes
+	v1.Get("/auth/github", api.HandleGitHubLogin())
+	v1.Get("/auth/github/callback", api.HandleGitHubCallback(queries))
+	v1.Get("/auth/google", api.HandleGoogleLogin())
+	v1.Get("/auth/google/callback", api.HandleGoogleCallback(queries))
 
 	// Initialize GeoIP Service
 	geoipDir := os.Getenv("GEOIP_DIR")
@@ -151,13 +170,14 @@ func main() {
 	protected.Get("/alerts", api.HandleListAlerts(queries))
 	protected.Get("/stats/overview", api.HandleStatsOverview(queries))
 
-	// Subscription endpoints
+	// Subscription endpoints (Polar)
 	protected.Get("/subscription/plans", api.HandleListPlans(queries))
 	protected.Get("/subscription/status", api.HandleGetSubscriptionStatus(queries))
-	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries))
-	
+	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries, polarClient))
+	protected.Post("/subscription/portal", api.HandleCreateCustomerPortal(queries, polarClient))
+
 	// Polar webhook (public, but signed)
-	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService))
+	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService, polarClient))
 
 	// gRPC Server setup
 	grpcPort := os.Getenv("GRPC_PORT")

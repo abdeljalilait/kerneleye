@@ -1,14 +1,14 @@
 services:
   # PostgreSQL Database
   postgres:
+    networks:
+      - dokploy-network
     image: postgres:15-alpine
-    container_name: kerneleye-db
+    pull_policy: always
     environment:
       POSTGRES_DB: kerneleye
       POSTGRES_USER: kerneleye
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-    ports:
-      - '5432:5432'
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d
@@ -20,27 +20,30 @@ services:
 
   # Backend API
   backend:
+    networks:
+      - dokploy-network
     image: registry.hakiware.com/kerneleye/backend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: kerneleye-api
+    pull_policy: always
     environment:
-      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD:-changeme}@postgres:5432/kerneleye?sslmode=disable
+      GEOIP_DIR: /opt/kerneleye/geoip
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY}
+      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD}@postgres:5432/kerneleye?sslmode=disable
       PORT: 8080
       GRPC_PORT: 9091
-      CORS_ORIGINS: http://localhost:3000,https://app.kerneleye.io,https://app.kerneleye.cloud
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
-      API_KEY_SECRET: ${API_KEY_SECRET:-change-in-production}
-      DASHBOARD_URL: ${DASHBOARD_URL:-https://app.kerneleye.cloud}
-      MAILTRAP_API_TOKEN: ${MAILTRAP_API_TOKEN:-}
-      EMAIL_FROM: ${EMAIL_FROM:-noreply@kerneleye.cloud}
-      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-KernelEye}
-      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
-      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
-    ports:
-      - '8080:8080'
-      - '9091:9091'
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY_SECRET: ${API_KEY_SECRET}
+      DASHBOARD_URL: ${DASHBOARD_URL}
+      MAILTRAP_API_TOKEN: ${MAILTRAP_API_TOKEN}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME}
+      POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      OAUTH_REDIRECT_URL: ${OAUTH_REDIRECT_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,29 +52,22 @@ services:
   # Frontend (Landing + Dashboard)
   # Serves static files only - API calls go directly to backend
   frontend:
+    networks:
+      - dokploy-network
     image: registry.hakiware.com/kerneleye/frontend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: kerneleye-frontend
+    pull_policy: always
     environment:
-      # Backend API URL (for dashboard runtime config)
-      BACKEND_HOST: ${BACKEND_HOST:-api.kerneleye.cloud}
-      BACKEND_PORT: ${BACKEND_PORT:-443}
       # Domain names (for nginx server_name)
-      LANDING_DOMAIN: ${LANDING_DOMAIN:-kerneleye.cloud}
-      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:-app.kerneleye.cloud}
-    ports:
-      - '80:80'
-      - '443:443'
+      LANDING_DOMAIN: ${LANDING_DOMAIN}
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN}
     restart: unless-stopped
 
   # Redis (Optional - for caching in production)
   redis:
+    networks:
+      - dokploy-network
     image: redis:7-alpine
-    container_name: kerneleye-redis
-    ports:
-      - '6379:6379'
+    pull_policy: always
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -81,3 +77,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  dokploy-network:
+    external: true

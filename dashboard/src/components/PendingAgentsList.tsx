@@ -1,5 +1,5 @@
 import { Card, Button, List, Tag, Typography, Space, Avatar } from 'antd'
-import { Check, X, Server, Clock, Shield, AlertTriangle } from 'lucide-react'
+import { Check, X, Server, Clock, AlertTriangle } from 'lucide-react'
 import { Server as ServerType } from '../types'
 import { useUpdateServerStatus } from '../hooks/useQueries'
 import { App } from 'antd'

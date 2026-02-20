@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Modal, Button, Typography, Steps, Space, Card, Badge, Tooltip, Input } from 'antd'
-import { Copy, Terminal, Check, Key, Server, Shield, ArrowRight, Download } from 'lucide-react'
+import { Modal, Button, Typography, Steps, Space, Card, Badge, Tooltip, Input, Alert } from 'antd'
+import { Copy, Terminal, Check, Key, Server, Shield, ArrowRight } from 'lucide-react'
 import { useGenerateApiKey } from '../hooks/useQueries'
 import { App } from 'antd'
 

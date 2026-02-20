@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, Play, Activity, Shield } from 'lucide-react';
+import { ArrowRight, Activity, Shield } from 'lucide-react';
 import { GlowPulse } from '../components/Reveal';
 
 const HeroSection = () => {
@@ -99,25 +99,32 @@ const HeroSection = () => {
             >
               <GlowPulse color="primary">
                 <motion.a 
-                  href="#contact" 
+                  href="https://app.kerneleye.cloud" 
                   className="btn btn-primary"
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  Start free trial
+                  Get started free
                   <ArrowRight size={18} />
                 </motion.a>
               </GlowPulse>
               <motion.a 
-                href="#demo" 
+                href="#pricing" 
                 className="btn btn-secondary"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
               >
-                <Play size={18} />
-                Watch demo
+                View pricing
               </motion.a>
             </motion.div>
+
+            <motion.p 
+              className="text-small" 
+              style={{ marginTop: '1rem', color: 'var(--color-text-muted)' }}
+              variants={itemVariants}
+            >
+              Free signup with GitHub or Google. No credit card required.
+            </motion.p>
 
 
           </motion.div>

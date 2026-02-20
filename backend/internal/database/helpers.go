@@ -52,6 +52,16 @@ func ToPgTimestamptz(t time.Time) pgtype.Timestamptz {
 	}
 }
 
+func ToPgTimestamptzPtr(t *time.Time) pgtype.Timestamptz {
+	if t == nil {
+		return pgtype.Timestamptz{Valid: false}
+	}
+	return pgtype.Timestamptz{
+		Time:  *t,
+		Valid: true,
+	}
+}
+
 func ToNetAddr(s string) (netip.Addr, error) {
 	return netip.ParseAddr(s)
 }

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { WSMessage } from '../types'
 
 interface WebSocketContextType {
@@ -15,23 +15,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const reconnectTimeoutRef = useRef<number | undefined>(undefined)
 
   const getWsUrl = (): string => {
-    // Check for runtime config (set by entrypoint script)
-    const runtimeConfig = (window as any).KERNELEYE_CONFIG;
-    if (runtimeConfig?.WS_URL) {
-      return runtimeConfig.WS_URL;
+    const apiUrl = import.meta.env.VITE_API_URL
+    if (apiUrl) {
+      const url = new URL(apiUrl)
+      const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+      // e.g. https://kerneleye-api.hakiware.com/api/v1 → wss://kerneleye-api.hakiware.com/api/v1/ws
+      return `${wsProtocol}//${url.host}${url.pathname}/ws`
     }
-    
-    // Fallback to build-time env
-    if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith('http')) {
-      const url = new URL(import.meta.env.VITE_API_URL);
-      const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${wsProtocol}//${url.host}/ws`;
-    }
-    
-    // Default to current host
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/ws`;
-  };
+    // Fallback for local dev without .env
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}/ws`
+  }
 
   const connect = () => {
     // If already connected or connecting, don't start another one

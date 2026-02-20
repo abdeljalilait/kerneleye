@@ -967,6 +967,7 @@ SET plan = $2,
     subscription_current_period_start = $5,
     subscription_current_period_end = $6,
     subscription_cancel_at_period_end = $7,
+    trial_ends_at = $8,
     updated_at = NOW()
 WHERE id = $1
 `
@@ -979,6 +980,7 @@ type UpdateUserSubscriptionParams struct {
 	SubscriptionCurrentPeriodStart pgtype.Timestamptz `json:"subscription_current_period_start"`
 	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
 	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
+	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
 }
 
 func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error {
@@ -990,7 +992,25 @@ func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubs
 		arg.SubscriptionCurrentPeriodStart,
 		arg.SubscriptionCurrentPeriodEnd,
 		arg.SubscriptionCancelAtPeriodEnd,
+		arg.TrialEndsAt,
 	)
+	return err
+}
+
+const updateUserTrial = `-- name: UpdateUserTrial :exec
+UPDATE users
+SET trial_ends_at = $2,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateUserTrialParams struct {
+	ID          pgtype.UUID        `json:"id"`
+	TrialEndsAt pgtype.Timestamptz `json:"trial_ends_at"`
+}
+
+func (q *Queries) UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error {
+	_, err := q.db.Exec(ctx, updateUserTrial, arg.ID, arg.TrialEndsAt)
 	return err
 }
 

@@ -6,9 +6,15 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git
 
+# Copy proto module first (dependency of backend)
+COPY proto/gen/go /proto/gen/go
+
 # Copy go mod files from backend directory
 COPY backend/go.mod backend/go.sum ./
-RUN go mod download
+
+# Update go.mod to use the copied proto module
+RUN go mod edit -replace github.com/kerneleye/proto=/proto/gen/go && \
+    go mod download
 
 # Copy source code from backend directory
 COPY backend/ .
@@ -19,13 +25,24 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o kerneleye-api ./c
 # Runtime stage
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates wget tar postgresql-client
+
+# Create GeoIP directory
+RUN mkdir -p /opt/kerneleye/geoip
 
 WORKDIR /root/
 
 # Copy binary from builder
 COPY --from=builder /app/kerneleye-api .
 
+# Copy migrations
+COPY backend/migrations /app/migrations/
+
+# Copy entrypoint script
+COPY --from=builder /app/scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 8080 9091
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["./kerneleye-api"]

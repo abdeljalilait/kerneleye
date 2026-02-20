@@ -44,6 +44,7 @@ type Querier interface {
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
+	UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error
 	UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error)
 }
 
