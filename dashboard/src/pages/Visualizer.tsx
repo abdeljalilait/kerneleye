@@ -40,7 +40,12 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import { useThreats, useServers } from '../hooks/useQueries';
+import { 
+  useThreats, 
+  useServers,
+  useTopSourceIPs,
+  useTopASNs,
+} from '../hooks/useQueries';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -280,13 +285,81 @@ export default function Visualizer() {
   const [activeTab, setActiveTab] = useState('source-ip');
   const [timeRange, setTimeRange] = useState('24h');
   const [visibility, setVisibility] = useState('expanded');
-  const { isLoading } = useThreats();
+  const { isLoading: threatsLoading } = useThreats();
   const { data: servers } = useServers();
 
-  const totalAlerts = 1024;
-  const uniqueIPs = 42;
-  const uniqueAS = 11;
-  const uniqueCountries = 13;
+  // Calculate date range based on timeRange selection
+  const getDateRange = () => {
+    const end = new Date();
+    const start = new Date();
+    switch (timeRange) {
+      case '1h': start.setHours(end.getHours() - 1); break;
+      case '6h': start.setHours(end.getHours() - 6); break;
+      case '24h': start.setDate(end.getDate() - 1); break;
+      case '7d': start.setDate(end.getDate() - 7); break;
+      case '30d': start.setDate(end.getDate() - 30); break;
+      default: start.setDate(end.getDate() - 1);
+    }
+    return {
+      startDate: start.toISOString().split('T')[0],
+      endDate: end.toISOString().split('T')[0],
+    };
+  };
+
+  const { startDate, endDate } = getDateRange();
+
+  // Fetch real data from APIs
+  const { data: topSourceIPs, isLoading: ipsLoading } = useTopSourceIPs(startDate, endDate, 20);
+  const { data: topASNs, isLoading: asnsLoading } = useTopASNs(startDate, endDate, 10);
+
+  const isLoading = threatsLoading || ipsLoading || asnsLoading;
+
+  // Transform API data to match expected format
+  const sourceIPsData = (topSourceIPs || []).map((ip: any, index: number) => ({
+    ip: ip.ip,
+    count: ip.count || 0,
+    percentage: 0, // Will be calculated
+    country: ip.country || 'Unknown',
+    countryCode: ip.country || 'UN',
+    asn: 'N/A',
+    isp: ip.isp || 'Unknown',
+    firstSeen: ip.first_seen,
+    lastSeen: ip.last_seen,
+    timeline: [], // Timeline would need separate API call
+    threatTypes: [],
+  }));
+
+  // Calculate percentages
+  const totalCount = sourceIPsData.reduce((sum: number, ip: any) => sum + ip.count, 0);
+  sourceIPsData.forEach((ip: any) => {
+    ip.percentage = totalCount > 0 ? parseFloat(((ip.count / totalCount) * 100).toFixed(1)) : 0;
+  });
+
+  const sourceASData = (topASNs || []).map((as: any, index: number) => ({
+    asn: as.asn || 'Unknown',
+    name: as.isp_name || as.asn || 'Unknown',
+    country: as.country || 'Unknown',
+    countryCode: as.country || 'UN',
+    count: as.count || 0,
+    percentage: 0,
+    timeline: [],
+    topIPs: [],
+  }));
+
+  // Calculate percentages for AS data
+  const totalASCount = sourceASData.reduce((sum: number, as: any) => sum + as.count, 0);
+  sourceASData.forEach((as: any) => {
+    as.percentage = totalASCount > 0 ? parseFloat(((as.count / totalASCount) * 100).toFixed(1)) : 0;
+  });
+
+  const totalAlerts = sourceIPsData.reduce((sum: number, ip: any) => sum + ip.count, 0);
+  const uniqueIPs = sourceIPsData.length;
+  const uniqueAS = sourceASData.length;
+  const uniqueCountries = new Set(sourceIPsData.map((ip: any) => ip.country)).size;
+
+  // Use real data or fallback to empty arrays
+  const mockSourceIPs = sourceIPsData.length > 0 ? sourceIPsData : [];
+  const mockSourceAS = sourceASData.length > 0 ? sourceASData : [];
 
   return (
     <div style={{ padding: '24px 48px', maxWidth: 1600, margin: '0 auto' }}>
