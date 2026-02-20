@@ -39,7 +39,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   const installProtocol = window.location.protocol
 
   const installCommand = result 
-    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"`
+    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}" -enable-remediation`
     : ''
 
   const fullInstallCommand = result

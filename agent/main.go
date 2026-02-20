@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -36,17 +35,13 @@ var DefaultGRPCURL = ""
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 bpf ebpf/traffic_probe.c -- -I/usr/include/bpf
 
 func main() {
-	// Parse version flag before main config
-	versionFlag := flag.Bool("version", false, "Show version information")
-	flag.Parse()
-
-	if *versionFlag {
-		printVersion()
-		os.Exit(0)
+	// Check for version flag manually (before main flag parsing)
+	for _, arg := range os.Args[1:] {
+		if arg == "-version" || arg == "--version" {
+			printVersion()
+			os.Exit(0)
+		}
 	}
-
-	// Re-parse flags for main config (reset flag set)
-	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
