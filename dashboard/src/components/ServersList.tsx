@@ -36,6 +36,9 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     {
       title: 'Server',
       key: 'server',
+      width: '40%',
+      minWidth: 200,
+      responsive: ['xs', 'sm', 'md', 'lg', 'xl'],
       render: (_, record) => {
         const config = getStatusConfig(record.status)
         return (
@@ -93,7 +96,8 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     {
       title: 'Health',
       key: 'health',
-      width: 150,
+      width: '25%',
+      minWidth: 120,
       render: () => (
         <div style={{ width: 100 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -113,7 +117,8 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     {
       title: 'Events',
       key: 'events',
-      width: 120,
+      width: '20%',
+      minWidth: 100,
       render: () => (
         <Space size={4}>
           <Activity size={14} color="#6366f1" />
@@ -127,7 +132,9 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     {
       title: 'Actions',
       key: 'actions',
-      width: 140,
+      width: '15%',
+      minWidth: 100,
+      align: 'right',
       render: (_, record) => (
         <Space size={4}>
           <Link to="/dashboard/servers/$id" params={{ id: record.id }}>
@@ -167,7 +174,8 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
       dataSource={servers} 
       rowKey="id"
       pagination={false}
-      locale={{ 
+      scroll={{ x: 'max-content' }}
+      locale:{ 
         emptyText: (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
             <div style={{ marginBottom: 16 }}>
