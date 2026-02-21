@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation, Link, useNavigate } from '@tanstack/react-router'
-import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography } from 'antd'
+import { Layout, Menu, Button, Avatar, Dropdown, Typography } from 'antd'
+import Header from '../components/Header'
 import { 
   Shield, 
   Activity, 
   Server, 
   AlertTriangle, 
-  Bell, 
   LogOut, 
-  Settings,
   ChevronLeft,
   ChevronRight,
   User,
@@ -20,7 +19,7 @@ import type { MenuProps } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWebSocket } from '../context/WebSocketContext'
 
-const { Sider, Header, Content } = Layout
+const { Sider, Content } = Layout
 const { Text } = Typography
 
 const menuItems = [
@@ -299,81 +298,7 @@ export default function Dashboard() {
         }}
       >
         {/* Header */}
-        <Header
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(20px)',
-            borderBottom: '1px solid var(--glass-border)',
-            position: 'sticky',
-            top: 0,
-            zIndex: 99,
-            height: 80,
-            padding: '0 32px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          {/* Breadcrumb / Page Title */}
-          <div>
-            <Text style={{ 
-              fontSize: 12, 
-              color: 'var(--text-tertiary)', 
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-            }}>
-              Dashboard
-            </Text>
-            <Text strong style={{ 
-              fontSize: 20, 
-              color: 'var(--text-primary)', 
-              display: 'block',
-              marginTop: 2,
-            }}>
-              {menuItems.find(item => item.key === getSelectedKey())?.label || 'Overview'}
-            </Text>
-          </div>
-
-          {/* Right Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {/* Notification Bell */}
-            <Badge count={0} size="small" style={{ background: 'var(--accent-rose)' }}>
-              <Button
-                type="text"
-                icon={<Bell size={20} />}
-                style={{
-                  color: 'var(--text-secondary)',
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              />
-            </Badge>
-
-            {/* Status Indicator */}
-            <div 
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 8,
-                padding: '8px 16px',
-                background: 'rgba(16, 185, 129, 0.1)',
-                borderRadius: 20,
-                border: '1px solid rgba(16, 185, 129, 0.2)',
-              }}
-            >
-              <span 
-                className="status-indicator status-online animate-pulse" 
-                style={{ width: 8, height: 8 }}
-              />
-              <Text style={{ color: 'var(--success)', fontSize: 13, fontWeight: 500 }}>
-                System Active
-              </Text>
-            </div>
-          </div>
-        </Header>
+        <Header menuItems={menuItems} />
 
         {/* Main Content */}
         <Content

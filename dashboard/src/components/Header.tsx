@@ -1,51 +1,100 @@
-import { Layout, Button, Avatar, Tag, Typography, theme } from 'antd'
-import { Menu as MenuIcon, User } from 'lucide-react'
+import { Button, Badge, Typography } from 'antd'
+import { Bell } from 'lucide-react'
 import { useLocation } from '@tanstack/react-router'
 
-const { Header: AntHeader } = Layout
-const { Title } = Typography
+const { Text } = Typography
 
 interface HeaderProps {
-  collapsed: boolean
-  setCollapsed: (value: boolean) => void
+  menuItems: Array<{ key: string; label: string }>
 }
 
-export default function Header({ collapsed, setCollapsed }: HeaderProps) {
+export default function Header({ menuItems }: HeaderProps) {
   const location = useLocation()
-  const {
-    token: { colorBgContainer },
-  } = theme.useToken()
-  
-  const getPageTitle = () => {
-    const path = location.pathname.split('/').pop()
-    const title = path && path !== 'dashboard' ? path : 'Overview'
-    return title.charAt(0).toUpperCase() + title.slice(1)
+
+  const getSelectedKey = () => {
+    const pathname = location.pathname
+    const matched = menuItems.find(item => 
+      pathname === item.key || 
+      (item.key !== '/dashboard' && pathname.startsWith(item.key))
+    )
+    return matched?.key || '/dashboard'
   }
 
   return (
-    <AntHeader style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div
+      style={{
+        background: 'var(--glass-bg)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid var(--glass-border)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 99,
+        height: 80,
+        padding: '0 32px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      {/* Breadcrumb / Page Title */}
+      <div>
+        <Text style={{ 
+          fontSize: 12, 
+          color: 'var(--text-tertiary)', 
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+        }}>
+          Dashboard
+        </Text>
+        <Text strong style={{ 
+          fontSize: 20, 
+          color: 'var(--text-primary)', 
+          display: 'block',
+          marginTop: 2,
+        }}>
+          {menuItems.find(item => item.key === getSelectedKey())?.label || 'Overview'}
+        </Text>
+      </div>
+
+      {/* Right Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <Button
-          type="text"
-          icon={<MenuIcon size={18} />}
-          onClick={() => setCollapsed(!collapsed)}
-          style={{
-            fontSize: '16px',
-            width: 32,
-            height: 32,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+        {/* Notification Bell */}
+        <Badge count={0} size="small" style={{ background: 'var(--accent-rose)' }}>
+          <Button
+            type="text"
+            icon={<Bell size={20} />}
+            style={{
+              color: 'var(--text-secondary)',
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          />
+        </Badge>
+
+        {/* Status Indicator */}
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 8,
+            padding: '8px 16px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: 20,
+            border: '1px solid rgba(16, 185, 129, 0.2)',
           }}
-        />
-        <Title level={4} style={{ margin: 0, textTransform: 'capitalize' }}>{getPageTitle()}</Title>
-
-        <Tag color="success">System Healthy</Tag>
+        >
+          <span 
+            className="status-indicator status-online animate-pulse" 
+            style={{ width: 8, height: 8 }}
+          />
+          <Text style={{ color: 'var(--success)', fontSize: 13, fontWeight: 500 }}>
+            System Active
+          </Text>
+        </div>
       </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <Avatar style={{ backgroundColor: '#4f46e5', verticalAlign: 'middle' }} icon={<User size={16} />} >U</Avatar>
-      </div>
-    </AntHeader>
+    </div>
   )
 }
