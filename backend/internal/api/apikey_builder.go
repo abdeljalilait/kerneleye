@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -331,4 +332,216 @@ func getServerHost() string {
 
 func toEnvVar(s string) string {
 	return strings.ToUpper(strings.ReplaceAll(s, "-", "_"))
+}
+
+// ============================================
+// Server Configuration Handlers
+// ============================================
+
+// AgentConfig represents the agent configuration
+type AgentConfig struct {
+	Mode      string          `json:"mode"`
+	Features  map[string]bool `json:"features"`
+	Threshold int             `json:"threshold"`
+	Duration  string          `json:"duration"`
+}
+
+// CreateServerWithConfigRequest represents the request to create a server with config
+type CreateServerWithConfigRequest struct {
+	ServerName string      `json:"server_name"`
+	Config     AgentConfig `json:"config"`
+}
+
+// HandleCreateServerWithConfig creates a new server with configuration
+func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id")
+		if userID == nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "User not authenticated")
+		}
+
+		var req CreateServerWithConfigRequest
+		if err := c.BodyParser(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+		}
+
+		if req.ServerName == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Server name is required")
+		}
+
+		userIDStr := userID.(string)
+
+		// Validate user has active subscription
+		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userIDStr))
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
+		}
+
+		// Check subscription status
+		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
+		hasActiveSub := user.SubscriptionStatus.String == "active" || isTrialing
+
+		if !hasActiveSub {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error":         "No active subscription",
+				"message":       "You need an active subscription or trial to add servers.",
+				"code":          "NO_SUBSCRIPTION",
+				"subscribe_url": "/subscription",
+			})
+		}
+
+		// Check server limit
+		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userIDStr))
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to check server limit")
+		}
+
+		if int32(serverCount) >= user.MaxServers {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error":       "Server limit reached",
+				"message":     fmt.Sprintf("Your plan allows up to %d servers", user.MaxServers),
+				"code":        "SERVER_LIMIT_REACHED",
+				"current":     serverCount,
+				"max":         user.MaxServers,
+				"upgrade_url": "/subscription",
+			})
+		}
+
+		// Generate client token and API key
+		clientToken := uuid.New().String()
+		serverID := uuid.New()
+		apiKey := GenerateAPIKey(userIDStr, serverID.String())
+
+		// Create server with API key
+		server, err := queries.CreateServerWithAPIKey(c.Context(), database.CreateServerWithAPIKeyParams{
+			UserID:      database.ToPgUUID(userIDStr),
+			Hostname:    req.ServerName,
+			ApiKey:      database.ToPgText(apiKey),
+			ClientToken: database.ToPgText(clientToken),
+			IpAddress:   nil,
+		})
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to create server")
+		}
+
+		// Store config in database
+		featuresJSON, _ := json.Marshal(req.Config.Features)
+		_, err = queries.CreateAgentConfig(c.Context(), database.CreateAgentConfigParams{
+			ServerID:  server.ID,
+			Mode:      req.Config.Mode,
+			Features:  featuresJSON,
+			Threshold: int32(req.Config.Threshold),
+			Duration:  req.Config.Duration,
+		})
+		if err != nil {
+			// Log error but don't fail - config can be recreated later
+			fmt.Printf("Failed to create agent config: %v\n", err)
+		}
+
+		// Build installation commands
+		builder := CommandBuilder{
+			APIKey:     apiKey,
+			ServerHost: getServerHost(),
+			Mode:       req.Config.Mode,
+		}
+
+		response := map[string]interface{}{
+			"api_key":      apiKey,
+			"client_token": clientToken,
+			"server_id":    server.ID.String(),
+			"status":       "pending",
+			"commands": map[string]string{
+				"docker":   builder.DockerCommand(),
+				"systemd":  builder.SystemdCommand(),
+				"binary":   builder.BinaryCommand() + " -daemon",
+				"download": "curl -sSL https://install.kerneleye.cloud | bash",
+			},
+			"environment": builder.EnvironmentVariables(),
+		}
+
+		return c.JSON(response)
+	}
+}
+
+// HandleGetServerConfig returns the configuration for a server
+func HandleGetServerConfig(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		serverID := c.Params("id")
+		userID := c.Locals("user_id")
+
+		// Verify ownership
+		server, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusNotFound, "Server not found")
+		}
+		if database.FromPgUUID(server.UserID) != userID.(string) {
+			return fiber.NewError(fiber.StatusForbidden, "Access denied")
+		}
+
+		config, err := queries.GetAgentConfigByServerID(c.Context(), database.ToPgUUID(serverID))
+		if err != nil {
+			// Return default config if none exists
+			return c.JSON(AgentConfig{
+				Mode:      "block_hybrid",
+				Features:  map[string]bool{"auto_block": true, "geoip_enrich": true, "bandwidth_tracking": true},
+				Threshold: 80,
+				Duration:  "1h",
+			})
+		}
+
+		var features map[string]bool
+		json.Unmarshal(config.Features, &features)
+
+		return c.JSON(AgentConfig{
+			Mode:      config.Mode,
+			Features:  features,
+			Threshold: int(config.Threshold),
+			Duration:  config.Duration,
+		})
+	}
+}
+
+// HandleUpdateServerConfig updates the configuration for a server
+func HandleUpdateServerConfig(queries *database.Queries, hub *Hub) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		serverID := c.Params("id")
+		userID := c.Locals("user_id")
+
+		var req AgentConfig
+		if err := c.BodyParser(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+		}
+
+		// Verify ownership
+		server, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusNotFound, "Server not found")
+		}
+		if database.FromPgUUID(server.UserID) != userID.(string) {
+			return fiber.NewError(fiber.StatusForbidden, "Access denied")
+		}
+
+		featuresJSON, _ := json.Marshal(req.Features)
+		err = queries.UpdateAgentConfig(c.Context(), database.UpdateAgentConfigParams{
+			ServerID:  database.ToPgUUID(serverID),
+			Mode:      req.Mode,
+			Features:  featuresJSON,
+			Threshold: int32(req.Threshold),
+			Duration:  req.Duration,
+		})
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to update configuration")
+		}
+
+		// Notify via WebSocket
+		hub.Broadcast(userID.(string), "config_updated", map[string]interface{}{
+			"server_id": serverID,
+			"config":    req,
+		})
+
+		return c.JSON(fiber.Map{
+			"success": true,
+			"config":  req,
+		})
+	}
 }

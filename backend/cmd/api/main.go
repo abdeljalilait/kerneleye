@@ -148,6 +148,10 @@ func main() {
 		defer geoIP.Close()
 	}
 
+	// Polar webhook (public, but signed) - MUST be registered BEFORE protected group
+	// This ensures it doesn't inherit the AuthMiddleware from the protected group
+	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService, polarClient))
+
 	// Protected routes (require API key or JWT)
 	protected := v1.Group("", api.AuthMiddleware(queries))
 
@@ -161,11 +165,18 @@ func main() {
 	// Dashboard endpoints (used by React frontend)
 	protected.Get("/servers", api.HandleListServers(queries))
 	protected.Get("/servers/generate-api-key", api.HandleGenerateAPIKey(queries))
+	protected.Post("/servers", api.HandleCreateServerWithConfig(queries))
 	protected.Patch("/servers/:id/status", api.HandleUpdateServerStatus(queries, hub))
 	protected.Get("/servers/:id", api.HandleGetServer(queries))
 	protected.Get("/servers/:id/traffic", api.HandleServerTraffic(queries))
 	protected.Get("/servers/:id/stats", api.HandleServerStats(queries))
+	protected.Get("/servers/:id/config", api.HandleGetServerConfig(queries))
+	protected.Patch("/servers/:id/config", api.HandleUpdateServerConfig(queries, hub))
 	protected.Delete("/servers/:id", api.HandleDeleteServer(queries))
+
+	// Agent configuration endpoints
+	protected.Get("/deployment-modes", api.HandleGetDeploymentModes)
+	protected.Get("/agent-features", api.HandleGetAgentFeatures)
 	protected.Get("/threats", api.HandleListThreats(queries))
 	protected.Get("/alerts", api.HandleListAlerts(queries))
 	protected.Get("/stats/overview", api.HandleStatsOverview(queries))
@@ -186,10 +197,6 @@ func main() {
 	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries, polarClient))
 	protected.Post("/subscription/portal", api.HandleCreateCustomerPortal(queries, polarClient))
 	protected.Get("/subscription/debug", api.HandlePolarDebug(polarClient, queries))
-
-
-	// Polar webhook (public, but signed)
-	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService, polarClient))
 
 	// gRPC Server setup
 	grpcPort := os.Getenv("GRPC_PORT")

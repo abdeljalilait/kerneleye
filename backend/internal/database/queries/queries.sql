@@ -365,3 +365,36 @@ UPDATE servers
 SET api_key = $2,
     updated_at = NOW()
 WHERE id = $1;
+
+-- ============================================
+-- Agent Configuration Queries
+-- ============================================
+
+-- name: CreateAgentConfig :one
+INSERT INTO agent_configs (server_id, mode, features, threshold, duration)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: GetAgentConfigByServerID :one
+SELECT * FROM agent_configs
+WHERE server_id = $1;
+
+-- name: UpdateAgentConfig :exec
+UPDATE agent_configs
+SET mode = $2,
+    features = $3,
+    threshold = $4,
+    duration = $5,
+    updated_at = NOW()
+WHERE server_id = $1;
+
+-- name: DeleteAgentConfig :exec
+DELETE FROM agent_configs
+WHERE server_id = $1;
+
+-- name: UpdateServerConfig :exec
+UPDATE servers
+SET config = $2,
+    updated_at = NOW()
+WHERE id = $1;
+
