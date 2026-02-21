@@ -144,14 +144,18 @@ func HandleGetSubscriptionStatus(queries *database.Queries) fiber.Handler {
 
 		// Check if user is in trial
 		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
+		log.Printf("[API] GET /subscription/status - Trial check: Valid=%v, EndsAt=%v, IsTrialing=%v", 
+			user.TrialEndsAt.Valid, user.TrialEndsAt.Time, isTrialing)
 
 		// Determine effective status
 		status := user.SubscriptionStatus.String
 		if status == "" {
 			status = "inactive"
 		}
+		log.Printf("[API] GET /subscription/status - Status from DB: %s", status)
 
 		// If user has no active subscription or trial, return "no_subscription" state
+		log.Printf("[API] GET /subscription/status - Check: status!=%s active=%v, !isTrialing=%v", status, status != "active", !isTrialing)
 		if status != "active" && !isTrialing {
 			return c.JSON(SubscriptionStatusResponse{
 				Plan:              "none",
