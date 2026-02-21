@@ -202,7 +202,8 @@ export function AgentConfigurator() {
       {config.mode !== 'monitor' && (
         <Card 
           title={<><SafetyOutlined /> Automatic Protection</>}
-          className="bg-blue-50"
+          className="bg-blue-50/50 border-blue-200"
+          styles={{ header: { background: '#eff6ff' } }}
         >
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -269,45 +270,46 @@ export function AgentConfigurator() {
       )}
 
       {/* Features List */}
-      <Card title={<><CodeOutlined /> Additional Features</>}>
+      <Card 
+        title={<><CodeOutlined /> Additional Features</>}
+        className="shadow-sm"
+        styles={{ header: { background: '#fafafa' } }}
+      >
         <div className="space-y-4">
           {features
             ?.filter((f: FeatureInfo) => f.available_in.includes(config.mode))
             .map((feature: FeatureInfo) => (
               <div
                 key={feature.key}
-                className="flex items-start justify-between p-3 rounded hover:bg-gray-50"
+                className="flex items-start justify-between p-4 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all"
               >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Text strong>{feature.name}</Text>
+                <div className="flex-1 pr-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Text strong className="text-base">{feature.name}</Text>
                     <Tooltip title={feature.details}>
-                      <InfoCircleOutlined className="text-gray-400" />
+                      <InfoCircleOutlined className="text-gray-400 hover:text-blue-500 cursor-help" />
                     </Tooltip>
                   </div>
-                  <Paragraph className="text-sm text-gray-600 mb-1">
+                  <Paragraph className="text-sm text-gray-600 mb-2">
                     {feature.description}
                   </Paragraph>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {feature.benefits.slice(0, 2).map((benefit, idx) => (
-                      <Tag key={idx} color="green" className="text-xs">
+                      <Tag key={idx} color="success" className="text-xs rounded-full">
                         {benefit}
                       </Tag>
                     ))}
+                    {feature.risks?.slice(0, 1).map((risk, idx) => (
+                      <Tag key={idx} color="warning" className="text-xs rounded-full">
+                        <WarningOutlined /> {risk}
+                      </Tag>
+                    ))}
                   </div>
-                  {feature.risks && (
-                    <div className="mt-2">
-                      {feature.risks.map((risk, idx) => (
-                        <Tag key={idx} color="orange" className="text-xs">
-                          <WarningOutlined /> {risk}
-                        </Tag>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 <Switch
                   checked={config.features[feature.key] ?? feature.default_value}
                   onChange={(checked) => handleFeatureToggle(feature.key, checked)}
+                  className="mt-1"
                 />
               </div>
             ))}
@@ -489,21 +491,37 @@ export function AgentConfigurator() {
       <div className="mb-8">{steps[currentStep].content}</div>
 
       {currentStep < 3 && currentStep > 0 && (
-        <div className="flex justify-between">
-          <Button onClick={() => setCurrentStep(currentStep - 1)}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
+          <Button 
+            size="large"
+            onClick={() => setCurrentStep(currentStep - 1)}
+            className="px-6"
+          >
             Back
           </Button>
           {currentStep === 2 ? (
             <Button
               type="primary"
+              size="large"
               loading={createServerMutation.isPending}
               onClick={handleGenerate}
               icon={<DownloadOutlined />}
+              className="px-8 h-12 text-base font-medium"
+              style={{ 
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                border: 'none',
+                boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)'
+              }}
             >
               Generate API Key & Command
             </Button>
           ) : (
-            <Button type="primary" onClick={() => setCurrentStep(currentStep + 1)}>
+            <Button 
+              type="primary" 
+              size="large"
+              onClick={() => setCurrentStep(currentStep + 1)}
+              className="px-6"
+            >
               Continue
             </Button>
           )}
