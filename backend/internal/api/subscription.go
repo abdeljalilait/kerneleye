@@ -692,15 +692,52 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 				CustomerID string            `json:"customer_id"`
 				Metadata   map[string]string `json:"metadata"`
 				Status     string            `json:"status"`
+				ProductID  string            `json:"product_id"`
+				SubscriptionID string        `json:"subscription_id"`
 			}
 			if err := json.Unmarshal(event.Data, &orderData); err != nil {
 				log.Printf("[Polar] Failed to parse order: %v", err)
 			} else {
-				log.Printf("[Polar] Order paid: %s, Customer: %s, Metadata: %+v", orderData.ID, orderData.CustomerID, orderData.Metadata)
+				log.Printf("[Polar] Order paid: %s, Customer: %s, Subscription: %s, Metadata: %+v", 
+					orderData.ID, orderData.CustomerID, orderData.SubscriptionID, orderData.Metadata)
 				polarEventID = orderData.ID
-				if uid, ok := orderData.Metadata["user_id"]; ok {
+				
+				// Get user_id from metadata
+				if uid, ok := orderData.Metadata["user_id"]; ok && uid != "" {
 					userID = uid
 					log.Printf("[Polar] Found user_id in order metadata: %s", userID)
+					
+					// Also update the user's subscription status from order.paid as a fallback
+					// The subscription webhook should handle this, but order.paid is a good backup
+					planName := "starter"
+					if p, ok := orderData.Metadata["plan"]; ok && p != "" {
+						planName = p
+					}
+					
+					// Try to find plan by product ID if not in metadata
+					if planName == "starter" && orderData.ProductID != "" {
+						if plan, err := queries.GetPlanByPolarProductID(c.Context(), database.ToPgText(orderData.ProductID)); err == nil {
+							planName = plan.Name
+						}
+					}
+					
+					log.Printf("[Polar] Order.paid updating user %s to plan %s", userID, planName)
+					
+					// Update user to active status (payment confirmed)
+					params := database.UpdateUserSubscriptionParams{
+						ID:                 database.ToPgUUID(userID),
+						Plan:               planName,
+						PolarSubscriptionID: database.ToPgText(orderData.SubscriptionID),
+						SubscriptionStatus: database.ToPgText("active"),
+					}
+					
+					if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
+						log.Printf("[Polar] Order.paid update ERROR: %v", err)
+					} else {
+						log.Printf("[Polar] Order.paid successfully updated user %s to active", userID)
+					}
+				} else {
+					log.Printf("[Polar] WARNING: No user_id in order metadata")
 				}
 			}
 
