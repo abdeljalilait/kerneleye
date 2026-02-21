@@ -34,7 +34,6 @@ import {
   WarningOutlined,
   ArrowRightOutlined,
   ArrowLeftOutlined,
-  DatabaseOutlined,
   SettingOutlined,
   RocketOutlined,
   KeyOutlined,
