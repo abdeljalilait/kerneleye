@@ -569,14 +569,20 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 
 		switch event.Type {
 		case "subscription.created", "subscription.updated", "subscription.active", "subscription.trialing":
+			log.Printf("[Polar] Processing subscription event: %s", event.Type)
 			var sub PolarSubscription
 			if err := json.Unmarshal(event.Data, &sub); err != nil {
 				log.Printf("[Polar] Failed to parse subscription: %v", err)
 				return fiber.NewError(fiber.StatusBadRequest, "Invalid subscription data")
 			}
 			polarEventID = sub.ID
+			log.Printf("[Polar] Subscription ID: %s, Status: %s", sub.ID, sub.Status)
+			log.Printf("[Polar] Metadata: %+v", sub.Metadata)
 			if uid, ok := sub.Metadata["user_id"]; ok {
 				userID = uid
+				log.Printf("[Polar] Found user_id in metadata: %s", userID)
+			} else {
+				log.Printf("[Polar] WARNING: No user_id found in subscription metadata")
 			}
 
 			// Update user's subscription (legacy handling)
@@ -642,6 +648,14 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 					log.Printf("[Polar] Failed to uncancel user subscription: %v", err)
 				}
 			}
+
+		case "checkout.created":
+			// Checkout created - no action needed, just log
+			log.Printf("[Polar] Checkout created event received")
+
+		case "checkout.completed":
+			// Checkout completed - subscription should be created shortly after
+			log.Printf("[Polar] Checkout completed event received")
 
 		default:
 			log.Printf("[Polar] Unhandled event type: %s", event.Type)
