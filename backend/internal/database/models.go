@@ -10,6 +10,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AgentConfig struct {
+	ID        pgtype.UUID        `json:"id"`
+	ServerID  pgtype.UUID        `json:"server_id"`
+	Mode      string             `json:"mode"`
+	Features  []byte             `json:"features"`
+	Threshold int32              `json:"threshold"`
+	Duration  string             `json:"duration"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Threat alerts triggered by scoring system
 type Alert struct {
 	ID             pgtype.UUID        `json:"id"`
@@ -144,6 +155,7 @@ type Server struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	ClientToken  pgtype.Text        `json:"client_token"`
+	Config       []byte             `json:"config"`
 }
 
 // Webhook events from Polar for audit trail

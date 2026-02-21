@@ -24,6 +24,46 @@ func (q *Queries) CountServersByUser(ctx context.Context, userID pgtype.UUID) (i
 	return column_1, err
 }
 
+const createAgentConfig = `-- name: CreateAgentConfig :one
+
+INSERT INTO agent_configs (server_id, mode, features, threshold, duration)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, server_id, mode, features, threshold, duration, created_at, updated_at
+`
+
+type CreateAgentConfigParams struct {
+	ServerID  pgtype.UUID `json:"server_id"`
+	Mode      string      `json:"mode"`
+	Features  []byte      `json:"features"`
+	Threshold int32       `json:"threshold"`
+	Duration  string      `json:"duration"`
+}
+
+// ============================================
+// Agent Configuration Queries
+// ============================================
+func (q *Queries) CreateAgentConfig(ctx context.Context, arg CreateAgentConfigParams) (AgentConfig, error) {
+	row := q.db.QueryRow(ctx, createAgentConfig,
+		arg.ServerID,
+		arg.Mode,
+		arg.Features,
+		arg.Threshold,
+		arg.Duration,
+	)
+	var i AgentConfig
+	err := row.Scan(
+		&i.ID,
+		&i.ServerID,
+		&i.Mode,
+		&i.Features,
+		&i.Threshold,
+		&i.Duration,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createAlert = `-- name: CreateAlert :one
 INSERT INTO alerts (server_id, source_ip, threat_score, reason, severity, status)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -69,7 +109,7 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 const createServer = `-- name: CreateServer :one
 INSERT INTO servers (user_id, hostname, api_key, last_seen)
 VALUES ($1, $2, $3, NOW())
-RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token
+RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config
 `
 
 type CreateServerParams struct {
@@ -94,6 +134,7 @@ func (q *Queries) CreateServer(ctx context.Context, arg CreateServerParams) (Ser
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
@@ -101,7 +142,7 @@ func (q *Queries) CreateServer(ctx context.Context, arg CreateServerParams) (Ser
 const createServerPending = `-- name: CreateServerPending :one
 INSERT INTO servers (user_id, hostname, client_token, status, last_seen)
 VALUES ($1, $2, $3, 'pending', NOW())
-RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token
+RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config
 `
 
 type CreateServerPendingParams struct {
@@ -126,6 +167,7 @@ func (q *Queries) CreateServerPending(ctx context.Context, arg CreateServerPendi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
@@ -133,7 +175,7 @@ func (q *Queries) CreateServerPending(ctx context.Context, arg CreateServerPendi
 const createServerWithAPIKey = `-- name: CreateServerWithAPIKey :one
 INSERT INTO servers (user_id, hostname, api_key, client_token, ip_address, status, last_seen)
 VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
-RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token
+RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config
 `
 
 type CreateServerWithAPIKeyParams struct {
@@ -166,6 +208,7 @@ func (q *Queries) CreateServerWithAPIKey(ctx context.Context, arg CreateServerWi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
@@ -243,6 +286,16 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteAgentConfig = `-- name: DeleteAgentConfig :exec
+DELETE FROM agent_configs
+WHERE server_id = $1
+`
+
+func (q *Queries) DeleteAgentConfig(ctx context.Context, serverID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAgentConfig, serverID)
+	return err
+}
+
 const deleteServer = `-- name: DeleteServer :exec
 DELETE FROM servers
 WHERE id = $1
@@ -251,6 +304,27 @@ WHERE id = $1
 func (q *Queries) DeleteServer(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteServer, id)
 	return err
+}
+
+const getAgentConfigByServerID = `-- name: GetAgentConfigByServerID :one
+SELECT id, server_id, mode, features, threshold, duration, created_at, updated_at FROM agent_configs
+WHERE server_id = $1
+`
+
+func (q *Queries) GetAgentConfigByServerID(ctx context.Context, serverID pgtype.UUID) (AgentConfig, error) {
+	row := q.db.QueryRow(ctx, getAgentConfigByServerID, serverID)
+	var i AgentConfig
+	err := row.Scan(
+		&i.ID,
+		&i.ServerID,
+		&i.Mode,
+		&i.Features,
+		&i.Threshold,
+		&i.Duration,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getAttackTypeBreakdown = `-- name: GetAttackTypeBreakdown :many
@@ -486,7 +560,7 @@ func (q *Queries) GetPlanByPolarProductID(ctx context.Context, polarProductID pg
 }
 
 const getServerByAPIKey = `-- name: GetServerByAPIKey :one
-SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token FROM servers
+SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config FROM servers
 WHERE api_key = $1
 `
 
@@ -506,12 +580,13 @@ func (q *Queries) GetServerByAPIKey(ctx context.Context, apiKey pgtype.Text) (Se
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
 
 const getServerByClientToken = `-- name: GetServerByClientToken :one
-SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token FROM servers
+SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config FROM servers
 WHERE client_token = $1
 `
 
@@ -531,12 +606,13 @@ func (q *Queries) GetServerByClientToken(ctx context.Context, clientToken pgtype
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
 
 const getServerByID = `-- name: GetServerByID :one
-SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token FROM servers
+SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config FROM servers
 WHERE id = $1
 `
 
@@ -556,12 +632,13 @@ func (q *Queries) GetServerByID(ctx context.Context, id pgtype.UUID) (Server, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
 
 const getServerByUserAndIP = `-- name: GetServerByUserAndIP :one
-SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token FROM servers
+SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config FROM servers
 WHERE user_id = $1 AND ip_address = $2
 `
 
@@ -586,6 +663,7 @@ func (q *Queries) GetServerByUserAndIP(ctx context.Context, arg GetServerByUserA
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
@@ -1202,7 +1280,7 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 }
 
 const listServersByUser = `-- name: ListServersByUser :many
-SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token FROM servers
+SELECT id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config FROM servers
 WHERE user_id = $1
 ORDER BY created_at DESC
 `
@@ -1229,6 +1307,7 @@ func (q *Queries) ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClientToken,
+			&i.Config,
 		); err != nil {
 			return nil, err
 		}
@@ -1354,6 +1433,35 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 	return items, nil
 }
 
+const updateAgentConfig = `-- name: UpdateAgentConfig :exec
+UPDATE agent_configs
+SET mode = $2,
+    features = $3,
+    threshold = $4,
+    duration = $5,
+    updated_at = NOW()
+WHERE server_id = $1
+`
+
+type UpdateAgentConfigParams struct {
+	ServerID  pgtype.UUID `json:"server_id"`
+	Mode      string      `json:"mode"`
+	Features  []byte      `json:"features"`
+	Threshold int32       `json:"threshold"`
+	Duration  string      `json:"duration"`
+}
+
+func (q *Queries) UpdateAgentConfig(ctx context.Context, arg UpdateAgentConfigParams) error {
+	_, err := q.db.Exec(ctx, updateAgentConfig,
+		arg.ServerID,
+		arg.Mode,
+		arg.Features,
+		arg.Threshold,
+		arg.Duration,
+	)
+	return err
+}
+
 const updateServerAPIKey = `-- name: UpdateServerAPIKey :exec
 UPDATE servers
 SET api_key = $2,
@@ -1371,6 +1479,23 @@ func (q *Queries) UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKey
 	return err
 }
 
+const updateServerConfig = `-- name: UpdateServerConfig :exec
+UPDATE servers
+SET config = $2,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateServerConfigParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Config []byte      `json:"config"`
+}
+
+func (q *Queries) UpdateServerConfig(ctx context.Context, arg UpdateServerConfigParams) error {
+	_, err := q.db.Exec(ctx, updateServerConfig, arg.ID, arg.Config)
+	return err
+}
+
 const updateServerForReenrollment = `-- name: UpdateServerForReenrollment :one
 UPDATE servers
 SET api_key = $2,
@@ -1379,7 +1504,7 @@ SET api_key = $2,
     status = 'active',
     last_seen = NOW()
 WHERE id = $1
-RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token
+RETURNING id, user_id, hostname, ip_address, api_key, status, last_seen, agent_version, metadata, created_at, updated_at, client_token, config
 `
 
 type UpdateServerForReenrollmentParams struct {
@@ -1410,6 +1535,7 @@ func (q *Queries) UpdateServerForReenrollment(ctx context.Context, arg UpdateSer
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClientToken,
+		&i.Config,
 	)
 	return i, err
 }
