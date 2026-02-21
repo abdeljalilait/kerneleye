@@ -34,7 +34,7 @@ import {
   WarningOutlined,
   ArrowRightOutlined,
   ArrowLeftOutlined,
-  ServerOutlined,
+  DatabaseOutlined,
   SettingOutlined,
   RocketOutlined,
   KeyOutlined,
@@ -42,6 +42,7 @@ import {
   ClockCircleOutlined,
   GlobalOutlined,
   DashboardOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons';
 import { useDeploymentModes, useAgentFeatures, useCreateServerWithConfig } from '../hooks/useQueries';
 
@@ -145,7 +146,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
 
   // Step icons
   const stepIcons = [
-    <ServerOutlined key="server" />,
+    <CloudServerOutlined key="server" />,
     <SafetyOutlined key="safety" />,
     <SettingOutlined key="settings" />,
     <KeyOutlined key="key" />,
@@ -582,7 +583,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     <div className="max-w-md mx-auto py-8">
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-          <ServerOutlined className="text-3xl text-blue-500" />
+          <CloudServerOutlined className="text-3xl text-blue-500" />
         </div>
         <Title level={3} className="mb-2">Name Your Server</Title>
         <Paragraph className="text-gray-500">
@@ -599,7 +600,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
               placeholder="e.g., production-web-01, database-primary"
               value={serverName}
               onChange={(e) => setServerName(e.target.value)}
-              prefix={<ServerOutlined className="text-gray-400" />}
+              prefix={<CloudServerOutlined className="text-gray-400" />}
               className="rounded-lg"
             />
           </div>
