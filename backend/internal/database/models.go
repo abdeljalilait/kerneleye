@@ -39,6 +39,46 @@ type AuditLog struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+// IP blocks reported by agents with threat details and GeoIP
+type Block struct {
+	ID          pgtype.UUID `json:"id"`
+	ServerID    pgtype.UUID `json:"server_id"`
+	UserID      pgtype.UUID `json:"user_id"`
+	IpAddress   netip.Addr  `json:"ip_address"`
+	IpVersion   pgtype.Int4 `json:"ip_version"`
+	ThreatScore int32       `json:"threat_score"`
+	ThreatLevel string      `json:"threat_level"`
+	Reasons     []string    `json:"reasons"`
+	TargetPort  pgtype.Int4 `json:"target_port"`
+	// Detected service based on target port (ssh, http, https, etc.)
+	ServiceName pgtype.Text   `json:"service_name"`
+	Protocol    pgtype.Text   `json:"protocol"`
+	CountryCode pgtype.Text   `json:"country_code"`
+	CountryName pgtype.Text   `json:"country_name"`
+	City        pgtype.Text   `json:"city"`
+	Region      pgtype.Text   `json:"region"`
+	Latitude    pgtype.Float8 `json:"latitude"`
+	Longitude   pgtype.Float8 `json:"longitude"`
+	Asn         pgtype.Int4   `json:"asn"`
+	AsnOrg      pgtype.Text   `json:"asn_org"`
+	IsVpn       pgtype.Bool   `json:"is_vpn"`
+	IsTor       pgtype.Bool   `json:"is_tor"`
+	// TRUE if IP is from known cloud provider (AWS, GCP, etc.)
+	IsDatacenter    pgtype.Bool        `json:"is_datacenter"`
+	BlockedAt       pgtype.Timestamptz `json:"blocked_at"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	DurationSeconds int32              `json:"duration_seconds"`
+	IsActive        pgtype.Bool        `json:"is_active"`
+	IsAutoBlocked   pgtype.Bool        `json:"is_auto_blocked"`
+	UnblockedAt     pgtype.Timestamptz `json:"unblocked_at"`
+	UnblockedBy     pgtype.UUID        `json:"unblocked_by"`
+	UnblockReason   pgtype.Text        `json:"unblock_reason"`
+	AgentVersion    pgtype.Text        `json:"agent_version"`
+	RawMetrics      []byte             `json:"raw_metrics"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 // IPs to block or allow (Phase 2)
 type BlockList struct {
 	ID        pgtype.UUID        `json:"id"`
@@ -50,6 +90,22 @@ type BlockList struct {
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	CreatedBy pgtype.UUID        `json:"created_by"`
+}
+
+type BlockStatsDaily struct {
+	UserID          pgtype.UUID `json:"user_id"`
+	ServerID        pgtype.UUID `json:"server_id"`
+	Date            pgtype.Date `json:"date"`
+	TotalBlocks     int64       `json:"total_blocks"`
+	ActiveBlocks    int64       `json:"active_blocks"`
+	CriticalBlocks  int64       `json:"critical_blocks"`
+	UniqueIps       int64       `json:"unique_ips"`
+	UniqueCountries int64       `json:"unique_countries"`
+	SshAttacks      int64       `json:"ssh_attacks"`
+	HttpAttacks     int64       `json:"http_attacks"`
+	HttpsAttacks    int64       `json:"https_attacks"`
+	AvgScore        float64     `json:"avg_score"`
+	MaxScore        interface{} `json:"max_score"`
 }
 
 // Daily aggregated statistics per IP address

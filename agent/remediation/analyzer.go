@@ -29,10 +29,10 @@ func DefaultAnalyzerConfig() AnalyzerConfig {
 }
 
 type ipState struct {
-	ip          string
-	syns        []time.Time // Fixed-size ring buffer
-	synIdx      int         // Next insertion index
-	synLen      int         // Current number of items (up to cap)
+	ip     string
+	syns   []time.Time // Fixed-size ring buffer
+	synIdx int         // Next insertion index
+	synLen int         // Current number of items (up to cap)
 
 	ports map[uint16]time.Time
 
@@ -44,7 +44,7 @@ type ipState struct {
 }
 
 // getLastActivity returns the most recent timestamp from syns or ports
-func (s *ipState) getLastActivity(now time.Time) time.Time {
+func (s *ipState) getLastActivity(_ time.Time) time.Time {
 	latest := time.Time{}
 
 	// Check SYN entries

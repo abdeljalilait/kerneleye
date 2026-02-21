@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearch } from '@tanstack/react-router';
-import { Card, Button, Typography, Tag, Spin, Alert, Divider, Row, Col, Statistic, Grid, Space, Modal } from 'antd';
+import { Card, Button, Typography, Tag, Spin, Alert, Divider, Row, Col, Statistic, Grid, Space } from 'antd';
 import { Check, ArrowLeft, CreditCard, ExternalLink, Crown, Server, Database, Sparkles } from 'lucide-react';
 import { useSubscriptionPlans, useSubscriptionStatus, useCreateCheckout, useCreateCustomerPortal } from '../hooks/useQueries';
 

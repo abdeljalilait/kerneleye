@@ -1,0 +1,15 @@
+[Unit]
+Description=KernelEye IPSet Firewall Persistence
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/kerneleye-ipset restore
+ExecStop=/usr/local/bin/kerneleye-ipset save
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

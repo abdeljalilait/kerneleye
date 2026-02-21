@@ -11,15 +11,29 @@ import (
 )
 
 type Querier interface {
+	CleanupExpiredBlocks(ctx context.Context) error
+	CountActiveBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
+	CountBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
+	CountBlocksToday(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountServersByUser(ctx context.Context, userID pgtype.UUID) (int32, error)
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
+	// Blocks queries for the dashboard and API
+	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
 	CreateServer(ctx context.Context, arg CreateServerParams) (Server, error)
 	CreateServerPending(ctx context.Context, arg CreateServerPendingParams) (Server, error)
 	CreateServerWithAPIKey(ctx context.Context, arg CreateServerWithAPIKeyParams) (Server, error)
 	CreateSubscriptionEvent(ctx context.Context, arg CreateSubscriptionEventParams) (SubscriptionEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteServer(ctx context.Context, id pgtype.UUID) error
+	GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIPParams) (Block, error)
 	GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeBreakdownParams) ([]GetAttackTypeBreakdownRow, error)
+	GetBlockByID(ctx context.Context, arg GetBlockByIDParams) (GetBlockByIDRow, error)
+	GetBlockRemainingTime(ctx context.Context, arg GetBlockRemainingTimeParams) (int64, error)
+	GetBlockStatsByCountry(ctx context.Context, userID pgtype.UUID) ([]GetBlockStatsByCountryRow, error)
+	GetBlockStatsByServer(ctx context.Context, userID pgtype.UUID) ([]GetBlockStatsByServerRow, error)
+	// Statistics queries
+	GetBlockStatsByService(ctx context.Context, userID pgtype.UUID) ([]GetBlockStatsByServiceRow, error)
+	GetBlockStatsByThreatLevel(ctx context.Context, userID pgtype.UUID) ([]GetBlockStatsByThreatLevelRow, error)
 	// ============================================
 	// Reports & Analytics Queries
 	// ============================================
@@ -27,6 +41,7 @@ type Querier interface {
 	GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error)
 	GetPlanByName(ctx context.Context, name string) (SubscriptionPlan, error)
 	GetPlanByPolarProductID(ctx context.Context, polarProductID pgtype.Text) (SubscriptionPlan, error)
+	GetRecentBlocks(ctx context.Context, arg GetRecentBlocksParams) ([]GetRecentBlocksRow, error)
 	GetServerByAPIKey(ctx context.Context, apiKey pgtype.Text) (Server, error)
 	GetServerByClientToken(ctx context.Context, clientToken pgtype.Text) (Server, error)
 	GetServerByID(ctx context.Context, id pgtype.UUID) (Server, error)
@@ -43,13 +58,17 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error)
+	IsIPBlocked(ctx context.Context, arg IsIPBlockedParams) (bool, error)
 	ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
+	ListBlocks(ctx context.Context, arg ListBlocksParams) ([]ListBlocksRow, error)
 	ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]Server, error)
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
+	UnblockIP(ctx context.Context, arg UnblockIPParams) error
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
+	UpdateServerMetadata(ctx context.Context, arg UpdateServerMetadataParams) error
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
 	UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error

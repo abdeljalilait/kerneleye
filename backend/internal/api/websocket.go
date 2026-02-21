@@ -40,6 +40,9 @@ type Hub struct {
 	// Registered clients map[userID]map[conn]bool
 	clients map[string]map[*websocket.Conn]bool
 
+	// Agent command channels map[clientID]chan
+	agentChannels map[string]chan map[string]interface{}
+
 	// Inbound messages from the clients.
 	broadcast chan BroadcastMessage
 
@@ -55,10 +58,11 @@ type Hub struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan BroadcastMessage),
-		register:   make(chan Client),
-		unregister: make(chan Client),
-		clients:    make(map[string]map[*websocket.Conn]bool),
+		broadcast:     make(chan BroadcastMessage),
+		register:      make(chan Client),
+		unregister:    make(chan Client),
+		clients:       make(map[string]map[*websocket.Conn]bool),
+		agentChannels: make(map[string]chan map[string]interface{}),
 	}
 }
 
@@ -162,4 +166,43 @@ func WebSocketHandler(hub *Hub) func(c *fiber.Ctx) error {
 			}
 		}
 	})
+}
+
+// BroadcastToUser sends a message to all connections for a user
+func (h *Hub) BroadcastToUser(userID string, eventType string, data interface{}) {
+	h.broadcast <- BroadcastMessage{
+		UserID: userID,
+		Message: WSMessage{
+			Type:      EventType(eventType),
+			Timestamp: time.Now(),
+			Data:      data,
+		},
+	}
+}
+
+// RegisterAgent registers an agent command channel
+func (h *Hub) RegisterAgent(clientID string, cmdChan chan map[string]interface{}) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.agentChannels[clientID] = cmdChan
+}
+
+// UnregisterAgent removes an agent command channel
+func (h *Hub) UnregisterAgent(clientID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.agentChannels, clientID)
+}
+
+// SendCommandToAgent sends a command to a specific agent
+func (h *Hub) SendCommandToAgent(clientID string, cmd map[string]interface{}) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if ch, ok := h.agentChannels[clientID]; ok {
+		select {
+		case ch <- cmd:
+		default:
+			log.Printf("Agent %s command channel full", clientID)
+		}
+	}
 }

@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package kerneleye.v1;
+
+option go_package = "github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1";
+
+import "google/protobuf/timestamp.proto";
+
+// BlockService handles IP blocking reports from agents
+service BlockService {
+  // ReportBlock - Agent reports a blocked IP to backend
+  rpc ReportBlock(BlockReportRequest) returns (BlockReportResponse);
+  
+  // GetBlockStatus - Agent checks if an IP should be blocked (sync with backend)
+  rpc GetBlockStatus(BlockStatusRequest) returns (BlockStatusResponse);
+  
+  // StreamBlockCommands - Backend streams block/unblock commands to agents
+  rpc StreamBlockCommands(StreamBlockRequest) returns (stream BlockCommand);
+}
+
+// BlockReportRequest - Agent sends when it blocks an IP
+message BlockReportRequest {
+  string api_key = 1;           // Server API key for auth
+  string client_token = 2;      // Agent client token
+  
+  // IP Details
+  string ip_address = 3;
+  int32 ip_version = 4;         // 4 or 6
+  
+  // Threat Information
+  int32 threat_score = 5;
+  string threat_level = 6;      // normal, suspicious, malicious, critical
+  repeated string reasons = 7;  // Human-readable reasons
+  
+  // Service Targeted
+  int32 target_port = 8;
+  string service_name = 9;      // ssh, http, https, mysql, etc.
+  string protocol = 10;         // tcp, udp, icmp
+  
+  // GeoIP Information (if available)
+  GeoLocation geo = 11;
+  
+  // Timing
+  int64 duration_seconds = 12;  // How long to block
+  google.protobuf.Timestamp blocked_at = 13;
+  
+  // Raw Metrics (for debugging/analysis)
+  RawMetrics metrics = 14;
+  
+  // Agent Info
+  string agent_version = 15;
+}
+
+message GeoLocation {
+  string country_code = 1;
+  string country_name = 2;
+  string city = 3;
+  string region = 4;
+  double latitude = 5;
+  double longitude = 6;
+  int32 asn = 7;
+  string asn_org = 8;
+  bool is_vpn = 9;
+  bool is_tor = 10;
+  bool is_datacenter = 11;
+}
+
+message RawMetrics {
+  int32 syn_count = 1;
+  int32 ack_count = 2;
+  int32 rst_count = 3;
+  int32 failed_handshakes = 4;
+  int32 unique_ports = 5;
+  int64 bytes_in = 6;
+  int64 bytes_out = 7;
+  float confidence = 8;
+}
+
+message BlockReportResponse {
+  bool success = 1;
+  string block_id = 2;          // UUID of recorded block
+  string message = 3;
+}
+
+// BlockStatusRequest - Agent checks if IP should be blocked
+message BlockStatusRequest {
+  string api_key = 1;
+  string ip_address = 2;
+}
+
+message BlockStatusResponse {
+  bool should_block = 1;
+  string reason = 2;
+  int64 remaining_seconds = 3;  // If already blocked
+}
+
+// StreamBlockRequest - Agent subscribes to block commands
+message StreamBlockRequest {
+  string api_key = 1;
+  string client_token = 2;
+}
+
+// BlockCommand - Backend sends command to agent
+message BlockCommand {
+  enum Action {
+    BLOCK = 0;
+    UNBLOCK = 1;
+    RATE_LIMIT = 2;
+  }
+  
+  Action action = 1;
+  string ip_address = 2;
+  int64 duration_seconds = 3;
+  string reason = 4;
+  string block_id = 5;
+  google.protobuf.Timestamp issued_at = 6;
+}

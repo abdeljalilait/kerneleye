@@ -66,6 +66,16 @@ func ToNetAddr(s string) (netip.Addr, error) {
 	return netip.ParseAddr(s)
 }
 
+func ToInet(s string) netip.Addr {
+	addr, _ := netip.ParseAddr(s)
+	return addr
+}
+
+func ToPgJSON(v interface{}) pgtype.Text {
+	// Simplified - just return empty for now
+	return pgtype.Text{Valid: false}
+}
+
 func GenerateUUID() string {
 	return uuid.New().String()
 }

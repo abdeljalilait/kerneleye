@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/cilium/ebpf v0.12.3
+	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sys v0.39.0
@@ -15,7 +16,6 @@ require (
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
