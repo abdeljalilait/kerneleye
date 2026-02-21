@@ -17,6 +17,9 @@ type AgentConfig struct {
 	EnableXDP         bool
 	InterfaceName     string
 	LogFile           string // Path to log file (empty = stdout only)
+	Daemon            bool   // Run as daemon
+	StopDaemon        bool   // Stop running daemon
+	PIDFile           string // PID file path for daemon mode
 }
 
 // DefaultEnvFile is the path to the environment file
@@ -38,6 +41,9 @@ func parseConfig() AgentConfig {
 	enableXDP := flag.Bool("xdp", false, "Enable XDP fast-path blocking (requires root, kernel 5.4+)")
 	interfaceName := flag.String("interface", "", "Network interface for XDP attachment (e.g., eth0)")
 	logFile := flag.String("log", os.Getenv("KERNELEYE_LOG_FILE"), "Log file path (default: stdout)")
+	daemon := flag.Bool("daemon", false, "Run as background daemon")
+	stopDaemon := flag.Bool("stop", false, "Stop the running daemon")
+	pidFile := flag.String("pidfile", "/var/run/kerneleye-agent.pid", "PID file location")
 	flag.Parse()
 
 	cfg := AgentConfig{
@@ -48,6 +54,9 @@ func parseConfig() AgentConfig {
 		EnableXDP:         *enableXDP,
 		InterfaceName:     *interfaceName,
 		LogFile:           *logFile,
+		Daemon:            *daemon,
+		StopDaemon:        *stopDaemon,
+		PIDFile:           *pidFile,
 	}
 
 	if *apiKeyFlag != "" {

@@ -47,26 +47,60 @@ func main() {
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	cfg := parseConfig()
-	
-	// Setup logging to file if specified
-	if cfg.LogFile != "" {
-		// Ensure log directory exists
-		logDir := filepath.Dir(cfg.LogFile)
-		if logDir != "" && logDir != "." {
-			if err := os.MkdirAll(logDir, 0755); err != nil {
-				log.Printf("⚠️  Failed to create log directory %s: %v", logDir, err)
-			}
+
+	// Handle daemon stop request
+	if cfg.StopDaemon {
+		if err := CheckAndStopDaemon(cfg.PIDFile); err != nil {
+			log.Fatalf("Failed to stop daemon: %v", err)
 		}
-		
-		logFile, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		log.Println("Daemon stopped")
+		os.Exit(0)
+	}
+
+	// When daemon mode is requested without explicit log file, use default
+	if cfg.Daemon && cfg.LogFile == "" {
+		cfg.LogFile = DefaultLogFile
+	}
+
+	// Daemonize if requested (must happen before any resource setup)
+	if cfg.Daemon {
+		isChild, err := Daemonize(cfg.LogFile)
 		if err != nil {
-			log.Printf("⚠️  Failed to open log file %s: %v. Using stdout.", cfg.LogFile, err)
-		} else {
-			// Write to both stdout and file
-			log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+			log.Fatalf("Failed to daemonize: %v", err)
 		}
+		if !isChild {
+			// Parent exits cleanly
+			fmt.Printf("Daemon started (PID file: %s, log: %s)\n", cfg.PIDFile, cfg.LogFile)
+			os.Exit(0)
+		}
+		// Child process continues as daemon
+		if err := WritePIDFile(cfg.PIDFile); err != nil {
+			log.Fatalf("Failed to write PID file: %v", err)
+		}
+		defer RemovePIDFile(cfg.PIDFile)
+		// Log output is already redirected by Daemonize(), setup log package
+		log.SetOutput(os.Stdout) // This will go to the redirected file
 	} else {
-		log.SetOutput(os.Stdout)
+		// Non-daemon mode: setup logging to file if specified
+		if cfg.LogFile != "" {
+			// Ensure log directory exists
+			logDir := filepath.Dir(cfg.LogFile)
+			if logDir != "" && logDir != "." {
+				if err := os.MkdirAll(logDir, 0755); err != nil {
+					log.Printf("⚠️  Failed to create log directory %s: %v", logDir, err)
+				}
+			}
+			
+			logFile, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Printf("⚠️  Failed to open log file %s: %v. Using stdout.", cfg.LogFile, err)
+			} else {
+				// Write to both stdout and file
+				log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+			}
+		} else {
+			log.SetOutput(os.Stdout)
+		}
 	}
 	if cfg.APIKey == "" {
 		log.Fatal("KERNELEYE_API_KEY is required.")
