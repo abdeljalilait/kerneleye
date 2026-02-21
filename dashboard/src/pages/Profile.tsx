@@ -28,7 +28,6 @@ import {
   Sun,
   Monitor,
   Bell,
-  Key,
   Trash2,
   Save,
   Palette,
@@ -48,7 +47,6 @@ export default function Profile() {
   const { data: subscription, isLoading: subLoading } = useSubscriptionStatus();
   
   const [profileForm] = Form.useForm();
-  const [passwordForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
@@ -66,15 +64,6 @@ export default function Profile() {
     }, 1000);
   };
 
-  const handleChangePassword = async (values: any) => {
-    setSaving(true);
-    // TODO: Implement password change API
-    setTimeout(() => {
-      message.success('Password changed successfully');
-      passwordForm.resetFields();
-      setSaving(false);
-    }, 1000);
-  };
 
   const getInitials = (email: string) => {
     return email?.split('@')[0]?.slice(0, 2).toUpperCase() || 'U';
@@ -316,92 +305,7 @@ export default function Profile() {
                         </Form.Item>
                       </Form>
 
-                      <Divider style={{ borderColor: 'var(--border-subtle)', margin: '32px 0' }} />
 
-                      <Title level={5} style={{ color: 'var(--text-primary)', marginBottom: 24 }}>
-                        Change Password
-                      </Title>
-
-                      <Form
-                        form={passwordForm}
-                        layout="vertical"
-                        onFinish={handleChangePassword}
-                      >
-                        <Form.Item
-                          label={<Text style={{ color: 'var(--text-secondary)' }}>Current Password</Text>}
-                          name="currentPassword"
-                          rules={[{ required: true, message: 'Please enter current password' }]}
-                        >
-                          <Input.Password
-                            placeholder="Enter current password"
-                            size="large"
-                            style={{
-                              background: 'var(--bg-tertiary)',
-                              borderColor: 'var(--border-subtle)',
-                              color: 'var(--text-primary)',
-                            }}
-                          />
-                        </Form.Item>
-
-                        <Row gutter={16}>
-                          <Col span={12}>
-                            <Form.Item
-                              label={<Text style={{ color: 'var(--text-secondary)' }}>New Password</Text>}
-                              name="newPassword"
-                              rules={[{ required: true, message: 'Please enter new password' }]}
-                            >
-                              <Input.Password
-                                placeholder="Enter new password"
-                                size="large"
-                                style={{
-                                  background: 'var(--bg-tertiary)',
-                                  borderColor: 'var(--border-subtle)',
-                                  color: 'var(--text-primary)',
-                                }}
-                              />
-                            </Form.Item>
-                          </Col>
-                          <Col span={12}>
-                            <Form.Item
-                              label={<Text style={{ color: 'var(--text-secondary)' }}>Confirm Password</Text>}
-                              name="confirmPassword"
-                              rules={[
-                                { required: true, message: 'Please confirm password' },
-                                ({ getFieldValue }) => ({
-                                  validator(_, value) {
-                                    if (!value || getFieldValue('newPassword') === value) {
-                                      return Promise.resolve();
-                                    }
-                                    return Promise.reject(new Error('Passwords do not match'));
-                                  },
-                                }),
-                              ]}
-                            >
-                              <Input.Password
-                                placeholder="Confirm new password"
-                                size="large"
-                                style={{
-                                  background: 'var(--bg-tertiary)',
-                                  borderColor: 'var(--border-subtle)',
-                                  color: 'var(--text-primary)',
-                                }}
-                              />
-                            </Form.Item>
-                          </Col>
-                        </Row>
-
-                        <Form.Item>
-                          <Button
-                            type="primary"
-                            htmlType="submit"
-                            icon={<Key size={16} />}
-                            loading={saving}
-                            size="large"
-                          >
-                            Update Password
-                          </Button>
-                        </Form.Item>
-                      </Form>
                     </div>
                   ),
                 },
