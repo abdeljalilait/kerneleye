@@ -32,13 +32,13 @@ import {
   Save,
   Palette,
   Check,
+  CreditCard,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useSubscriptionStatus } from '../hooks/useQueries';
 
 const { Title, Text, Paragraph } = Typography;
-const { TabPane } = Tabs;
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -55,7 +55,7 @@ export default function Profile() {
     productUpdates: true,
   });
 
-  const handleSaveProfile = async (values: any) => {
+  const handleSaveProfile = async () => {
     setSaving(true);
     // TODO: Implement profile update API
     setTimeout(() => {
