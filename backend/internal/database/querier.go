@@ -66,6 +66,7 @@ type Querier interface {
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
 	UnblockIP(ctx context.Context, arg UnblockIPParams) error
+	UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKeyParams) error
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
 	UpdateServerMetadata(ctx context.Context, arg UpdateServerMetadataParams) error

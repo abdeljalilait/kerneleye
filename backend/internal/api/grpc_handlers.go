@@ -32,14 +32,13 @@ func NewGrpcIngestHandler(queries *database.Queries, scorer *scoring.ThreatScore
 }
 
 func (h *GrpcIngestHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	// First check if server exists and is active
-	server, err := h.queries.GetServerByAPIKey(ctx, database.ToPgText(req.ApiKey))
+	// Validate API key with HMAC verification
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
 	if err != nil {
-		// Server not found - likely deleted
-		log.Printf("[gRPC Heartbeat] Server not found for API key (possibly deleted)")
+		log.Printf("[gRPC Heartbeat] API key validation failed: %v", err)
 		return &pb.HeartbeatResponse{
 			Success: false,
-			Message: "deleted",
+			Message: "invalid_key",
 		}, nil
 	}
 
@@ -209,8 +208,8 @@ func (h *GrpcIngestHandler) GetStatus(ctx context.Context, req *pb.GetStatusRequ
 }
 
 func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBatch) (*pb.TrafficResponse, error) {
-	// 1. Authenticate server
-	server, err := h.queries.GetServerByAPIKey(ctx, database.ToPgText(req.ApiKey))
+	// 1. Authenticate server with HMAC verification
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "Invalid API Key")
 	}

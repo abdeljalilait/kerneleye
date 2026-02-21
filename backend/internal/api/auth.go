@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -74,18 +75,48 @@ func CheckPassword(password, hash string) bool {
 // AuthMiddleware validates API keys or JWT tokens
 func AuthMiddleware(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Check for API key in header
+		// Check for API key in header (agent authentication)
 		apiKey := c.Get("X-API-Key")
 		if apiKey != "" {
-			// Validate API key (agent authentication)
+			// Step 1: Validate API key format and HMAC signature
+			if !strings.HasPrefix(apiKey, "ke_") {
+				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key format")
+			}
+			
+			// Step 2: Verify HMAC signature (cryptographic validation)
+			decodedUserID, decodedServerID, err := DecodeAPIKey(apiKey)
+			if err != nil {
+				log.Printf("[Auth] API key HMAC verification failed from %s: %v", c.IP(), err)
+				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key signature")
+			}
+			
+			// Step 3: Validate against database (ensure key exists and matches)
 			server, err := queries.GetServerByAPIKey(c.Context(), database.ToPgText(apiKey))
 			if err != nil {
+				log.Printf("[Auth] API key not found in database from %s", c.IP())
 				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key")
+			}
+			
+			// Step 4: Verify decoded userID/serverID matches database record
+			// This prevents replay attacks with forged keys
+			if decodedUserID != database.FromPgUUID(server.UserID) ||
+			   decodedServerID != database.FromPgUUID(server.ID) {
+				log.Printf("[Auth] API key mismatch: decoded=%s/%s, expected=%s/%s from %s",
+					decodedUserID, decodedServerID,
+					database.FromPgUUID(server.UserID), database.FromPgUUID(server.ID),
+					c.IP())
+				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key")
+			}
+			
+			// Step 5: Check server status
+			if server.Status == "deleted" || server.Status == "rejected" {
+				return fiber.NewError(fiber.StatusForbidden, "Server access revoked")
 			}
 
 			c.Locals("server_id", database.FromPgUUID(server.ID))
 			c.Locals("user_id", database.FromPgUUID(server.UserID))
 			c.Locals("api_key", apiKey)
+			c.Locals("auth_type", "agent")
 			return c.Next()
 		}
 
@@ -116,6 +147,7 @@ func AuthMiddleware(queries *database.Queries) fiber.Handler {
 
 		c.Locals("user_id", claims.UserID)
 		c.Locals("email", claims.Email)
+		c.Locals("auth_type", "dashboard")
 
 		return c.Next()
 	}

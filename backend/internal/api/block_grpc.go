@@ -34,7 +34,7 @@ func NewBlockHandler(queries *database.Queries, hub *Hub, geoIP *geoip.Service) 
 // ReportBlock handles block reports from agents
 func (h *BlockHandler) ReportBlock(ctx context.Context, req *kerneleyev1.BlockReportRequest) (*kerneleyev1.BlockReportResponse, error) {
 	// 1. Authenticate server
-	server, err := h.queries.GetServerByAPIKey(ctx, database.ToPgText(req.ApiKey))
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "invalid API key")
 	}
@@ -140,7 +140,7 @@ func (h *BlockHandler) ReportBlock(ctx context.Context, req *kerneleyev1.BlockRe
 // GetBlockStatus checks if an IP should be blocked (for agent sync)
 func (h *BlockHandler) GetBlockStatus(ctx context.Context, req *kerneleyev1.BlockStatusRequest) (*kerneleyev1.BlockStatusResponse, error) {
 	// Authenticate
-	server, err := h.queries.GetServerByAPIKey(ctx, database.ToPgText(req.ApiKey))
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "invalid API key")
 	}
@@ -178,7 +178,7 @@ func (h *BlockHandler) GetBlockStatus(ctx context.Context, req *kerneleyev1.Bloc
 // StreamBlockCommands streams block/unblock commands to agents
 func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, stream kerneleyev1.BlockService_StreamBlockCommandsServer) error {
 	// Authenticate
-	server, err := h.queries.GetServerByAPIKey(stream.Context(), database.ToPgText(req.ApiKey))
+	server, err := ValidateAPIKey(stream.Context(), h.queries, req.ApiKey)
 	if err != nil {
 		return status.Errorf(codes.Unauthenticated, "invalid API key")
 	}

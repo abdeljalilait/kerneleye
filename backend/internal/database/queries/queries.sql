@@ -359,3 +359,9 @@ WHERE s.user_id = $1
   AND te.created_at <= $3
 GROUP BY DATE_TRUNC('day', te.created_at)
 ORDER BY date DESC;
+
+-- name: UpdateServerAPIKey :exec
+UPDATE servers
+SET api_key = $2,
+    updated_at = NOW()
+WHERE id = $1;

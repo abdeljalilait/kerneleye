@@ -2,20 +2,12 @@ package api
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/kerneleye/backend/internal/database"
-)
-
-// AgentMode represents the agent deployment mode
-type AgentMode string
-
-const (
-	ModeMonitorOnly AgentMode = "monitor"
-	ModeBlockIPSet  AgentMode = "block_ipset"
-	ModeBlockXDP    AgentMode = "block_xdp"
-	ModeBlockHybrid AgentMode = "block_hybrid"
 )
 
 // DeploymentMode represents a deployment option
@@ -32,7 +24,7 @@ type DeploymentMode struct {
 func HandleGetDeploymentModes(c *fiber.Ctx) error {
 	modes := []DeploymentMode{
 		{
-			Key:           string(ModeMonitorOnly),
+			Key:           "monitor",
 			Name:          "Monitor Only",
 			Description:   "Collect traffic data without blocking. Alerts only.",
 			Requirements:  "None - works on any Linux system",
@@ -40,7 +32,7 @@ func HandleGetDeploymentModes(c *fiber.Ctx) error {
 			Compatibility: "Universal - all Linux kernels",
 		},
 		{
-			Key:           string(ModeBlockIPSet),
+			Key:           "block_ipset",
 			Name:          "IPSet Blocking",
 			Description:   "Block threats using iptables + ipset. Reliable and compatible.",
 			Requirements:  "Root privileges, ipset package",
@@ -48,7 +40,7 @@ func HandleGetDeploymentModes(c *fiber.Ctx) error {
 			Compatibility: "Works on all Linux systems, VMs, containers",
 		},
 		{
-			Key:           string(ModeBlockXDP),
+			Key:           "block_xdp",
 			Name:          "XDP Blocking (High Performance)",
 			Description:   "Kernel-level packet filtering at NIC driver. Ultra-fast.",
 			Requirements:  "Root, kernel 4.8+, XDP-supported NIC, BTF",
@@ -56,7 +48,7 @@ func HandleGetDeploymentModes(c *fiber.Ctx) error {
 			Compatibility: "Bare metal, some VMs. Not in containers.",
 		},
 		{
-			Key:           string(ModeBlockHybrid),
+			Key:           "block_hybrid",
 			Name:          "Hybrid (Recommended)",
 			Description:   "XDP for speed + IPSet for compatibility and persistence.",
 			Requirements:  "Same as XDP mode",
@@ -139,7 +131,7 @@ type CommandBuilder struct {
 	Mode       string
 }
 
-// HandleGenerateAPIKeyWithConfig generates API key with configuration options
+// HandleGenerateAPIKeyWithConfig generates API key with subscription validation
 func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id").(string)
@@ -149,20 +141,68 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid request")
 		}
 
-		// Generate API key
-		apiKey := "ke_" + uuid.New().String()
-		clientToken := uuid.New().String()
+		// Validate user has active subscription
+		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
+		}
 
+		// Check subscription status
+		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
+		hasActiveSub := user.SubscriptionStatus.String == "active" || isTrialing
+		
+		if !hasActiveSub {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error":   "No active subscription",
+				"message": "You need an active subscription or trial to add servers.",
+				"code":    "NO_SUBSCRIPTION",
+			})
+		}
+
+		// Check server limit
+		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to check server limit")
+		}
+
+		if serverCount >= user.MaxServers {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error":       "Server limit reached",
+				"message":     fmt.Sprintf("Your plan allows up to %d servers", user.MaxServers),
+				"code":        "SERVER_LIMIT_REACHED",
+				"current":     serverCount,
+				"max":         user.MaxServers,
+				"upgrade_url": "/subscription",
+			})
+		}
+
+		// Generate client token first (for identification before full registration)
+		clientToken := uuid.New().String()
+		
 		// Create server in pending state
 		server, err := queries.CreateServerWithAPIKey(c.Context(), database.CreateServerWithAPIKeyParams{
 			UserID:      database.ToPgUUID(userID),
 			Hostname:    req.ServerName,
-			ApiKey:      database.ToPgText(apiKey),
+			ApiKey:      database.ToPgText("pending"), // Will be set after registration
 			ClientToken: database.ToPgText(clientToken),
 			IpAddress:   nil,
 		})
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to create server")
+		}
+
+		// Generate proper API key with HMAC signature
+		apiKey := GenerateAPIKey(userID, database.FromPgUUID(server.ID))
+		
+		// Update server with actual API key
+		err = queries.UpdateServerAPIKey(c.Context(), database.UpdateServerAPIKeyParams{
+			ID:     server.ID,
+			ApiKey: database.ToPgText(apiKey),
+		})
+		if err != nil {
+			// Rollback: delete the server we just created
+			_ = queries.DeleteServer(c.Context(), server.ID)
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to set API key")
 		}
 
 		// Build installation command
@@ -287,4 +327,8 @@ func (cb *CommandBuilder) EnvironmentVariables() map[string]string {
 
 func getServerHost() string {
 	return "api.kerneleye.cloud:443"
+}
+
+func toEnvVar(s string) string {
+	return strings.ToUpper(strings.ReplaceAll(s, "-", "_"))
 }

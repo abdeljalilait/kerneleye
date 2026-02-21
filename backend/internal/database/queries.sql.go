@@ -1354,6 +1354,23 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 	return items, nil
 }
 
+const updateServerAPIKey = `-- name: UpdateServerAPIKey :exec
+UPDATE servers
+SET api_key = $2,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateServerAPIKeyParams struct {
+	ID     pgtype.UUID `json:"id"`
+	ApiKey pgtype.Text `json:"api_key"`
+}
+
+func (q *Queries) UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKeyParams) error {
+	_, err := q.db.Exec(ctx, updateServerAPIKey, arg.ID, arg.ApiKey)
+	return err
+}
+
 const updateServerForReenrollment = `-- name: UpdateServerForReenrollment :one
 UPDATE servers
 SET api_key = $2,
