@@ -285,28 +285,10 @@ sudo systemctl enable --now kerneleye-agent
 sudo systemctl status kerneleye-agent`, env)
 }
 
-// BinaryCommand generates one-line curl install command with flags
+// BinaryCommand generates one-line curl install command
 func (cb *CommandBuilder) BinaryCommand() string {
-	// Build feature flags
-	var featureFlags []string
-	if cb.Features != nil {
-		for key, enabled := range cb.Features {
-			if enabled {
-				featureFlags = append(featureFlags, key)
-			}
-		}
-	}
-	
-	// Build the one-liner command
-	flags := fmt.Sprintf("--mode %s --threshold %d --block-duration %s",
-		cb.Mode, cb.Threshold, cb.Duration)
-	
-	if len(featureFlags) > 0 {
-		flags += fmt.Sprintf(" --features %s", strings.Join(featureFlags, ","))
-	}
-	
-	return fmt.Sprintf("curl -sSL https://install.kerneleye.cloud/install.sh | sudo API_KEY=\"%s\" bash -s -- %s",
-		cb.APIKey, flags)
+	return fmt.Sprintf("curl -sSL https://install.kerneleye.cloud/install.sh | sudo API_KEY=\"%s\" bash -s -- --mode %s",
+		cb.APIKey, cb.Mode)
 }
 
 // buildEnvVars generates environment variable exports

@@ -3,7 +3,7 @@
 # KernelEye Agent Quick Installer
 # Downloads and installs the pre-built KernelEye agent binary.
 #
-# Usage: curl -fsSL https://__INSTALL_DOMAIN__/install.sh | sudo API_KEY="xxx" bash -s -- [options]
+# Usage: curl -fsSL https://__INSTALL_DOMAIN__/install.sh | sudo API_KEY="xxx" bash -s -- --mode block_hybrid
 #
 
 set -e
@@ -21,9 +21,6 @@ LOG_DIR="/var/log/kerneleye"
 # Agent configuration from command line
 API_KEY="${API_KEY:-}"
 MODE="block_hybrid"
-THRESHOLD="80"
-BLOCK_DURATION="1h"
-FEATURES=""
 SERVER_HOST="__INSTALL_DOMAIN__:443"
 
 # Colors
@@ -92,18 +89,6 @@ parse_args() {
                 MODE="$2"
                 shift 2
                 ;;
-            --threshold)
-                THRESHOLD="$2"
-                shift 2
-                ;;
-            --block-duration)
-                BLOCK_DURATION="$2"
-                shift 2
-                ;;
-            --features)
-                FEATURES="$2"
-                shift 2
-                ;;
             --server)
                 SERVER_HOST="$2"
                 shift 2
@@ -148,58 +133,14 @@ setup_directories() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$LOG_DIR"
 
-    # Build feature flags for agent
-    local feature_flags=""
-    if [ -n "$FEATURES" ]; then
-        IFS=',' read -ra FEATURE_LIST <<< "$FEATURES"
-        for feature in "${FEATURE_LIST[@]}"; do
-            case "$feature" in
-                auto_block)
-                    feature_flags="$feature_flags -auto-block"
-                    ;;
-                geoip_enrich)
-                    feature_flags="$feature_flags -geoip"
-                    ;;
-                bandwidth_tracking)
-                    feature_flags="$feature_flags -bandwidth"
-                    ;;
-                rate_limit)
-                    feature_flags="$feature_flags -rate-limit"
-                    ;;
-            esac
-        done
-    fi
-
-    # Build mode flag
-    local mode_flag=""
-    case "$MODE" in
-        monitor)
-            mode_flag=""
-            ;;
-        block_ipset)
-            mode_flag="-enable-remediation"
-            ;;
-        block_xdp)
-            mode_flag="-xdp"
-            ;;
-        block_hybrid)
-            mode_flag="-enable-remediation -xdp"
-            ;;
-    esac
-
     # Save configuration
     cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
 # KernelEye Agent Configuration
 # Generated on $(date)
 
-API_KEY="${API_KEY}"
-SERVER_HOST="${SERVER_HOST}"
-MODE="${MODE}"
-THRESHOLD="${THRESHOLD}"
-BLOCK_DURATION="${BLOCK_DURATION}"
-FEATURES="${FEATURES}"
-FEATURE_FLAGS="${feature_flags}"
-MODE_FLAG="${mode_flag}"
+KERNELEYE_API_KEY="${API_KEY}"
+KERNELEYE_SERVER="${SERVER_HOST}"
+KERNELEYE_MODE="${MODE}"
 ENVEOF
     chmod 0600 "${CONFIG_DIR}/agent.env"
     log_success "Config saved to ${CONFIG_DIR}/agent.env"
@@ -211,10 +152,9 @@ create_systemd_service() {
         return
     fi
 
-    # Build agent flags from config
-    local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\""
+    # Build agent flags based on mode
+    local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\" -daemon"
     
-    # Add mode flags
     case "$MODE" in
         block_ipset|block_hybrid)
             agent_flags="$agent_flags -enable-remediation"
@@ -226,19 +166,6 @@ create_systemd_service() {
             agent_flags="$agent_flags -xdp"
             ;;
     esac
-
-    # Add feature flags
-    if [ -n "$FEATURES" ]; then
-        IFS=',' read -ra FEATURE_LIST <<< "$FEATURES"
-        for feature in "${FEATURE_LIST[@]}"; do
-            case "$feature" in
-                auto_block) agent_flags="$agent_flags -auto-block" ;;
-                geoip_enrich) agent_flags="$agent_flags -geoip" ;;
-                bandwidth_tracking) agent_flags="$agent_flags -bandwidth" ;;
-                rate_limit) agent_flags="$agent_flags -rate-limit" ;;
-            esac
-        done
-    fi
 
     cat > /etc/systemd/system/kerneleye-agent.service <<SVCEOF
 [Unit]
@@ -277,16 +204,15 @@ start_agent() {
     if [ -z "$API_KEY" ]; then
         log_warn "No API_KEY provided. Agent not started automatically."
         echo "Set API_KEY environment variable and run again, or start manually:"
-        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -apikey \"YOUR_KEY\""
+        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -apikey \"YOUR_KEY\" -daemon"
         return
     fi
 
-    log_info "Starting agent..."
+    log_info "Starting agent with mode: ${MODE}..."
 
     # Build agent flags
     local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\" -daemon"
     
-    # Add mode flags
     case "$MODE" in
         block_ipset|block_hybrid)
             agent_flags="$agent_flags -enable-remediation"
@@ -298,19 +224,6 @@ start_agent() {
             agent_flags="$agent_flags -xdp"
             ;;
     esac
-
-    # Add feature flags
-    if [ -n "$FEATURES" ]; then
-        IFS=',' read -ra FEATURE_LIST <<< "$FEATURES"
-        for feature in "${FEATURE_LIST[@]}"; do
-            case "$feature" in
-                auto_block) agent_flags="$agent_flags -auto-block" ;;
-                geoip_enrich) agent_flags="$agent_flags -geoip" ;;
-                bandwidth_tracking) agent_flags="$agent_flags -bandwidth" ;;
-                rate_limit) agent_flags="$agent_flags -rate-limit" ;;
-            esac
-        done
-    done
 
     # Start the agent
     eval "${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}"
@@ -364,9 +277,8 @@ main() {
     
     log_info "Configuration:"
     echo "  Mode: ${MODE}"
-    echo "  Threshold: ${THRESHOLD}"
-    echo "  Block Duration: ${BLOCK_DURATION}"
-    [ -n "$FEATURES" ] && echo "  Features: ${FEATURES}"
+    echo "  Server: ${SERVER_HOST}"
+    [ -n "$API_KEY" ] && echo "  API Key: ${API_KEY:0:8}...${API_KEY: -4}"
     echo ""
     
     download_binary
