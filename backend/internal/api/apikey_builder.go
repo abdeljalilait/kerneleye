@@ -120,9 +120,18 @@ func HandleGetAgentFeatures(c *fiber.Ctx) error {
 	return c.JSON(features)
 }
 
+// AgentConfig holds the agent configuration from the frontend
+type AgentConfig struct {
+	Mode     string            `json:"mode"`
+	Features map[string]bool   `json:"features"`
+	Threshold int              `json:"threshold"`
+	Duration string            `json:"duration"`
+}
+
 // GenerateAPIKeyRequest with configuration options
 type GenerateAPIKeyRequest struct {
-	ServerName string `json:"server_name" validate:"required"`
+	ServerName string      `json:"server_name" validate:"required"`
+	Config     AgentConfig `json:"config"`
 }
 
 // CommandBuilder generates the agent run command
@@ -130,6 +139,9 @@ type CommandBuilder struct {
 	APIKey     string
 	ServerHost string
 	Mode       string
+	Threshold  int
+	Duration   string
+	Features   map[string]bool
 }
 
 // HandleGenerateAPIKeyWithConfig generates API key with subscription validation
@@ -208,11 +220,28 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to set API key")
 		}
 
+		// Use config from request or defaults
+		mode := req.Config.Mode
+		if mode == "" {
+			mode = "block_hybrid"
+		}
+		threshold := req.Config.Threshold
+		if threshold == 0 {
+			threshold = 80
+		}
+		duration := req.Config.Duration
+		if duration == "" {
+			duration = "1h"
+		}
+
 		// Build installation command
 		builder := CommandBuilder{
 			APIKey:     apiKey,
 			ServerHost: getServerHost(),
-			Mode:       "block_hybrid",
+			Mode:       mode,
+			Threshold:  threshold,
+			Duration:   duration,
+			Features:   req.Config.Features,
 		}
 
 		response := map[string]interface{}{
@@ -264,14 +293,28 @@ sudo systemctl enable --now kerneleye-agent
 sudo systemctl status kerneleye-agent`, env)
 }
 
-// BinaryCommand generates direct binary run command
+// BinaryCommand generates one-line curl install command with flags
 func (cb *CommandBuilder) BinaryCommand() string {
-	env := cb.buildEnvVarsInline()
-
-	cmd := fmt.Sprintf("sudo %s kerneleye-agent -server \"%s\" -apikey \"%s\"",
-		env, cb.ServerHost, cb.APIKey)
-
-	return cmd
+	// Build feature flags
+	var featureFlags []string
+	if cb.Features != nil {
+		for key, enabled := range cb.Features {
+			if enabled {
+				featureFlags = append(featureFlags, key)
+			}
+		}
+	}
+	
+	// Build the one-liner command
+	flags := fmt.Sprintf("--mode %s --threshold %d --block-duration %s",
+		cb.Mode, cb.Threshold, cb.Duration)
+	
+	if len(featureFlags) > 0 {
+		flags += fmt.Sprintf(" --features %s", strings.Join(featureFlags, ","))
+	}
+	
+	return fmt.Sprintf("curl -sSL https://install.kerneleye.cloud/install.sh | sudo API_KEY=\"%s\" bash -s -- %s",
+		cb.APIKey, flags)
 }
 
 // buildEnvVars generates environment variable exports
@@ -379,9 +422,11 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
 		}
 
-		// Check subscription status
+		// Check subscription status - accepts active, trialing, or valid trial end date
 		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		hasActiveSub := user.SubscriptionStatus.String == "active" || isTrialing
+		hasActiveSub := user.SubscriptionStatus.String == "active" || 
+		                user.SubscriptionStatus.String == "trialing" || 
+		                isTrialing
 
 		if !hasActiveSub {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{

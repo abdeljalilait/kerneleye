@@ -8,24 +8,16 @@ import {
   Tooltip, 
   Typography, 
   Space, 
-  Alert,
   Tag,
   Slider,
   Select,
-  Tabs,
   Input,
-  Row,
-  Col,
+  Alert,
   Divider,
-  Badge,
 } from 'antd';
 import { 
   CheckCircleFilled,
   CopyFilled,
-  DownloadOutlined,
-  FileTextOutlined,
-  LinuxOutlined,
-  DockerOutlined,
   CheckCircleOutlined,
   InfoCircleOutlined,
   SafetyOutlined,
@@ -34,20 +26,15 @@ import {
   WarningOutlined,
   ArrowRightOutlined,
   ArrowLeftOutlined,
-  SettingOutlined,
-  RocketOutlined,
-  KeyOutlined,
-  PlayCircleOutlined,
-  ClockCircleOutlined,
-  GlobalOutlined,
-  DashboardOutlined,
   CloudServerOutlined,
+  SettingOutlined,
+  SafetyCertificateOutlined,
+  TerminalOutlined,
 } from '@ant-design/icons';
 import { useDeploymentModes, useAgentFeatures, useCreateServerWithConfig } from '../hooks/useQueries';
 
 const { Title, Text, Paragraph } = Typography;
 const { Step } = Steps;
-const { TabPane } = Tabs;
 const { Option } = Select;
 
 // Types
@@ -99,16 +86,16 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     threshold: 80,
     duration: '1h',
   });
-  const [generatedKey, setGeneratedKey] = useState<{
+  const [generatedCommand, setGeneratedCommand] = useState<string | null>(null);
+  const [installData, setInstallData] = useState<{
     api_key: string;
     server_id: string;
     commands: Record<string, string>;
-    environment: Record<string, string>;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const { data: modes, isLoading: modesLoading } = useDeploymentModes();
-  const { data: features, isLoading: featuresLoading } = useAgentFeatures();
+  const { data: modes } = useDeploymentModes();
+  const { data: features } = useAgentFeatures();
   const createServerMutation = useCreateServerWithConfig();
 
   const handleModeChange = (mode: string) => {
@@ -122,6 +109,8 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     });
   };
 
+
+
   const handleGenerate = () => {
     createServerMutation.mutate(
       {
@@ -130,7 +119,8 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
       },
       {
         onSuccess: (data) => {
-          setGeneratedKey(data);
+          setInstallData(data);
+          setGeneratedCommand(data.commands?.binary || data.commands?.download);
           setCurrentStep(3);
         },
       }
@@ -146,17 +136,60 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
   // Step icons
   const stepIcons = [
     <CloudServerOutlined key="server" />,
-    <SafetyOutlined key="safety" />,
+    <SafetyCertificateOutlined key="safety" />,
     <SettingOutlined key="settings" />,
-    <KeyOutlined key="key" />,
+    <TerminalOutlined key="terminal" />,
   ];
+
+  const renderServerNameStep = () => (
+    <div className="max-w-md mx-auto py-8">
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+          <CloudServerOutlined className="text-3xl text-blue-500" />
+        </div>
+        <Title level={3} className="mb-2">Name Your Server</Title>
+        <Paragraph className="text-gray-500">
+          Give this agent a descriptive name so you can identify it in the dashboard
+        </Paragraph>
+      </div>
+
+      <Card className="shadow-sm">
+        <div className="space-y-4">
+          <div>
+            <Text strong className="block mb-2">Server Name</Text>
+            <Input
+              size="large"
+              placeholder="e.g., production-web-01, database-primary"
+              value={serverName}
+              onChange={(e) => setServerName(e.target.value)}
+              prefix={<CloudServerOutlined className="text-gray-400" />}
+              className="rounded-lg"
+            />
+          </div>
+          
+          <div className="flex gap-2 flex-wrap">
+            <Text type="secondary" className="text-xs block w-full mb-1">Suggestions:</Text>
+            {['web-server-01', 'api-prod', 'database-primary', 'load-balancer'].map((name) => (
+              <Tag 
+                key={name} 
+                className="cursor-pointer hover:bg-blue-50"
+                onClick={() => setServerName(name)}
+              >
+                {name}
+              </Tag>
+            ))}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
 
   const renderModeSelection = () => (
     <div className="space-y-6">
       <div className="text-center mb-6">
         <Title level={4} className="mb-2">Choose Your Protection Level</Title>
         <Paragraph className="text-gray-500">
-          Select how aggressive you want threat protection to be. You can change this anytime.
+          Select how aggressive you want threat protection to be
         </Paragraph>
       </div>
       
@@ -182,10 +215,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                   <div className="flex items-center gap-3 mb-2">
                     <Text strong className="text-lg">{mode.name}</Text>
                     {mode.key === 'block_hybrid' && (
-                      <Badge 
-                        count="Recommended" 
-                        style={{ backgroundColor: '#52c41a' }}
-                      />
+                      <Tag color="green">Recommended</Tag>
                     )}
                   </div>
                   <Paragraph className="text-gray-600 mb-3">
@@ -270,13 +300,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                     }}
                     tooltip={{ formatter: (val) => `Score: ${val}` }}
                   />
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>More blocks</span>
-                    <span>Fewer false positives</span>
-                  </div>
                 </div>
-
-                <Divider className="my-3" />
 
                 <div>
                   <Text strong className="block mb-2">Block Duration</Text>
@@ -286,31 +310,10 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                     className="w-full"
                     size="large"
                   >
-                    <Option value="1h">
-                      <div className="flex items-center gap-2">
-                        <ClockCircleOutlined />
-                        <span>1 Hour</span>
-                        <Text type="secondary" className="text-xs ml-2">- Good for testing</Text>
-                      </div>
-                    </Option>
-                    <Option value="4h">
-                      <div className="flex items-center gap-2">
-                        <ClockCircleOutlined />
-                        <span>4 Hours</span>
-                        <Text type="secondary" className="text-xs ml-2">- Recommended</Text>
-                      </div>
-                    </Option>
-                    <Option value="24h">
-                      <div className="flex items-center gap-2">
-                        <ClockCircleOutlined />
-                        <span>24 Hours</span>
-                        <Text type="secondary" className="text-xs ml-2">- High security</Text>
-                      </div>
-                    </Option>
+                    <Option value="1h">1 Hour - Good for testing</Option>
+                    <Option value="4h">4 Hours - Recommended</Option>
+                    <Option value="24h">24 Hours - High security</Option>
                   </Select>
-                  <Paragraph className="text-xs text-gray-500 mt-2">
-                    Repeat offenders: 2x, 4x duration (up to 24h max)
-                  </Paragraph>
                 </div>
               </div>
             )}
@@ -377,193 +380,68 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     </div>
   );
 
-  const renderCommandOutput = () => (
+  const renderInstallCommand = () => (
     <div className="space-y-6">
-      {generatedKey && (
+      {generatedCommand && (
         <>
           <div className="text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
               <CheckCircleFilled className="text-3xl text-green-500" />
             </div>
-            <Title level={4} className="mb-1">API Key Generated!</Title>
+            <Title level={4} className="mb-1">Installation Ready!</Title>
             <Paragraph className="text-gray-500">
-              Your server <Text strong>{serverName}</Text> is ready with{' '}
-              <Tag color="blue">{config.mode}</Tag> mode
+              Run this command on your Linux server to install the agent
             </Paragraph>
           </div>
 
           <Card className="shadow-md">
-            <div className="flex items-center justify-between mb-4 pb-4 border-b">
-              <Text strong className="text-lg">Installation</Text>
-              <Tag color="blue" className="font-mono text-sm">
-                {generatedKey.api_key?.substring(0, 8)}...
-                {generatedKey.api_key?.substring(generatedKey.api_key.length - 4)}
-              </Tag>
+            <div className="flex items-center justify-between mb-4">
+              <Text strong>One-Line Installer</Text>
+              <Tag color="blue">{config.mode}</Tag>
             </div>
 
-            <Tabs 
-              defaultActiveKey="binary" 
-              type="card"
-              className="installation-tabs"
-            >
-              <TabPane
-                tab={
-                  <span className="flex items-center gap-2">
-                    <PlayCircleOutlined />
-                    Quick Install
-                  </span>
-                }
-                key="binary"
+            <div className="relative">
+              <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <code className="text-green-400 text-sm font-mono whitespace-pre-wrap break-all">
+                  {generatedCommand}
+                </code>
+              </div>
+              <Button
+                type="primary"
+                icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
+                className="absolute top-3 right-3"
+                onClick={() => copyToClipboard(generatedCommand)}
+                size="small"
               >
-                <div className="relative">
-                  <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-green-400 text-sm font-mono whitespace-pre">
-                      {generatedKey.commands?.binary}
-                    </code>
-                  </div>
-                  <Button
-                    type="primary"
-                    icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
-                    className="absolute top-3 right-3"
-                    onClick={() => copyToClipboard(generatedKey.commands?.binary || '')}
-                    size="small"
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </Button>
-                </div>
-                <Paragraph className="text-xs text-gray-500 mt-3">
-                  Run this command on your Linux server. Requires root privileges.
-                </Paragraph>
-              </TabPane>
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
+            </div>
 
-              <TabPane
-                tab={
-                  <span className="flex items-center gap-2">
-                    <DockerOutlined />
-                    Docker
-                  </span>
-                }
-                key="docker"
-              >
-                <div className="relative">
-                  <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-green-400 text-sm font-mono whitespace-pre">
-                      {generatedKey.commands?.docker}
-                    </code>
-                  </div>
-                  <Button
-                    icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
-                    className="absolute top-3 right-3"
-                    onClick={() => copyToClipboard(generatedKey.commands?.docker || '')}
-                    size="small"
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </TabPane>
+            <Divider />
 
-              <TabPane
-                tab={
-                  <span className="flex items-center gap-2">
-                    <LinuxOutlined />
-                    Systemd
-                  </span>
-                }
-                key="systemd"
-              >
-                <div className="relative">
-                  <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-green-400 text-sm font-mono whitespace-pre">
-                      {generatedKey.commands?.systemd}
-                    </code>
-                  </div>
-                  <Button
-                    icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
-                    className="absolute top-3 right-3"
-                    onClick={() => copyToClipboard(generatedKey.commands?.systemd || '')}
-                    size="small"
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </TabPane>
-
-              <TabPane
-                tab={
-                  <span className="flex items-center gap-2">
-                    <FileTextOutlined />
-                    Environment
-                  </span>
-                }
-                key="env"
-              >
-                <Card size="small" className="bg-gray-50">
-                  {Object.entries(generatedKey.environment || {}).map(([key, value]) => (
-                    <div key={key} className="flex justify-between py-2 border-b last:border-0">
-                      <Text code className="text-xs">{key}</Text>
-                      <Text className="text-xs" copyable>{value as string}</Text>
-                    </div>
-                  ))}
-                </Card>
-              </TabPane>
-            </Tabs>
+            <div className="space-y-3">
+              <Text strong className="block">What happens when you run this:</Text>
+              <ol className="text-sm text-gray-600 space-y-2 ml-4">
+                <li>1. Downloads the KernelEye agent binary to <code>/usr/local/bin/kerneleye-agent</code></li>
+                <li>2. Starts the agent with your API key and configuration</li>
+                <li>3. Agent connects to KernelEye and appears in your dashboard</li>
+                <li>4. <strong>Approve the agent</strong> in the dashboard to activate monitoring</li>
+              </ol>
+            </div>
           </Card>
 
-          <Card 
-            title={
-              <div className="flex items-center gap-2">
-                <RocketOutlined className="text-blue-500" />
-                <span>What's Next?</span>
+          <Card className="bg-blue-50 border-blue-200">
+            <div className="flex items-start gap-3">
+              <InfoCircleOutlined className="text-blue-500 text-lg mt-0.5" />
+              <div>
+                <Text strong className="block text-blue-900">Requirements</Text>
+                <ul className="text-sm text-blue-800 mt-1 space-y-1">
+                  <li>• Linux server with kernel 5.8+</li>
+                  <li>• Root privileges (required for eBPF)</li>
+                  <li>• Outbound HTTPS access to kerneleye.cloud</li>
+                </ul>
               </div>
-            }
-            className="shadow-sm"
-          >
-            <Row gutter={[16, 16]}>
-              <Col span={12}>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Text strong className="text-blue-600">1</Text>
-                  </div>
-                  <div>
-                    <Text strong className="block">Run the command</Text>
-                    <Text className="text-xs text-gray-500">Copy and paste into your server terminal</Text>
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Text strong className="text-blue-600">2</Text>
-                  </div>
-                  <div>
-                    <Text strong className="block">Wait for connection</Text>
-                    <Text className="text-xs text-gray-500">Agent appears in dashboard within 30s</Text>
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Text strong className="text-blue-600">3</Text>
-                  </div>
-                  <div>
-                    <Text strong className="block">Approve agent</Text>
-                    <Text className="text-xs text-gray-500">Click 'Approve' to activate monitoring</Text>
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Text strong className="text-blue-600">4</Text>
-                  </div>
-                  <div>
-                    <Text strong className="block">Monitor threats</Text>
-                    <Text className="text-xs text-gray-500">Watch the Threats tab for blocked IPs</Text>
-                  </div>
-                </div>
-              </Col>
-            </Row>
+            </div>
           </Card>
 
           {onClose && (
@@ -575,49 +453,6 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
           )}
         </>
       )}
-    </div>
-  );
-
-  const renderServerNameStep = () => (
-    <div className="max-w-md mx-auto py-8">
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-          <CloudServerOutlined className="text-3xl text-blue-500" />
-        </div>
-        <Title level={3} className="mb-2">Name Your Server</Title>
-        <Paragraph className="text-gray-500">
-          Give this agent a descriptive name so you can identify it in the dashboard
-        </Paragraph>
-      </div>
-
-      <Card className="shadow-sm">
-        <div className="space-y-4">
-          <div>
-            <Text strong className="block mb-2">Server Name</Text>
-            <Input
-              size="large"
-              placeholder="e.g., production-web-01, database-primary"
-              value={serverName}
-              onChange={(e) => setServerName(e.target.value)}
-              prefix={<CloudServerOutlined className="text-gray-400" />}
-              className="rounded-lg"
-            />
-          </div>
-          
-          <div className="flex gap-2 flex-wrap">
-            <Text type="secondary" className="text-xs block w-full mb-1">Suggestions:</Text>
-            {['web-server-01', 'api-prod', 'database-primary', 'load-balancer'].map((name) => (
-              <Tag 
-                key={name} 
-                className="cursor-pointer hover:bg-blue-50"
-                onClick={() => setServerName(name)}
-              >
-                {name}
-              </Tag>
-            ))}
-          </div>
-        </div>
-      </Card>
     </div>
   );
 
@@ -639,8 +474,8 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     },
     {
       title: 'Install',
-      description: 'Deploy',
-      content: renderCommandOutput(),
+      description: 'Command',
+      content: renderInstallCommand(),
     },
   ];
 
@@ -655,7 +490,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
       <div className="text-center mb-8">
         <Title level={3} className="mb-2">Add New Server</Title>
         <Paragraph className="text-gray-500">
-          Configure your KernelEye agent with the protection level and features you need
+          Configure your KernelEye agent and get the install command
         </Paragraph>
       </div>
 
@@ -694,7 +529,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
               size="large"
               loading={createServerMutation.isPending}
               onClick={handleGenerate}
-              icon={<DownloadOutlined />}
+              icon={<TerminalOutlined />}
               className="px-8 h-12 text-base font-medium"
               style={{ 
                 background: 'linear-gradient(135deg, #1890ff, #722ed1)',
@@ -702,7 +537,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                 boxShadow: '0 4px 14px rgba(24, 144, 255, 0.4)'
               }}
             >
-              Generate API Key
+              Generate Install Command
             </Button>
           ) : (
             <Button 
@@ -731,11 +566,11 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
           showIcon
           className="mt-4"
           action={
-            (createServerMutation.error as any)?.response?.data?.code === 'NO_SUBSCRIPTION' && (
+            (createServerMutation.error as any)?.response?.data?.code === 'NO_SUBSCRIPTION' ? (
               <Button size="small" type="primary" danger href="/subscription">
                 Subscribe
               </Button>
-            )
+            ) : undefined
           }
         />
       )}
