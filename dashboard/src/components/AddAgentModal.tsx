@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Modal, Button, Typography, Steps, Space, Card, Badge, Tooltip, Input, Alert, Row, Col, Tag, Spin } from 'antd'
-import { Copy, Terminal, Check, Key, Server, Shield, ArrowRight, Sparkles, CreditCard, Crown } from 'lucide-react'
+import { Copy, Terminal, Check, Key, Server, Shield, ArrowRight, Sparkles, Crown } from 'lucide-react'
 import { useGenerateApiKey, useSubscriptionStatus } from '../hooks/useQueries'
 import { useNavigate } from '@tanstack/react-router'
 import { App } from 'antd'
@@ -70,7 +70,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   const grpcHost = (import.meta.env.VITE_GRPC_HOST as string) || ''
 
   const installCommand = result 
-    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"${grpcHost ? ` -grpc-url "${grpcHost}:443"` : ''} -enable-remediation`
+    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"${grpcHost ? ` -grpc-url "${grpcHost}:443"` : ''} -enable-remediation -daemon`
     : ''
 
   const fullInstallCommand = result
