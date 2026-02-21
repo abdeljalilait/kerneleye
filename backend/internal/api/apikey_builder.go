@@ -120,18 +120,10 @@ func HandleGetAgentFeatures(c *fiber.Ctx) error {
 	return c.JSON(features)
 }
 
-// AgentConfig holds the agent configuration from the frontend
-type AgentConfig struct {
-	Mode     string            `json:"mode"`
-	Features map[string]bool   `json:"features"`
-	Threshold int              `json:"threshold"`
-	Duration string            `json:"duration"`
-}
-
 // GenerateAPIKeyRequest with configuration options
 type GenerateAPIKeyRequest struct {
-	ServerName string      `json:"server_name" validate:"required"`
-	Config     AgentConfig `json:"config"`
+	ServerName string         `json:"server_name" validate:"required"`
+	Config     AgentConfig    `json:"config"`
 }
 
 // CommandBuilder generates the agent run command
