@@ -666,19 +666,30 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			if err := json.Unmarshal(event.Data, &customerData); err != nil {
 				log.Printf("[Polar] Failed to parse customer: %v", err)
 			} else {
-				log.Printf("[Polar] Customer created: %s, Email: %s", customerData.ID, customerData.Email)
+				log.Printf("[Polar] Customer created: %s, Email: %s, Metadata: %+v", customerData.ID, customerData.Email, customerData.Metadata)
 				// Try to find user by email and update their Polar customer ID
 				if customerData.Email != "" {
 					user, err := queries.GetUserByEmail(c.Context(), customerData.Email)
 					if err == nil {
 						userID = database.FromPgUUID(user.ID)
-						log.Printf("[Polar] Updating user %s with Polar customer ID %s", userID, customerData.ID)
+						log.Printf("[Polar] Found user %s by email %s, updating with Polar customer ID %s", userID, customerData.Email, customerData.ID)
 						// Update user's Polar customer ID
-						queries.UpdateUserPolarCustomerID(c.Context(), database.UpdateUserPolarCustomerIDParams{
+						err = queries.UpdateUserPolarCustomerID(c.Context(), database.UpdateUserPolarCustomerIDParams{
 							ID:              user.ID,
 							PolarCustomerID: database.ToPgText(customerData.ID),
 						})
+						if err != nil {
+							log.Printf("[Polar] Failed to update user Polar customer ID: %v", err)
+						} else {
+							log.Printf("[Polar] Successfully updated user %s with Polar customer ID %s", userID, customerData.ID)
+						}
+					} else {
+						log.Printf("[Polar] Could not find user by email %s: %v", customerData.Email, err)
 					}
+				}
+				// Also try to get user_id from metadata if present
+				if uid, ok := customerData.Metadata["user_id"]; ok && uid != "" {
+					log.Printf("[Polar] Found user_id in customer metadata: %s", uid)
 				}
 			}
 
@@ -761,6 +772,9 @@ func updateUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 		status = "trialing"
 	}
 
+	log.Printf("[Polar] updateUserSubscription: userID=%s, plan=%s, status=%s, isTrialing=%v", userID, planName, status, sub.IsTrialing)
+	log.Printf("[Polar] Period: %s to %s", sub.CurrentPeriodStart.Format(time.RFC3339), sub.CurrentPeriodEnd.Format(time.RFC3339))
+
 	params := database.UpdateUserSubscriptionParams{
 		ID:                             database.ToPgUUID(userID),
 		Plan:                           planName,
@@ -772,7 +786,10 @@ func updateUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 		TrialEndsAt:                    database.ToPgTimestamptzPtr(sub.TrialEndsAt),
 	}
 
+	log.Printf("[Polar] Calling UpdateUserSubscription with params: %+v", params)
+
 	if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
+		log.Printf("[Polar] UpdateUserSubscription ERROR: %v", err)
 		return fmt.Errorf("failed to update subscription: %w", err)
 	}
 
