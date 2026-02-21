@@ -84,8 +84,8 @@ func getPolarWebhookSecret() string {
 }
 
 // verifyPolarWebhook verifies the webhook signature from Polar
-// Polar uses HMAC-SHA256 of the raw payload, base64 encoded, prefixed with "v1,"
-func verifyPolarWebhook(payload []byte, signature string) bool {
+// Polar uses HMAC-SHA256 of "<timestamp>.<payload>", base64 encoded, prefixed with "v1,"
+func verifyPolarWebhook(payload []byte, signature string, timestamp string) bool {
 	secret := getPolarWebhookSecret()
 	if secret == "" {
 		log.Println("[Polar] Warning: POLAR_WEBHOOK_SECRET not set, skipping signature verification")
@@ -93,6 +93,7 @@ func verifyPolarWebhook(payload []byte, signature string) bool {
 	}
 
 	log.Printf("[Polar] Verifying webhook signature")
+	log.Printf("[Polar] Timestamp: %s", timestamp)
 	log.Printf("[Polar] Payload length: %d bytes", len(payload))
 	log.Printf("[Polar] Received signature: %s", signature)
 
@@ -111,9 +112,10 @@ func verifyPolarWebhook(payload []byte, signature string) bool {
 		return false
 	}
 
-	// Compute expected signature
+	// Compute expected signature: HMAC(secret, timestamp + "." + payload)
+	signedContent := timestamp + "." + string(payload)
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
+	mac.Write([]byte(signedContent))
 	expected := mac.Sum(nil)
 
 	log.Printf("[Polar] Expected signature (base64): %s", base64.StdEncoding.EncodeToString(expected))
@@ -559,6 +561,13 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			log.Printf("[API] POST /webhooks/polar - ERROR: Missing Webhook-Signature header")
 			return fiber.NewError(fiber.StatusUnauthorized, "Missing signature")
 		}
+
+		// Get timestamp for signature verification
+		timestamp := c.Get("Webhook-Timestamp")
+		if timestamp == "" {
+			log.Printf("[API] POST /webhooks/polar - ERROR: Missing Webhook-Timestamp header")
+			return fiber.NewError(fiber.StatusUnauthorized, "Missing timestamp")
+		}
 		log.Printf("[API] POST /webhooks/polar - Signature present: %s...", signature)
 
 		// Get raw body for signature verification
@@ -569,9 +578,9 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 		// Verify webhook signature using Polar client if available
 		var verified bool
 		if polarClient != nil {
-			verified = polarClient.VerifyWebhookSignature(payload, signature)
+			verified = polarClient.VerifyWebhookSignature(payload, signature, timestamp)
 		} else {
-			verified = verifyPolarWebhook(payload, signature)
+			verified = verifyPolarWebhook(payload, signature, timestamp)
 		}
 		
 		if !verified {

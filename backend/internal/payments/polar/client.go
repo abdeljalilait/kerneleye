@@ -315,9 +315,9 @@ func NewWebhookHandler(client *Client, queries *database.Queries) *WebhookHandle
 }
 
 // VerifyWebhookSignature verifies a webhook signature from Polar
-// Polar uses HMAC-SHA256 of the raw payload, base64 encoded, prefixed with "v1,"
+// Polar uses HMAC-SHA256 of "<timestamp>.<payload>", base64 encoded, prefixed with "v1,"
 // Format: "v1,<base64-encoded-signature>"
-func (c *Client) VerifyWebhookSignature(payload []byte, signature string) bool {
+func (c *Client) VerifyWebhookSignature(payload []byte, signature string, timestamp string) bool {
 	if c.webhookSecret == "" {
 		log.Println("[Polar] Warning: webhook secret not set, skipping verification")
 		return true
@@ -338,15 +338,18 @@ func (c *Client) VerifyWebhookSignature(payload []byte, signature string) bool {
 		return false
 	}
 
-	// Compute expected signature
+	// Compute expected signature: HMAC(secret, timestamp + "." + payload)
+	// This is the standard Svix/Clerk webhook signing scheme
+	signedContent := timestamp + "." + string(payload)
 	mac := hmac.New(sha256.New, []byte(c.webhookSecret))
-	mac.Write(payload)
+	mac.Write([]byte(signedContent))
 	expected := mac.Sum(nil)
 
 	// Log for debugging (truncated)
 	log.Printf("[Polar] Signature check - Expected (base64): %s, Got (base64): %s",
 		base64.StdEncoding.EncodeToString(expected)[:20]+"...",
 		base64.StdEncoding.EncodeToString(sigBytes)[:20]+"...")
+	log.Printf("[Polar] Signed content preview: %s...", signedContent[:min(len(signedContent), 100)])
 
 	// Constant-time comparison
 	return hmac.Equal(sigBytes, expected)
