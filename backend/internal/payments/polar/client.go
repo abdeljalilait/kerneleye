@@ -111,7 +111,7 @@ func (c *Client) GetCustomer(ctx context.Context, customerID string) (*component
 }
 
 // CreateCheckoutSession creates a new checkout session for a subscription
-func (c *Client) CreateCheckoutSession(ctx context.Context, productID string, customerEmail *string, successURL string) (checkout *components.Checkout, err error) {
+func (c *Client) CreateCheckoutSession(ctx context.Context, productID string, customerEmail *string, successURL string, metadata map[string]string) (checkout *components.Checkout, err error) {
 	// Defer/recover to catch any panics from the SDK
 	defer func() {
 		if r := recover(); r != nil {
@@ -136,7 +136,15 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, productID string, cu
 		createReq.CustomerEmail = customerEmail
 	}
 
-	log.Printf("[Polar] Creating checkout session - ProductID: %s, SuccessURL: %s", productID, successURL)
+	// Add metadata for webhook identification
+	if len(metadata) > 0 {
+		createReq.Metadata = make(map[string]components.CheckoutCreateMetadata)
+		for k, v := range metadata {
+			createReq.Metadata[k] = components.CreateCheckoutCreateMetadataStr(v)
+		}
+	}
+
+	log.Printf("[Polar] Creating checkout session - ProductID: %s, SuccessURL: %s, Metadata: %+v", productID, successURL, metadata)
 
 	res, sdkErr := c.client.Checkouts.Create(ctx, createReq)
 	if sdkErr != nil {

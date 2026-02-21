@@ -308,11 +308,18 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 				}
 			}()
 
+			// Prepare metadata for webhook identification
+			metadata := map[string]string{
+				"user_id": userID,
+				"plan":    req.PlanName,
+			}
+
 			session, err := polarClient.CreateCheckoutSession(
 				c.Context(),
 				plan.PolarPriceID.String,
 				&user.Email,
 				successURL,
+				metadata,
 			)
 
 			if err != nil {
@@ -420,6 +427,7 @@ func HandlePolarDebug(polarClient *polar.Client, queries *database.Queries) fibe
 						plan.PolarPriceID.String,
 						&testEmail,
 						"https://example.com/success",
+						nil, // no metadata for test
 					)
 					if err != nil {
 						testCheckoutError = err.Error()
