@@ -659,8 +659,10 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 					log.Printf("[Polar] UpdateUserSubscription ERROR: %v", err)
 				} else {
 					log.Printf("[Polar] Successfully updated subscription for user %s", userID)
-					// Send welcome email after successful subscription or trial start
-					if emailService != nil && emailService.IsEnabled() {
+					
+					// Only send welcome email on subscription.active event to avoid duplicates
+					// Multiple events fire (created, updated, active) but we only want one email
+					if event.Type == "subscription.active" && emailService != nil && emailService.IsEnabled() {
 						go func() {
 							// Get user details for email
 							user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
