@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -529,11 +530,13 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 				return fiber.NewError(fiber.StatusInternalServerError, "Webhook verification setup failed")
 			}
 
-			err = wh.Verify(payload, map[string][]string{
-				"webhook-id":        {webhookID},
-				"webhook-signature": {webhookSignature},
-				"webhook-timestamp": {webhookTimestamp},
-			})
+			// Build http.Header with the required headers
+			headers := http.Header{
+				"Webhook-Id":        []string{webhookID},
+				"Webhook-Signature": []string{webhookSignature},
+				"Webhook-Timestamp": []string{webhookTimestamp},
+			}
+			err = wh.Verify(payload, headers)
 			if err != nil {
 				log.Printf("[Polar] Webhook signature verification failed: %v", err)
 				return fiber.NewError(fiber.StatusUnauthorized, "Invalid signature")
