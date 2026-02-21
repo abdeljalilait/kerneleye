@@ -584,13 +584,25 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 				return fiber.NewError(fiber.StatusBadRequest, "Invalid subscription data")
 			}
 			polarEventID = sub.ID
-			log.Printf("[Polar] Subscription ID: %s, Status: %s", sub.ID, sub.Status)
+			log.Printf("[Polar] Subscription ID: %s, Status: %s, CustomerID: %s", sub.ID, sub.Status, sub.CustomerID)
 			log.Printf("[Polar] Metadata: %+v", sub.Metadata)
+			
+			// Try to get user_id from metadata first
 			if uid, ok := sub.Metadata["user_id"]; ok {
 				userID = uid
 				log.Printf("[Polar] Found user_id in metadata: %s", userID)
+			} else if sub.CustomerID != "" {
+				// Fallback: lookup user by Polar customer ID
+				log.Printf("[Polar] No user_id in metadata, looking up by customer ID: %s", sub.CustomerID)
+				user, err := queries.GetUserByPolarCustomerID(c.Context(), database.ToPgText(sub.CustomerID))
+				if err == nil {
+					userID = database.FromPgUUID(user.ID)
+					log.Printf("[Polar] Found user by customer ID: %s", userID)
+				} else {
+					log.Printf("[Polar] WARNING: Could not find user by customer ID: %v", err)
+				}
 			} else {
-				log.Printf("[Polar] WARNING: No user_id found in subscription metadata")
+				log.Printf("[Polar] WARNING: No user_id or customer_id found in subscription")
 			}
 
 			// Update user's subscription (legacy handling)
@@ -619,6 +631,53 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 								log.Printf("[Polar] Welcome email sent to %s", user.Email)
 							}
 						}()
+					}
+				}
+			}
+
+		case "order.paid":
+			// Handle order paid - this happens when payment is confirmed
+			log.Printf("[Polar] Processing order.paid event")
+			var orderData struct {
+				ID         string            `json:"id"`
+				CustomerID string            `json:"customer_id"`
+				Metadata   map[string]string `json:"metadata"`
+				Status     string            `json:"status"`
+			}
+			if err := json.Unmarshal(event.Data, &orderData); err != nil {
+				log.Printf("[Polar] Failed to parse order: %v", err)
+			} else {
+				log.Printf("[Polar] Order paid: %s, Customer: %s, Metadata: %+v", orderData.ID, orderData.CustomerID, orderData.Metadata)
+				polarEventID = orderData.ID
+				if uid, ok := orderData.Metadata["user_id"]; ok {
+					userID = uid
+					log.Printf("[Polar] Found user_id in order metadata: %s", userID)
+				}
+			}
+
+		case "customer.created":
+			// Store Polar customer ID mapping
+			log.Printf("[Polar] Processing customer.created event")
+			var customerData struct {
+				ID       string `json:"id"`
+				Email    string `json:"email"`
+				Metadata map[string]string `json:"metadata"`
+			}
+			if err := json.Unmarshal(event.Data, &customerData); err != nil {
+				log.Printf("[Polar] Failed to parse customer: %v", err)
+			} else {
+				log.Printf("[Polar] Customer created: %s, Email: %s", customerData.ID, customerData.Email)
+				// Try to find user by email and update their Polar customer ID
+				if customerData.Email != "" {
+					user, err := queries.GetUserByEmail(c.Context(), customerData.Email)
+					if err == nil {
+						userID = database.FromPgUUID(user.ID)
+						log.Printf("[Polar] Updating user %s with Polar customer ID %s", userID, customerData.ID)
+						// Update user's Polar customer ID
+						queries.UpdateUserPolarCustomerID(c.Context(), database.UpdateUserPolarCustomerIDParams{
+							ID:              user.ID,
+							PolarCustomerID: database.ToPgText(customerData.ID),
+						})
 					}
 				}
 			}

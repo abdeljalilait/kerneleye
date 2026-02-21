@@ -1115,6 +1115,38 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
+const getUserByPolarCustomerID = `-- name: GetUserByPolarCustomerID :one
+
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at FROM users
+WHERE polar_customer_id = $1
+`
+
+// ============================================
+// User Polar Integration Queries
+// ============================================
+func (q *Queries) GetUserByPolarCustomerID(ctx context.Context, polarCustomerID pgtype.Text) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByPolarCustomerID, polarCustomerID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Plan,
+		&i.MaxServers,
+		&i.StripeCustomerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
+	)
+	return i, err
+}
+
 const getUserSubscriptionStatus = `-- name: GetUserSubscriptionStatus :one
 SELECT 
     u.id,
@@ -1573,6 +1605,23 @@ type UpdateServerStatusParams struct {
 
 func (q *Queries) UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error {
 	_, err := q.db.Exec(ctx, updateServerStatus, arg.ID, arg.Status)
+	return err
+}
+
+const updateUserPolarCustomerID = `-- name: UpdateUserPolarCustomerID :exec
+UPDATE users
+SET polar_customer_id = $2,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateUserPolarCustomerIDParams struct {
+	ID              pgtype.UUID `json:"id"`
+	PolarCustomerID pgtype.Text `json:"polar_customer_id"`
+}
+
+func (q *Queries) UpdateUserPolarCustomerID(ctx context.Context, arg UpdateUserPolarCustomerIDParams) error {
+	_, err := q.db.Exec(ctx, updateUserPolarCustomerID, arg.ID, arg.PolarCustomerID)
 	return err
 }
 

@@ -63,6 +63,10 @@ type Querier interface {
 	GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams) ([]GetTopSourceIPsRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
+	// ============================================
+	// User Polar Integration Queries
+	// ============================================
+	GetUserByPolarCustomerID(ctx context.Context, polarCustomerID pgtype.Text) (User, error)
 	GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error)
 	IsIPBlocked(ctx context.Context, arg IsIPBlockedParams) (bool, error)
 	ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error)
@@ -79,6 +83,7 @@ type Querier interface {
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
 	UpdateServerMetadata(ctx context.Context, arg UpdateServerMetadataParams) error
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
+	UpdateUserPolarCustomerID(ctx context.Context, arg UpdateUserPolarCustomerIDParams) error
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
 	UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error
 	UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error)

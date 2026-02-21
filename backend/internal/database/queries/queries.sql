@@ -398,3 +398,18 @@ SET config = $2,
     updated_at = NOW()
 WHERE id = $1;
 
+
+-- ============================================
+-- User Polar Integration Queries
+-- ============================================
+
+-- name: GetUserByPolarCustomerID :one
+SELECT * FROM users
+WHERE polar_customer_id = $1;
+
+-- name: UpdateUserPolarCustomerID :exec
+UPDATE users
+SET polar_customer_id = $2,
+    updated_at = NOW()
+WHERE id = $1;
+
