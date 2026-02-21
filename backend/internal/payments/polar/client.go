@@ -3,6 +3,9 @@ package polar
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -309,6 +312,39 @@ func NewWebhookHandler(client *Client, queries *database.Queries) *WebhookHandle
 		client:  client,
 		queries: queries,
 	}
+}
+
+// VerifyWebhookSignature verifies a webhook signature from Polar
+// The signature is computed as HMAC-SHA256 of the raw request body
+func (c *Client) VerifyWebhookSignature(payload []byte, signature string) bool {
+	if c.webhookSecret == "" {
+		log.Println("[Polar] Warning: webhook secret not set, skipping verification")
+		return true
+	}
+
+	mac := hmac.New(sha256.New, []byte(c.webhookSecret))
+	mac.Write(payload)
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	// Log for debugging
+	log.Printf("[Polar] Signature check - Expected: %s, Got: %s", expected, signature)
+
+	// Try exact match
+	if hmac.Equal([]byte(signature), []byte(expected)) {
+		return true
+	}
+
+	// Try with v1 prefix (some versions of Polar use this)
+	if hmac.Equal([]byte(signature), []byte("v1="+expected)) {
+		return true
+	}
+
+	// Try case-insensitive
+	if strings.EqualFold(signature, expected) {
+		return true
+	}
+
+	return false
 }
 
 // HandleWebhook processes incoming Polar webhook events

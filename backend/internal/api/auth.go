@@ -82,32 +82,32 @@ func AuthMiddleware(queries *database.Queries) fiber.Handler {
 			if !strings.HasPrefix(apiKey, "ke_") {
 				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key format")
 			}
-			
+
 			// Step 2: Verify HMAC signature (cryptographic validation)
 			decodedUserID, decodedServerID, err := DecodeAPIKey(apiKey)
 			if err != nil {
 				log.Printf("[Auth] API key HMAC verification failed from %s: %v", c.IP(), err)
 				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key signature")
 			}
-			
+
 			// Step 3: Validate against database (ensure key exists and matches)
 			server, err := queries.GetServerByAPIKey(c.Context(), database.ToPgText(apiKey))
 			if err != nil {
 				log.Printf("[Auth] API key not found in database from %s", c.IP())
 				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key")
 			}
-			
+
 			// Step 4: Verify decoded userID/serverID matches database record
 			// This prevents replay attacks with forged keys
 			if decodedUserID != database.FromPgUUID(server.UserID) ||
-			   decodedServerID != database.FromPgUUID(server.ID) {
+				decodedServerID != database.FromPgUUID(server.ID) {
 				log.Printf("[Auth] API key mismatch: decoded=%s/%s, expected=%s/%s from %s",
 					decodedUserID, decodedServerID,
 					database.FromPgUUID(server.UserID), database.FromPgUUID(server.ID),
 					c.IP())
 				return fiber.NewError(fiber.StatusUnauthorized, "Invalid API key")
 			}
-			
+
 			// Step 5: Check server status
 			if server.Status == "deleted" || server.Status == "rejected" {
 				return fiber.NewError(fiber.StatusForbidden, "Server access revoked")
@@ -211,6 +211,7 @@ func HandleLogin(queries *database.Queries) fiber.Handler {
 		})
 	}
 }
+
 // HandleMe returns the current user's info
 func HandleMe(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {

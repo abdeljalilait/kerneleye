@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -83,6 +84,7 @@ func getPolarWebhookSecret() string {
 }
 
 // verifyPolarWebhook verifies the webhook signature from Polar
+// Polar uses HMAC-SHA256 of the raw request body
 func verifyPolarWebhook(payload []byte, signature string) bool {
 	secret := getPolarWebhookSecret()
 	if secret == "" {
@@ -90,11 +92,44 @@ func verifyPolarWebhook(payload []byte, signature string) bool {
 		return true
 	}
 
+	log.Printf("[Polar] Verifying webhook signature")
+	log.Printf("[Polar] Payload length: %d bytes", len(payload))
+	log.Printf("[Polar] Received signature: %s", signature)
+
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
 	expectedSignature := hex.EncodeToString(mac.Sum(nil))
 
-	return hmac.Equal([]byte(signature), []byte(expectedSignature))
+	log.Printf("[Polar] Expected signature: %s", expectedSignature)
+
+	// Try direct comparison first
+	if signature == expectedSignature {
+		log.Println("[Polar] Signature verified successfully")
+		return true
+	}
+
+	// Try with 'v1=' prefix (some webhook providers use this format)
+	if "v1="+expectedSignature == signature {
+		log.Println("[Polar] Signature verified with v1= prefix")
+		return true
+	}
+
+	// Try case-insensitive comparison
+	if strings.EqualFold(signature, expectedSignature) {
+		log.Println("[Polar] Signature verified (case-insensitive)")
+		return true
+	}
+
+	log.Println("[Polar] Signature verification failed")
+	return false
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // HandleListPlans returns available subscription plans
@@ -506,19 +541,48 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 	return func(c *fiber.Ctx) error {
 		log.Printf("[API] POST /webhooks/polar - Webhook received")
 
-		// Get the signature from header
+		// Get the signature from header - try multiple header names
 		signature := c.Get("Polar-Signature")
 		if signature == "" {
+			signature = c.Get("X-Polar-Signature")
+		}
+		if signature == "" {
+			// Check all headers for debugging
+			log.Printf("[API] POST /webhooks/polar - All headers: %v", c.GetReqHeaders())
 			log.Printf("[API] POST /webhooks/polar - ERROR: Missing Polar-Signature header")
 			return fiber.NewError(fiber.StatusUnauthorized, "Missing signature")
 		}
-		log.Printf("[API] POST /webhooks/polar - Signature present: %s...", signature[:20])
+		log.Printf("[API] POST /webhooks/polar - Signature present: %s...", signature)
 
-		// Verify webhook signature
+		// Get raw body for signature verification
 		payload := c.Body()
-		if !verifyPolarWebhook(payload, signature) {
+		log.Printf("[API] POST /webhooks/polar - Payload length: %d bytes", len(payload))
+		log.Printf("[API] POST /webhooks/polar - Payload preview: %s", string(payload)[:min(len(payload), 200)])
+
+		// Verify webhook signature using Polar client if available
+		var verified bool
+		if polarClient != nil {
+			verified = polarClient.VerifyWebhookSignature(payload, signature)
+		} else {
+			verified = verifyPolarWebhook(payload, signature)
+		}
+		
+		if !verified {
 			log.Println("[Polar] Webhook signature verification failed")
 			return fiber.NewError(fiber.StatusUnauthorized, "Invalid signature")
+		}
+		log.Println("[Polar] Webhook signature verified successfully")
+
+		// Additional security: Check timestamp to prevent replay attacks
+		var webhookWithTimestamp struct {
+			Timestamp time.Time `json:"timestamp"`
+		}
+		if err := json.Unmarshal(payload, &webhookWithTimestamp); err == nil {
+			age := time.Since(webhookWithTimestamp.Timestamp)
+			if age > 5*time.Minute {
+				log.Printf("[Polar] Webhook timestamp too old: %v", age)
+				return fiber.NewError(fiber.StatusUnauthorized, "Webhook timestamp expired")
+			}
 		}
 
 		var event PolarWebhookPayload
