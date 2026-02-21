@@ -1,20 +1,18 @@
 package api
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/email"
 	"github.com/kerneleye/backend/internal/payments/polar"
+	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
 )
 
 // PolarWebhookPayload represents a webhook event from Polar
@@ -81,61 +79,6 @@ type SubscriptionStatusResponse struct {
 // getPolarWebhookSecret returns the Polar webhook secret from environment
 func getPolarWebhookSecret() string {
 	return os.Getenv("POLAR_WEBHOOK_SECRET")
-}
-
-// verifyPolarWebhook verifies the webhook signature from Polar
-// Polar uses HMAC-SHA256 of "<timestamp>.<payload>", base64 encoded, prefixed with "v1,"
-func verifyPolarWebhook(payload []byte, signature string, timestamp string) bool {
-	secret := getPolarWebhookSecret()
-	if secret == "" {
-		log.Println("[Polar] Warning: POLAR_WEBHOOK_SECRET not set, skipping signature verification")
-		return true
-	}
-
-	log.Printf("[Polar] Verifying webhook signature")
-	log.Printf("[Polar] Timestamp: %s", timestamp)
-	log.Printf("[Polar] Payload length: %d bytes", len(payload))
-	log.Printf("[Polar] Received signature: %s", signature)
-
-	// Strip the "v1," prefix if present
-	sig := signature
-	if strings.HasPrefix(signature, "v1,") {
-		sig = signature[3:]
-	} else if strings.HasPrefix(signature, "v1=") {
-		sig = signature[3:]
-	}
-
-	// Decode base64 signature
-	sigBytes, err := base64.StdEncoding.DecodeString(sig)
-	if err != nil {
-		log.Printf("[Polar] Failed to decode signature from base64: %v", err)
-		return false
-	}
-
-	// Compute expected signature: HMAC(secret, timestamp + "." + payload)
-	signedContent := timestamp + "." + string(payload)
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(signedContent))
-	expected := mac.Sum(nil)
-
-	log.Printf("[Polar] Expected signature (base64): %s", base64.StdEncoding.EncodeToString(expected))
-
-	// Constant-time comparison
-	if hmac.Equal(sigBytes, expected) {
-		log.Println("[Polar] Signature verified successfully")
-		return true
-	}
-
-	log.Println("[Polar] Signature verification failed")
-	return false
-}
-
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // HandleListPlans returns available subscription plans
@@ -547,58 +490,55 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 	return func(c *fiber.Ctx) error {
 		log.Printf("[API] POST /webhooks/polar - Webhook received")
 
-		// Get the signature from header - Polar uses Webhook-Signature
-		signature := c.Get("Webhook-Signature")
-		if signature == "" {
-			signature = c.Get("Polar-Signature")
-		}
-		if signature == "" {
-			signature = c.Get("X-Polar-Signature")
-		}
-		if signature == "" {
-			// Check all headers for debugging
+		// Get the required headers for Standard Webhooks verification
+		webhookID := c.Get("Webhook-Id")
+		webhookSignature := c.Get("Webhook-Signature")
+		webhookTimestamp := c.Get("Webhook-Timestamp")
+
+		if webhookSignature == "" {
 			log.Printf("[API] POST /webhooks/polar - All headers: %v", c.GetReqHeaders())
 			log.Printf("[API] POST /webhooks/polar - ERROR: Missing Webhook-Signature header")
 			return fiber.NewError(fiber.StatusUnauthorized, "Missing signature")
 		}
-
-		// Get timestamp for signature verification
-		timestamp := c.Get("Webhook-Timestamp")
-		if timestamp == "" {
+		if webhookID == "" {
+			log.Printf("[API] POST /webhooks/polar - ERROR: Missing Webhook-Id header")
+			return fiber.NewError(fiber.StatusUnauthorized, "Missing webhook ID")
+		}
+		if webhookTimestamp == "" {
 			log.Printf("[API] POST /webhooks/polar - ERROR: Missing Webhook-Timestamp header")
 			return fiber.NewError(fiber.StatusUnauthorized, "Missing timestamp")
 		}
-		log.Printf("[API] POST /webhooks/polar - Signature present: %s...", signature)
+
+		log.Printf("[API] POST /webhooks/polar - Webhook ID: %s", webhookID)
+		log.Printf("[API] POST /webhooks/polar - Signature: %s...", webhookSignature[:20])
 
 		// Get raw body for signature verification
 		payload := c.Body()
 		log.Printf("[API] POST /webhooks/polar - Payload length: %d bytes", len(payload))
-		log.Printf("[API] POST /webhooks/polar - Payload preview: %s", string(payload)[:min(len(payload), 200)])
 
-		// Verify webhook signature using Polar client if available
-		var verified bool
-		if polarClient != nil {
-			verified = polarClient.VerifyWebhookSignature(payload, signature, timestamp)
+		// Verify using Standard Webhooks library
+		secret := getPolarWebhookSecret()
+		if secret == "" {
+			log.Println("[Polar] Warning: POLAR_WEBHOOK_SECRET not set, skipping verification")
 		} else {
-			verified = verifyPolarWebhook(payload, signature, timestamp)
-		}
-		
-		if !verified {
-			log.Println("[Polar] Webhook signature verification failed")
-			return fiber.NewError(fiber.StatusUnauthorized, "Invalid signature")
-		}
-		log.Println("[Polar] Webhook signature verified successfully")
-
-		// Additional security: Check timestamp to prevent replay attacks
-		var webhookWithTimestamp struct {
-			Timestamp time.Time `json:"timestamp"`
-		}
-		if err := json.Unmarshal(payload, &webhookWithTimestamp); err == nil {
-			age := time.Since(webhookWithTimestamp.Timestamp)
-			if age > 5*time.Minute {
-				log.Printf("[Polar] Webhook timestamp too old: %v", age)
-				return fiber.NewError(fiber.StatusUnauthorized, "Webhook timestamp expired")
+			// The secret must be base64 encoded before passing to the library
+			base64Secret := base64.StdEncoding.EncodeToString([]byte(secret))
+			wh, err := standardwebhooks.NewWebhook(base64Secret)
+			if err != nil {
+				log.Printf("[Polar] Failed to create webhook verifier: %v", err)
+				return fiber.NewError(fiber.StatusInternalServerError, "Webhook verification setup failed")
 			}
+
+			err = wh.Verify(payload, map[string][]string{
+				"webhook-id":        {webhookID},
+				"webhook-signature": {webhookSignature},
+				"webhook-timestamp": {webhookTimestamp},
+			})
+			if err != nil {
+				log.Printf("[Polar] Webhook signature verification failed: %v", err)
+				return fiber.NewError(fiber.StatusUnauthorized, "Invalid signature")
+			}
+			log.Println("[Polar] Webhook signature verified successfully")
 		}
 
 		var event PolarWebhookPayload
