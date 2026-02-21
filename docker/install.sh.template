@@ -3,7 +3,7 @@
 # KernelEye Agent Quick Installer
 # Downloads and installs the pre-built KernelEye agent binary.
 #
-# Usage: curl -fsSL https://your-domain/install.sh | bash
+# Usage: curl -fsSL https://__INSTALL_DOMAIN__/install.sh | sudo API_KEY="xxx" bash -s -- [options]
 #
 
 set -e
@@ -17,6 +17,14 @@ BINARY_NAME="kerneleye-agent"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/kerneleye"
 LOG_DIR="/var/log/kerneleye"
+
+# Agent configuration from command line
+API_KEY="${API_KEY:-}"
+MODE="block_hybrid"
+THRESHOLD="80"
+BLOCK_DURATION="1h"
+FEATURES=""
+SERVER_HOST="__INSTALL_DOMAIN__:443"
 
 # Colors
 RED='\033[0;31m'
@@ -76,6 +84,37 @@ check_os() {
     fi
 }
 
+# Parse command line arguments passed via bash -s --
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --mode)
+                MODE="$2"
+                shift 2
+                ;;
+            --threshold)
+                THRESHOLD="$2"
+                shift 2
+                ;;
+            --block-duration)
+                BLOCK_DURATION="$2"
+                shift 2
+                ;;
+            --features)
+                FEATURES="$2"
+                shift 2
+                ;;
+            --server)
+                SERVER_HOST="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+}
+
 download_binary() {
     log_info "Downloading KernelEye agent from ${DOWNLOAD_URL}..."
 
@@ -91,10 +130,9 @@ download_binary() {
         exit 1
     fi
 
-    # Verify we got a real binary (check for ELF magic number 7f 45 4c 46)
-    # Use printf and head for better portability (file command is often missing)
+    # Verify we got a real binary (check for ELF magic number)
     if ! head -c 4 "$tmp_file" | grep -q "$(printf '\x7fELF')"; then
-        log_error "Downloaded file is not a valid ELF binary. Download may have failed."
+        log_error "Downloaded file is not a valid ELF binary."
         rm -f "$tmp_file"
         exit 1
     fi
@@ -110,26 +148,96 @@ setup_directories() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$LOG_DIR"
 
-    if [ ! -f "${CONFIG_DIR}/agent.env" ]; then
-        cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
+    # Build feature flags for agent
+    local feature_flags=""
+    if [ -n "$FEATURES" ]; then
+        IFS=',' read -ra FEATURE_LIST <<< "$FEATURES"
+        for feature in "${FEATURE_LIST[@]}"; do
+            case "$feature" in
+                auto_block)
+                    feature_flags="$feature_flags -auto-block"
+                    ;;
+                geoip_enrich)
+                    feature_flags="$feature_flags -geoip"
+                    ;;
+                bandwidth_tracking)
+                    feature_flags="$feature_flags -bandwidth"
+                    ;;
+                rate_limit)
+                    feature_flags="$feature_flags -rate-limit"
+                    ;;
+            esac
+        done
+    fi
+
+    # Build mode flag
+    local mode_flag=""
+    case "$MODE" in
+        monitor)
+            mode_flag=""
+            ;;
+        block_ipset)
+            mode_flag="-enable-remediation"
+            ;;
+        block_xdp)
+            mode_flag="-xdp"
+            ;;
+        block_hybrid)
+            mode_flag="-enable-remediation -xdp"
+            ;;
+    esac
+
+    # Save configuration
+    cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
 # KernelEye Agent Configuration
 # Generated on $(date)
 
-# Your API key (set via -apikey flag or here)
-# KERNELEYE_API_KEY=your-api-key-here
-
-# Backend server address (set via -server flag or here)
-# KERNELEYE_SERVER=api.your-domain.com:443
+API_KEY="${API_KEY}"
+SERVER_HOST="${SERVER_HOST}"
+MODE="${MODE}"
+THRESHOLD="${THRESHOLD}"
+BLOCK_DURATION="${BLOCK_DURATION}"
+FEATURES="${FEATURES}"
+FEATURE_FLAGS="${feature_flags}"
+MODE_FLAG="${mode_flag}"
 ENVEOF
-        chmod 0600 "${CONFIG_DIR}/agent.env"
-        log_success "Config directory created at ${CONFIG_DIR}"
-    fi
+    chmod 0600 "${CONFIG_DIR}/agent.env"
+    log_success "Config saved to ${CONFIG_DIR}/agent.env"
 }
 
 create_systemd_service() {
     if [ ! -d /etc/systemd/system ]; then
         log_warn "systemd not detected. Skipping service creation."
         return
+    fi
+
+    # Build agent flags from config
+    local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\""
+    
+    # Add mode flags
+    case "$MODE" in
+        block_ipset|block_hybrid)
+            agent_flags="$agent_flags -enable-remediation"
+            ;;
+    esac
+    
+    case "$MODE" in
+        block_xdp|block_hybrid)
+            agent_flags="$agent_flags -xdp"
+            ;;
+    esac
+
+    # Add feature flags
+    if [ -n "$FEATURES" ]; then
+        IFS=',' read -ra FEATURE_LIST <<< "$FEATURES"
+        for feature in "${FEATURE_LIST[@]}"; do
+            case "$feature" in
+                auto_block) agent_flags="$agent_flags -auto-block" ;;
+                geoip_enrich) agent_flags="$agent_flags -geoip" ;;
+                bandwidth_tracking) agent_flags="$agent_flags -bandwidth" ;;
+                rate_limit) agent_flags="$agent_flags -rate-limit" ;;
+            esac
+        done
     fi
 
     cat > /etc/systemd/system/kerneleye-agent.service <<SVCEOF
@@ -141,7 +249,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-${CONFIG_DIR}/agent.env
-ExecStart=${INSTALL_DIR}/${BINARY_NAME} -enable-remediation
+ExecStart=${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:${LOG_DIR}/agent.log
@@ -165,43 +273,82 @@ SVCEOF
     log_success "Systemd service created"
 }
 
+start_agent() {
+    if [ -z "$API_KEY" ]; then
+        log_warn "No API_KEY provided. Agent not started automatically."
+        echo "Set API_KEY environment variable and run again, or start manually:"
+        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -apikey \"YOUR_KEY\""
+        return
+    fi
+
+    log_info "Starting agent..."
+
+    # Build agent flags
+    local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\" -daemon"
+    
+    # Add mode flags
+    case "$MODE" in
+        block_ipset|block_hybrid)
+            agent_flags="$agent_flags -enable-remediation"
+            ;;
+    esac
+    
+    case "$MODE" in
+        block_xdp|block_hybrid)
+            agent_flags="$agent_flags -xdp"
+            ;;
+    esac
+
+    # Add feature flags
+    if [ -n "$FEATURES" ]; then
+        IFS=',' read -ra FEATURE_LIST <<< "$FEATURES"
+        for feature in "${FEATURE_LIST[@]}"; do
+            case "$feature" in
+                auto_block) agent_flags="$agent_flags -auto-block" ;;
+                geoip_enrich) agent_flags="$agent_flags -geoip" ;;
+                bandwidth_tracking) agent_flags="$agent_flags -bandwidth" ;;
+                rate_limit) agent_flags="$agent_flags -rate-limit" ;;
+            esac
+        done
+    done
+
+    # Start the agent
+    eval "${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}"
+
+    sleep 2
+
+    if pgrep -f "${BINARY_NAME}" > /dev/null; then
+        log_success "Agent started successfully"
+    else
+        log_error "Agent failed to start. Check logs: ${LOG_DIR}/agent.log"
+    fi
+}
+
 print_next_steps() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║${NC}         Installation Complete! 🎉                        ${GREEN}║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${BLUE}Next Steps:${NC}"
-    echo ""
-    echo "  1. Run the agent with your API key and server:"
-    echo -e "     ${YELLOW}sudo kerneleye-agent -server \"__INSTALL_DOMAIN__:443\" -apikey \"YOUR_API_KEY\" -enable-remediation -daemon${NC}"
-    echo ""
-    echo "  2. Run as a background daemon (logs to ${LOG_DIR}/agent.log):"
-    echo -e "     ${YELLOW}sudo kerneleye-agent -server \"__INSTALL_DOMAIN__:443\" -apikey \"YOUR_API_KEY\" -enable-remediation -daemon${NC}"
-    echo -e "     ${YELLOW}sudo kerneleye-agent -stop${NC}  # Stop the daemon"
-    echo -e "     ${YELLOW}sudo tail -f ${LOG_DIR}/agent.log${NC}  # View logs"
-    echo ""
-    echo "  3. Or configure via environment file and use systemd:"
-    echo -e "     ${YELLOW}sudo nano ${CONFIG_DIR}/agent.env${NC}"
-    echo "     Add your settings:"
-    echo -e "       ${YELLOW}KERNELEYE_API_KEY=your-api-key-here${NC}"
-    echo -e "       ${YELLOW}KERNELEYE_SERVER=__INSTALL_DOMAIN__:443${NC}"
-    echo -e "     Then start the service:"
-    echo -e "     ${YELLOW}sudo systemctl enable --now kerneleye-agent${NC}"
-    echo ""
-    echo "  4. View logs:"
-    echo -e "     ${YELLOW}sudo tail -f ${LOG_DIR}/agent.log${NC}"
-    echo ""
-    echo -e "${BLUE}Available Flags:${NC}"
-    echo "  -server              Backend server address (host:port)"
-    echo "  -apikey              API key from the KernelEye dashboard"
-    echo "  -enable-remediation  Enable active threat remediation (iptables)"
-    echo "  -xdp                 Enable XDP fast-path blocking (kernel 5.4+)"
-    echo "  -interface           Network interface for XDP (auto-detected)"
-    echo "  -grpc-url            Override gRPC server URL"
-    echo "  -daemon              Run as background daemon"
-    echo "  -stop                Stop the running daemon"
-    echo "  -pidfile             PID file location (default: /var/run/kerneleye-agent.pid)"
+    
+    if [ -n "$API_KEY" ]; then
+        echo -e "${BLUE}Your agent is now running!${NC}"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Go to your KernelEye dashboard"
+        echo "  2. Find this server in the 'Pending' list"  
+        echo "  3. Click 'Approve' to activate monitoring"
+        echo ""
+        echo -e "${BLUE}Management Commands:${NC}"
+        echo "  View logs:   sudo tail -f ${LOG_DIR}/agent.log"
+        echo "  Stop agent:  sudo pkill -f ${BINARY_NAME}"
+        echo "  Restart:     sudo systemctl restart ${BINARY_NAME}"
+    else
+        echo -e "${YELLOW}API_KEY not provided. Agent installed but not started.${NC}"
+        echo ""
+        echo "To start the agent:"
+        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -apikey \"YOUR_KEY\" -daemon"
+    fi
     echo ""
 }
 
@@ -213,9 +360,19 @@ main() {
     print_banner
     check_root
     check_os
+    parse_args "$@"
+    
+    log_info "Configuration:"
+    echo "  Mode: ${MODE}"
+    echo "  Threshold: ${THRESHOLD}"
+    echo "  Block Duration: ${BLOCK_DURATION}"
+    [ -n "$FEATURES" ] && echo "  Features: ${FEATURES}"
+    echo ""
+    
     download_binary
     setup_directories
     create_systemd_service
+    start_agent
     print_next_steps
 }
 
