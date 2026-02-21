@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI } from '../api/client';
+import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI, agentConfigAPI } from '../api/client';
 import { Server, Threat, Alert, StatsOverview } from '../types';
 
 export const useServers = () => {
@@ -160,12 +160,99 @@ export const useRegister = () => {
   });
 };
 
+// Agent configuration hooks
+export const useDeploymentModes = () => {
+  return useQuery({
+    queryKey: ['deployment-modes'],
+    queryFn: async () => {
+      const { data } = await agentConfigAPI.getDeploymentModes();
+      return data as Array<{
+        key: string;
+        name: string;
+        description: string;
+        requirements: string;
+        performance: string;
+        compatibility: string;
+      }>;
+    },
+  });
+};
+
+export const useAgentFeatures = () => {
+  return useQuery({
+    queryKey: ['agent-features'],
+    queryFn: async () => {
+      const { data } = await agentConfigAPI.getFeatures();
+      return data as Array<{
+        key: string;
+        name: string;
+        description: string;
+        flag: string;
+        env_var: string;
+        default_value: boolean;
+        available_in: string[];
+        details: string;
+        example: string;
+        benefits: string[];
+        risks?: string[];
+      }>;
+    },
+  });
+};
+
+export const useServerConfig = (id: string | undefined) => {
+  return useQuery({
+    queryKey: ['server', id, 'config'],
+    queryFn: async () => {
+      const { data } = await serversAPI.getConfig(id!);
+      return data as {
+        mode: string;
+        features: Record<string, boolean>;
+        threshold: number;
+        duration: string;
+      };
+    },
+    enabled: !!id,
+  });
+};
+
 // Server mutations
 export const useGenerateApiKey = () => {
   return useMutation({
     mutationFn: async () => {
       const { data } = await serversAPI.generateApiKey();
       return data as { api_key: string };
+    },
+  });
+};
+
+export const useCreateServerWithConfig = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { server_name: string; config: any }) => {
+      const { data: response } = await serversAPI.create(data);
+      return response as {
+        api_key: string;
+        server_id: string;
+        commands: Record<string, string>;
+        environment: Record<string, string>;
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] });
+    },
+  });
+};
+
+export const useUpdateServerConfig = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, config }: { id: string; config: any }) => {
+      const { data } = await serversAPI.updateConfig(id, config);
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['server', variables.id, 'config'] });
     },
   });
 };

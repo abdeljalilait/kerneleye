@@ -13,14 +13,6 @@ import {
   Slider,
   Select,
   Tabs,
-  CopyOutlined,
-  CheckCircleOutlined,
-  InfoCircleOutlined,
-  WarningOutlined,
-  ThunderboltOutlined,
-  SafetyOutlined,
-  EyeOutlined,
-  CodeOutlined
 } from 'antd';
 import { 
   CheckCircleFilled,
@@ -28,9 +20,15 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   LinuxOutlined,
-  DockerOutlined
+  DockerOutlined,
+  CheckCircleOutlined,
+  InfoCircleOutlined,
+  SafetyOutlined,
+  ThunderboltOutlined,
+  CodeOutlined,
+  WarningOutlined
 } from '@ant-design/icons';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useDeploymentModes, useAgentFeatures, useCreateServerWithConfig } from '../hooks/useQueries';
 
 const { Title, Text, Paragraph } = Typography;
 const { Step } = Steps;
@@ -82,29 +80,22 @@ export function AgentConfigurator() {
     threshold: 80,
     duration: '1h',
   });
-  const [generatedKey, setGeneratedKey] = useState<any>(null);
+  const [generatedKey, setGeneratedKey] = useState<{
+    api_key: string;
+    server_id: string;
+    commands: Record<string, string>;
+    environment: Record<string, string>;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Fetch deployment modes
-  const { data: modes } = useQuery({
-    queryKey: ['deployment-modes'],
-    queryFn: fetchDeploymentModes,
-  });
+  const { data: modes } = useDeploymentModes();
 
   // Fetch features
-  const { data: features } = useQuery({
-    queryKey: ['agent-features'],
-    queryFn: fetchAgentFeatures,
-  });
+  const { data: features } = useAgentFeatures();
 
-  // Generate API key mutation
-  const generateMutation = useMutation({
-    mutationFn: generateAPIKey,
-    onSuccess: (data) => {
-      setGeneratedKey(data);
-      setCurrentStep(3);
-    },
-  });
+  // Create server with config mutation
+  const createServerMutation = useCreateServerWithConfig();
 
   const handleModeChange = (mode: string) => {
     setConfig({ ...config, mode });
@@ -118,16 +109,18 @@ export function AgentConfigurator() {
   };
 
   const handleGenerate = () => {
-    generateMutation.mutate({
-      server_name: serverName,
-      config: {
-        mode: config.mode,
-        features: Object.entries(config.features).map(([key, enabled]) => ({
-          key,
-          enabled,
-        })),
+    createServerMutation.mutate(
+      {
+        server_name: serverName,
+        config: config,
       },
-    });
+      {
+        onSuccess: (data) => {
+          setGeneratedKey(data);
+          setCurrentStep(3);
+        },
+      }
+    );
   };
 
   const copyToClipboard = (text: string) => {
@@ -339,24 +332,42 @@ export function AgentConfigurator() {
             <div className="flex items-center justify-between mb-4">
               <Text strong>API Key:</Text>
               <Tag color="blue" className="font-mono">
-                {generatedKey.api_key.substring(0, 12)}...
-                {generatedKey.api_key.substring(generatedKey.api_key.length - 4)}
+                {generatedKey.api_key?.substring(0, 12)}...
+                {generatedKey.api_key?.substring(generatedKey.api_key.length - 4)}
               </Tag>
             </div>
 
-            <Tabs defaultActiveKey="docker">
+            <Tabs defaultActiveKey="binary">
+              <TabPane
+                tab={<><CodeOutlined /> Binary (Quick Start)</>}
+                key="binary"
+              >
+                <div className="relative">
+                  <pre className="bg-gray-900 text-green-400 p-4 rounded overflow-x-auto text-sm">
+                    {generatedKey.commands?.binary}
+                  </pre>
+                  <Button
+                    icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
+                    className="absolute top-2 right-2"
+                    onClick={() => copyToClipboard(generatedKey.commands?.binary || '')}
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </Button>
+                </div>
+              </TabPane>
+
               <TabPane
                 tab={<><DockerOutlined /> Docker</>}
                 key="docker"
               >
                 <div className="relative">
                   <pre className="bg-gray-900 text-green-400 p-4 rounded overflow-x-auto text-sm">
-                    {generatedKey.commands.docker}
+                    {generatedKey.commands?.docker}
                   </pre>
                   <Button
                     icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
                     className="absolute top-2 right-2"
-                    onClick={() => copyToClipboard(generatedKey.commands.docker)}
+                    onClick={() => copyToClipboard(generatedKey.commands?.docker || '')}
                   >
                     {copied ? 'Copied!' : 'Copy'}
                   </Button>
@@ -369,30 +380,12 @@ export function AgentConfigurator() {
               >
                 <div className="relative">
                   <pre className="bg-gray-900 text-green-400 p-4 rounded overflow-x-auto text-sm">
-                    {generatedKey.commands.systemd}
+                    {generatedKey.commands?.systemd}
                   </pre>
                   <Button
                     icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
                     className="absolute top-2 right-2"
-                    onClick={() => copyToClipboard(generatedKey.commands.systemd)}
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </Button>
-                </div>
-              </TabPane>
-
-              <TabPane
-                tab={<><CodeOutlined /> Binary</>}
-                key="binary"
-              >
-                <div className="relative">
-                  <pre className="bg-gray-900 text-green-400 p-4 rounded overflow-x-auto text-sm">
-                    {generatedKey.commands.binary}
-                  </pre>
-                  <Button
-                    icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
-                    className="absolute top-2 right-2"
-                    onClick={() => copyToClipboard(generatedKey.commands.binary)}
+                    onClick={() => copyToClipboard(generatedKey.commands?.systemd || '')}
                   >
                     {copied ? 'Copied!' : 'Copy'}
                   </Button>
@@ -404,7 +397,7 @@ export function AgentConfigurator() {
                 key="env"
               >
                 <Card size="small" title="Environment Variables">
-                  {Object.entries(generatedKey.environment).map(([key, value]) => (
+                  {Object.entries(generatedKey.environment || {}).map(([key, value]) => (
                     <div key={key} className="flex justify-between py-1 border-b last:border-0">
                       <Text code className="text-xs">{key}</Text>
                       <Text className="text-xs" copyable>{value as string}</Text>
@@ -503,7 +496,7 @@ export function AgentConfigurator() {
           {currentStep === 2 ? (
             <Button
               type="primary"
-              loading={generateMutation.isPending}
+              loading={createServerMutation.isPending}
               onClick={handleGenerate}
               icon={<DownloadOutlined />}
             >
@@ -518,24 +511,4 @@ export function AgentConfigurator() {
       )}
     </div>
   );
-}
-
-// API functions
-async function fetchDeploymentModes(): Promise<DeploymentMode[]> {
-  const res = await fetch('/api/deployment-modes');
-  return res.json();
-}
-
-async function fetchAgentFeatures(): Promise<FeatureInfo[]> {
-  const res = await fetch('/api/agent-features');
-  return res.json();
-}
-
-async function generateAPIKey(data: any) {
-  const res = await fetch('/api/servers', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  return res.json();
 }

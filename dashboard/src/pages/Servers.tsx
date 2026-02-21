@@ -3,7 +3,7 @@ import { Button, Row, Col, Typography, Alert, Spin, Card, Space, Badge } from 'a
 import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import ServersList from '../components/ServersList'
-import AddAgentModal from '../components/AddAgentModal'
+import AddServerConfiguratorModal from '../components/AddServerConfiguratorModal'
 import PendingAgentsList from '../components/PendingAgentsList'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useServers, useSubscriptionStatus } from '../hooks/useQueries'
@@ -260,7 +260,7 @@ export default function Servers() {
         <ServersList servers={servers || []} showCard={false} />
       </Card>
 
-      <AddAgentModal 
+      <AddServerConfiguratorModal 
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
       />

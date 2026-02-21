@@ -55,10 +55,18 @@ export const serversAPI = {
   list: () => api.get('/servers'),
   get: (id: string) => api.get(`/servers/${id}`),
   generateApiKey: () => api.get('/servers/generate-api-key'),
+  create: (data: { server_name: string; config: any }) => api.post('/servers', data),
   updateStatus: (id: string, status: string) => api.patch(`/servers/${id}/status`, { status }),
   getTraffic: (id: string, limit = 50) => api.get(`/servers/${id}/traffic?limit=${limit}`),
   getStats: (id: string) => api.get(`/servers/${id}/stats`),
+  getConfig: (id: string) => api.get(`/servers/${id}/config`),
+  updateConfig: (id: string, config: any) => api.patch(`/servers/${id}/config`, config),
   delete: (id: string) => api.delete(`/servers/${id}`),
+};
+
+export const agentConfigAPI = {
+  getDeploymentModes: () => api.get('/deployment-modes'),
+  getFeatures: () => api.get('/agent-features'),
 };
 
 export const threatsAPI = {
