@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -315,36 +315,41 @@ func NewWebhookHandler(client *Client, queries *database.Queries) *WebhookHandle
 }
 
 // VerifyWebhookSignature verifies a webhook signature from Polar
-// The signature is computed as HMAC-SHA256 of the raw request body
+// Polar uses HMAC-SHA256 of the raw payload, base64 encoded, prefixed with "v1,"
+// Format: "v1,<base64-encoded-signature>"
 func (c *Client) VerifyWebhookSignature(payload []byte, signature string) bool {
 	if c.webhookSecret == "" {
 		log.Println("[Polar] Warning: webhook secret not set, skipping verification")
 		return true
 	}
 
+	// Strip the "v1," prefix if present
+	sig := signature
+	if strings.HasPrefix(signature, "v1,") {
+		sig = signature[3:]
+	} else if strings.HasPrefix(signature, "v1=") {
+		sig = signature[3:]
+	}
+
+	// Decode base64 signature
+	sigBytes, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil {
+		log.Printf("[Polar] Failed to decode signature from base64: %v", err)
+		return false
+	}
+
+	// Compute expected signature
 	mac := hmac.New(sha256.New, []byte(c.webhookSecret))
 	mac.Write(payload)
-	expected := hex.EncodeToString(mac.Sum(nil))
+	expected := mac.Sum(nil)
 
-	// Log for debugging
-	log.Printf("[Polar] Signature check - Expected: %s, Got: %s", expected, signature)
+	// Log for debugging (truncated)
+	log.Printf("[Polar] Signature check - Expected (base64): %s, Got (base64): %s",
+		base64.StdEncoding.EncodeToString(expected)[:20]+"...",
+		base64.StdEncoding.EncodeToString(sigBytes)[:20]+"...")
 
-	// Try exact match
-	if hmac.Equal([]byte(signature), []byte(expected)) {
-		return true
-	}
-
-	// Try with v1 prefix (some versions of Polar use this)
-	if hmac.Equal([]byte(signature), []byte("v1="+expected)) {
-		return true
-	}
-
-	// Try case-insensitive
-	if strings.EqualFold(signature, expected) {
-		return true
-	}
-
-	return false
+	// Constant-time comparison
+	return hmac.Equal(sigBytes, expected)
 }
 
 // HandleWebhook processes incoming Polar webhook events
