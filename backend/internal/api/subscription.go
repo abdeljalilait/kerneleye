@@ -578,17 +578,30 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 		switch event.Type {
 		case "subscription.created", "subscription.updated", "subscription.active", "subscription.trialing":
 			log.Printf("[Polar] Processing subscription event: %s", event.Type)
-			var sub PolarSubscription
+			var sub struct {
+				ID                 string            `json:"id"`
+				Status             string            `json:"status"`
+				CurrentPeriodStart time.Time         `json:"current_period_start"`
+				CurrentPeriodEnd   time.Time         `json:"current_period_end"`
+				CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
+				CustomerID         string            `json:"customer_id"`
+				ProductID          string            `json:"product_id"`
+				PriceID            string            `json:"price_id"`
+				Metadata           map[string]string `json:"metadata"`
+				IsTrialing         bool              `json:"is_trialing,omitempty"`
+				TrialEndsAt        *time.Time        `json:"trial_ends_at,omitempty"`
+			}
 			if err := json.Unmarshal(event.Data, &sub); err != nil {
 				log.Printf("[Polar] Failed to parse subscription: %v", err)
 				return fiber.NewError(fiber.StatusBadRequest, "Invalid subscription data")
 			}
 			polarEventID = sub.ID
 			log.Printf("[Polar] Subscription ID: %s, Status: %s, CustomerID: %s", sub.ID, sub.Status, sub.CustomerID)
+			log.Printf("[Polar] ProductID: %s, PriceID: %s", sub.ProductID, sub.PriceID)
 			log.Printf("[Polar] Metadata: %+v", sub.Metadata)
 			
 			// Try to get user_id from metadata first
-			if uid, ok := sub.Metadata["user_id"]; ok {
+			if uid, ok := sub.Metadata["user_id"]; ok && uid != "" {
 				userID = uid
 				log.Printf("[Polar] Found user_id in metadata: %s", userID)
 			} else if sub.CustomerID != "" {
@@ -605,11 +618,47 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 				log.Printf("[Polar] WARNING: No user_id or customer_id found in subscription")
 			}
 
-			// Update user's subscription (legacy handling)
-			if userID != "" {
-				if err := updateUserSubscription(queries, c, userID, sub); err != nil {
-					log.Printf("[Polar] Failed to update user subscription: %v", err)
+			// Map Polar product to our plan
+			planName := "starter" // default
+			if p, ok := sub.Metadata["plan"]; ok && p != "" {
+				planName = p
+				log.Printf("[Polar] Found plan in metadata: %s", planName)
+			} else if sub.ProductID != "" {
+				// Try to find plan by Polar product ID
+				plan, err := queries.GetPlanByPolarProductID(c.Context(), database.ToPgText(sub.ProductID))
+				if err == nil {
+					planName = plan.Name
+					log.Printf("[Polar] Found plan by ProductID: %s", planName)
 				} else {
+					log.Printf("[Polar] Could not find plan by ProductID %s: %v", sub.ProductID, err)
+				}
+			}
+
+			// Handle trial status
+			status := sub.Status
+			if sub.IsTrialing {
+				status = "trialing"
+			}
+
+			// Update user's subscription directly
+			if userID != "" {
+				log.Printf("[Polar] Updating user %s subscription: plan=%s, status=%s", userID, planName, status)
+				
+				params := database.UpdateUserSubscriptionParams{
+					ID:                             database.ToPgUUID(userID),
+					Plan:                           planName,
+					PolarSubscriptionID:            database.ToPgText(sub.ID),
+					SubscriptionStatus:             database.ToPgText(status),
+					SubscriptionCurrentPeriodStart: database.ToPgTimestamptz(sub.CurrentPeriodStart),
+					SubscriptionCurrentPeriodEnd:   database.ToPgTimestamptz(sub.CurrentPeriodEnd),
+					SubscriptionCancelAtPeriodEnd:  database.ToPgBool(sub.CancelAtPeriodEnd),
+					TrialEndsAt:                    database.ToPgTimestamptzPtr(sub.TrialEndsAt),
+				}
+
+				if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
+					log.Printf("[Polar] UpdateUserSubscription ERROR: %v", err)
+				} else {
+					log.Printf("[Polar] Successfully updated subscription for user %s", userID)
 					// Send welcome email after successful subscription or trial start
 					if emailService != nil && emailService.IsEnabled() {
 						go func() {
@@ -796,6 +845,8 @@ func updateUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 	log.Printf("[Polar] Updated subscription for user %s to plan %s (status: %s, trial: %v)", userID, planName, status, sub.IsTrialing)
 	return nil
 }
+
+
 
 // cancelUserSubscription marks a user's subscription as canceled
 func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID string, sub PolarSubscription) error {
