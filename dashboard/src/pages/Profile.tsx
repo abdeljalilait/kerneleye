@@ -153,7 +153,7 @@ export default function Profile() {
             <Space direction="vertical" style={{ width: '100%' }}>
               <Button
                 block
-                icon={<Key size={16} />}
+                icon={<CreditCard size={16} />}
                 onClick={() => navigate({ to: '/subscription' })}
               >
                 Manage Subscription
