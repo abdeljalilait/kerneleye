@@ -17,7 +17,6 @@ import {
   Popconfirm,
   Drawer,
   Descriptions,
-  Timeline,
   Alert
 } from 'antd';
 import { 
@@ -29,12 +28,10 @@ import {
   UnlockOutlined, 
   GlobalOutlined,
   SafetyOutlined,
-  ThunderboltOutlined,
   ClockCircleOutlined,
   EyeOutlined,
   FilterOutlined,
   ExportOutlined,
-  InfoCircleOutlined,
   CloseCircleOutlined,
   WarningOutlined,
   DesktopOutlined,
@@ -163,7 +160,7 @@ export function BlockedIPs() {
         <div>
           <div className="flex items-center gap-2">
             <Text strong className="font-mono">{ip}</Text>
-            {record.ip_version === 6 && <Tag size="small">IPv6</Tag>}
+            {record.ip_version === 6 && <Tag>IPv6</Tag>}
           </div>
           <div className="flex gap-1 mt-1">
             {record.is_datacenter && (

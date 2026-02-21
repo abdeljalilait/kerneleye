@@ -108,6 +108,7 @@ export default function Reports() {
   }, [attackTypes]);
 
   // Transform hourly data
+  type HourlyData = { hour: number; attack_count: number; blocked_count: number };
   const hourlyChartData = useMemo(() => {
     if (!hourlyData) {
       // Return empty 24-hour structure if no data
@@ -117,9 +118,11 @@ export default function Reports() {
         blocked: 0,
       }));
     }
-    const dataMap = new Map(hourlyData.map((h: any) => [h.hour, h]));
+    const dataMap = new Map(
+      (hourlyData as HourlyData[]).map((h) => [h.hour, h])
+    );
     return Array.from({ length: 24 }, (_, i) => {
-      const hourData = dataMap.get(i);
+      const hourData = dataMap.get(i) as HourlyData | undefined;
       return {
         hour: `${i}:00`,
         attacks: hourData?.attack_count || 0,

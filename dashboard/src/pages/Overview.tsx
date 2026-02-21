@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { Server as ServerIcon, Activity, Shield, AlertTriangle, Zap, TrendingUp, Crown, Sparkles } from 'lucide-react'
-import { Row, Col, Typography, Card, Space, Badge, Button, Tag } from 'antd'
+import { Server as ServerIcon, Shield, AlertTriangle, Zap, TrendingUp, Crown, Sparkles } from 'lucide-react'
+import { Row, Col, Typography, Card, Space, Badge, Tag } from 'antd'
 import { useNavigate } from '@tanstack/react-router'
 import StatCard from '../components/StatCard'
 import TrafficChart from '../components/TrafficChart'

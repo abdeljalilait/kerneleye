@@ -12,7 +12,6 @@ import {
   Tag,
   Tooltip,
   Select,
-  DatePicker,
   Radio,
   Empty,
   Spin,
@@ -49,7 +48,6 @@ import {
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
-const { RangePicker } = DatePicker;
 
 // Mock data - in production this comes from API
 interface SourceIP {
@@ -501,7 +499,7 @@ export default function Visualizer() {
                   }}
                 >
                   <Space wrap size={[8, 8]}>
-                    {mockSourceIPs.slice(0, 10).map((ip, idx) => (
+                    {mockSourceIPs.slice(0, 10).map((ip: SourceIP, idx: number) => (
                       <Tooltip key={ip.ip} title={`${ip.isp} | ${ip.country}`}>
                         <Tag
                           color={COLORS[idx % COLORS.length]}
@@ -560,16 +558,16 @@ export default function Visualizer() {
                             borderRadius: 8,
                           }}
                         />
-                        {mockSourceIPs.slice(0, 5).map((ip, idx) => (
+                        {mockSourceIPs.slice(0, 5).map((ip: SourceIP, idx: number) => (
                           <Line
-                            key={ip.ip}
-                            data={ip.timeline}
-                            type="monotone"
-                            dataKey="count"
-                            name={ip.ip}
-                            stroke={COLORS[idx % COLORS.length]}
-                            strokeWidth={2}
-                            dot={false}
+                          key={ip.ip}
+                          data={ip.timeline as { time: string; count: number }[]}
+                          type="monotone"
+                          dataKey="count"
+                          name={ip.ip}
+                          stroke={COLORS[idx % COLORS.length]}
+                          strokeWidth={2}
+                          dot={false}
                           />
                         ))}
                         <Legend />
@@ -624,9 +622,9 @@ export default function Visualizer() {
                           }}
                         />
                         <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                          {mockSourceIPs.slice(0, 10).map((_, idx) => (
+                            {mockSourceIPs.slice(0, 10).map((_: SourceIP, idx: number) => (
                             <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                          ))}
+                            ))}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -652,7 +650,7 @@ export default function Visualizer() {
                   }
                 >
                   <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {mockSourceIPs.map((ip, idx) => (
+                    {mockSourceIPs.map((ip: SourceIP, idx: number) => (
                       <Row
                         key={ip.ip}
                         align="middle"
@@ -680,7 +678,7 @@ export default function Visualizer() {
                         </Col>
                         <Col span={4}>
                           <Space size={4} wrap>
-                            {ip.threatTypes.map((type) => (
+                            {ip.threatTypes.map((type: string) => (
                               <Tag key={type} color="warning" style={{ fontSize: 10 }}>
                                 {type}
                               </Tag>
@@ -688,7 +686,7 @@ export default function Visualizer() {
                           </Space>
                         </Col>
                         <Col span={4}>
-                          <Sparkline data={ip.timeline} color={COLORS[idx % COLORS.length]} />
+                          <Sparkline data={ip.timeline as { time: string; count: number }[]} color={COLORS[idx % COLORS.length]} />
                         </Col>
                         <Col span={3}>
                           <Text strong style={{ color: 'var(--text-primary)' }}>
@@ -730,7 +728,7 @@ export default function Visualizer() {
                   }}
                 >
                   <Space wrap size={[8, 8]}>
-                    {mockSourceAS.slice(0, 8).map((as, idx) => (
+                    {mockSourceAS.slice(0, 8).map((as: SourceAS, idx: number) => (
                       <Tooltip key={as.asn} title={`${as.name} | ${as.country}`}>
                         <Tag
                           color={COLORS[idx % COLORS.length]}
@@ -788,16 +786,16 @@ export default function Visualizer() {
                             borderRadius: 8,
                           }}
                         />
-                        {mockSourceAS.slice(0, 5).map((as, idx) => (
+                        {mockSourceAS.slice(0, 5).map((as: SourceAS, idx: number) => (
                           <Line
-                            key={as.asn}
-                            data={as.timeline}
-                            type="monotone"
-                            dataKey="count"
-                            name={as.name}
-                            stroke={COLORS[idx % COLORS.length]}
-                            strokeWidth={2}
-                            dot={false}
+                          key={as.asn}
+                          data={as.timeline as { time: string; count: number }[]}
+                          type="monotone"
+                          dataKey="count"
+                          name={as.name}
+                          stroke={COLORS[idx % COLORS.length]}
+                          strokeWidth={2}
+                          dot={false}
                           />
                         ))}
                         <Legend />
@@ -852,9 +850,9 @@ export default function Visualizer() {
                           }}
                         />
                         <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                          {mockSourceAS.map((_, idx) => (
+                            {mockSourceAS.map((_: SourceAS, idx: number) => (
                             <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                          ))}
+                            ))}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -880,57 +878,57 @@ export default function Visualizer() {
                   }
                 >
                   <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {mockSourceAS.map((as, idx) => (
+                    {mockSourceAS.map((as: SourceAS, idx: number) => (
                       <Row
-                        key={as.asn}
-                        align="middle"
-                        style={{
-                          padding: '12px 16px',
-                          background: 'var(--bg-tertiary)',
-                          borderRadius: 8,
-                          borderLeft: `4px solid ${COLORS[idx % COLORS.length]}`,
-                        }}
+                      key={as.asn}
+                      align="middle"
+                      style={{
+                        padding: '12px 16px',
+                        background: 'var(--bg-tertiary)',
+                        borderRadius: 8,
+                        borderLeft: `4px solid ${COLORS[idx % COLORS.length]}`,
+                      }}
                       >
-                        <Col span={5}>
-                          <Space direction="vertical" size={0}>
-                            <Text strong style={{ color: COLORS[idx % COLORS.length] }}>
-                              {as.name}
-                            </Text>
-                            <Text style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
-                              {as.asn}
-                            </Text>
-                          </Space>
-                        </Col>
-                        <Col span={3}>
-                          <Tag color="default" style={{ fontSize: 11 }}>
-                            {getFlagEmoji(as.countryCode)} {as.country}
+                      <Col span={5}>
+                        <Space direction="vertical" size={0}>
+                        <Text strong style={{ color: COLORS[idx % COLORS.length] }}>
+                          {as.name}
+                        </Text>
+                        <Text style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
+                          {as.asn}
+                        </Text>
+                        </Space>
+                      </Col>
+                      <Col span={3}>
+                        <Tag color="default" style={{ fontSize: 11 }}>
+                        {getFlagEmoji(as.countryCode)} {as.country}
+                        </Tag>
+                      </Col>
+                      <Col span={6}>
+                        <Space size={4} wrap>
+                        <Text style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
+                          Top IPs:
+                        </Text>
+                        {as.topIPs.slice(0, 2).map((ip: string) => (
+                          <Tag key={ip} style={{ fontSize: 10 }}>
+                          {ip}
                           </Tag>
-                        </Col>
-                        <Col span={6}>
-                          <Space size={4} wrap>
-                            <Text style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
-                              Top IPs:
-                            </Text>
-                            {as.topIPs.slice(0, 2).map((ip) => (
-                              <Tag key={ip} style={{ fontSize: 10 }}>
-                                {ip}
-                              </Tag>
-                            ))}
-                          </Space>
-                        </Col>
-                        <Col span={4}>
-                          <Sparkline data={as.timeline} color={COLORS[idx % COLORS.length]} />
-                        </Col>
-                        <Col span={3}>
-                          <Text strong style={{ color: 'var(--text-primary)' }}>
-                            {as.count} alerts
-                          </Text>
-                        </Col>
-                        <Col span={3}>
-                          <Text style={{ color: 'var(--text-tertiary)' }}>
-                            {as.percentage}%
-                          </Text>
-                        </Col>
+                        ))}
+                        </Space>
+                      </Col>
+                      <Col span={4}>
+                        <Sparkline data={as.timeline as { time: string; count: number }[]} color={COLORS[idx % COLORS.length]} />
+                      </Col>
+                      <Col span={3}>
+                        <Text strong style={{ color: 'var(--text-primary)' }}>
+                        {as.count} alerts
+                        </Text>
+                      </Col>
+                      <Col span={3}>
+                        <Text style={{ color: 'var(--text-tertiary)' }}>
+                        {as.percentage}%
+                        </Text>
+                      </Col>
                       </Row>
                     ))}
                   </Space>
