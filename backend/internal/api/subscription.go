@@ -751,8 +751,8 @@ func HandleStartTrial(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusBadRequest, "Invalid plan")
 		}
 
-		// Set trial to end in 14 days
-		trialEndsAt := time.Now().Add(14 * 24 * time.Hour)
+		// Set trial to end in 7 days
+		trialEndsAt := time.Now().Add(7 * 24 * time.Hour)
 
 		// Update user with trial
 		params := database.UpdateUserSubscriptionParams{

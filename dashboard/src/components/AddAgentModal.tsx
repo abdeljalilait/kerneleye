@@ -165,7 +165,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
       >
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <Alert
-            message="14-Day Free Trial Available"
+            message="7-Day Free Trial Available"
             description="Start with a 7-day free trial. Your credit card will be charged only after the trial ends. Cancel anytime during the trial and you won't be charged."
             type="info"
             showIcon
