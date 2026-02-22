@@ -29,12 +29,11 @@ import {
   CloudServerOutlined,
   SettingOutlined,
   SafetyCertificateOutlined,
-  TerminalOutlined,
+  ConsoleSqlOutlined,
 } from '@ant-design/icons';
 import { useDeploymentModes, useAgentFeatures, useCreateServerWithConfig } from '../hooks/useQueries';
 
 const { Title, Text, Paragraph } = Typography;
-const { Step } = Steps;
 const { Option } = Select;
 
 // Types
@@ -66,6 +65,7 @@ interface AgentConfig {
   features: Record<string, boolean>;
   threshold: number;
   duration: string;
+  daemon: boolean;
 }
 
 interface AgentConfiguratorProps {
@@ -85,9 +85,10 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     },
     threshold: 80,
     duration: '1h',
+    daemon: true,
   });
   const [generatedCommand, setGeneratedCommand] = useState<string | null>(null);
-  const [installData, setInstallData] = useState<{
+  const [, setInstallData] = useState<{
     api_key: string;
     server_id: string;
     commands: Record<string, string>;
@@ -108,8 +109,6 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
       features: { ...config.features, [key]: enabled },
     });
   };
-
-
 
   const handleGenerate = () => {
     createServerMutation.mutate(
@@ -138,41 +137,44 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     <CloudServerOutlined key="server" />,
     <SafetyCertificateOutlined key="safety" />,
     <SettingOutlined key="settings" />,
-    <TerminalOutlined key="terminal" />,
+    <ConsoleSqlOutlined key="terminal" />,
   ];
 
   const renderServerNameStep = () => (
-    <div className="max-w-md mx-auto py-8">
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-          <CloudServerOutlined className="text-3xl text-blue-500" />
+    <div style={{ maxWidth: '28rem', margin: '0 auto', padding: '32px 0' }}>
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ 
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', 
+          width: 64, height: 64, background: 'rgba(59, 130, 246, 0.1)', borderRadius: '50%', marginBottom: 16 
+        }}>
+          <CloudServerOutlined style={{ fontSize: 32, color: '#3b82f6' }} />
         </div>
-        <Title level={3} className="mb-2">Name Your Server</Title>
-        <Paragraph className="text-gray-500">
+        <Title level={3} style={{ marginBottom: 8 }}>Name Your Server</Title>
+        <Paragraph style={{ color: 'var(--text-secondary)' }}>
           Give this agent a descriptive name so you can identify it in the dashboard
         </Paragraph>
       </div>
 
-      <Card className="shadow-sm">
-        <div className="space-y-4">
+      <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <Text strong className="block mb-2">Server Name</Text>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>Server Name</Text>
             <Input
               size="large"
               placeholder="e.g., production-web-01, database-primary"
               value={serverName}
               onChange={(e) => setServerName(e.target.value)}
-              prefix={<CloudServerOutlined className="text-gray-400" />}
-              className="rounded-lg"
+              prefix={<CloudServerOutlined style={{ color: 'var(--text-tertiary)' }} />}
+              style={{ borderRadius: 8 }}
             />
           </div>
           
-          <div className="flex gap-2 flex-wrap">
-            <Text type="secondary" className="text-xs block w-full mb-1">Suggestions:</Text>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', width: '100%', marginBottom: 4 }}>Suggestions:</Text>
             {['web-server-01', 'api-prod', 'database-primary', 'load-balancer'].map((name) => (
               <Tag 
                 key={name} 
-                className="cursor-pointer hover:bg-blue-50"
+                style={{ cursor: 'pointer' }}
                 onClick={() => setServerName(name)}
               >
                 {name}
@@ -185,10 +187,10 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
   );
 
   const renderModeSelection = () => (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <Title level={4} className="mb-2">Choose Your Protection Level</Title>
-        <Paragraph className="text-gray-500">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <Title level={4} style={{ marginBottom: 8 }}>Choose Your Protection Level</Title>
+        <Paragraph style={{ color: 'var(--text-secondary)' }}>
           Select how aggressive you want threat protection to be
         </Paragraph>
       </div>
@@ -196,39 +198,40 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
       <Radio.Group
         value={config.mode}
         onChange={(e) => handleModeChange(e.target.value)}
-        className="w-full"
+        style={{ width: '100%' }}
       >
-        <Space direction="vertical" className="w-full" size="middle">
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
           {modes?.map((mode: DeploymentMode) => (
             <Card
               key={mode.key}
-              className={`cursor-pointer transition-all duration-300 hover:shadow-lg ${
-                config.mode === mode.key 
-                  ? 'border-blue-500 shadow-md bg-blue-50/30' 
-                  : 'border-gray-200 hover:border-blue-300'
-              }`}
+              style={{ 
+                cursor: 'pointer',
+                borderColor: config.mode === mode.key ? '#1890ff' : undefined,
+                boxShadow: config.mode === mode.key ? '0 4px 12px rgba(0,0,0,0.1)' : undefined,
+                background: config.mode === mode.key ? 'rgba(24, 144, 255, 0.05)' : undefined
+              }}
               onClick={() => handleModeChange(mode.key)}
-              bodyStyle={{ padding: '20px' }}
+              bodyStyle={{ padding: 20 }}
             >
-              <Radio value={mode.key} className="w-full">
-                <div className="ml-3">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Text strong className="text-lg">{mode.name}</Text>
+              <Radio value={mode.key} style={{ width: '100%' }}>
+                <div style={{ marginLeft: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                    <Text strong style={{ fontSize: 18 }}>{mode.name}</Text>
                     {mode.key === 'block_hybrid' && (
                       <Tag color="green">Recommended</Tag>
                     )}
                   </div>
-                  <Paragraph className="text-gray-600 mb-3">
+                  <Paragraph style={{ color: 'var(--text-secondary)', marginBottom: 12 }}>
                     {mode.description}
                   </Paragraph>
-                  <div className="flex flex-wrap gap-2">
-                    <Tag icon={<InfoCircleOutlined />} className="rounded-full">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <Tag icon={<InfoCircleOutlined />} style={{ borderRadius: 16 }}>
                       {mode.requirements}
                     </Tag>
-                    <Tag icon={<ThunderboltOutlined />} color="blue" className="rounded-full">
+                    <Tag icon={<ThunderboltOutlined />} color="blue" style={{ borderRadius: 16 }}>
                       {mode.performance}
                     </Tag>
-                    <Tag icon={<SafetyOutlined />} color="green" className="rounded-full">
+                    <Tag icon={<SafetyOutlined />} color="green" style={{ borderRadius: 16 }}>
                       {mode.compatibility}
                     </Tag>
                   </div>
@@ -242,10 +245,10 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
   );
 
   const renderFeatureConfiguration = () => (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <Title level={4} className="mb-2">Configure Protection Features</Title>
-        <Paragraph className="text-gray-500">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <Title level={4} style={{ marginBottom: 8 }}>Configure Protection Features</Title>
+        <Paragraph style={{ color: 'var(--text-secondary)' }}>
           Toggle features based on your security requirements
         </Paragraph>
       </div>
@@ -254,23 +257,23 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
       {config.mode !== 'monitor' && (
         <Card 
           title={
-            <div className="flex items-center gap-2">
-              <SafetyOutlined className="text-blue-500" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <SafetyOutlined style={{ color: '#1890ff' }} />
               <span>Automatic Protection</span>
             </div>
           }
-          className="shadow-sm"
+          style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
         >
-          <div className="space-y-6">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <Text strong className="text-base">Auto-Blocking</Text>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Text strong style={{ fontSize: 16 }}>Auto-Blocking</Text>
                   <Tooltip title="Automatically block IPs that exceed the threat threshold">
-                    <InfoCircleOutlined className="text-gray-400" />
+                    <InfoCircleOutlined style={{ color: 'var(--text-tertiary)' }} />
                   </Tooltip>
                 </div>
-                <Paragraph className="text-sm text-gray-500 mb-0">
+                <Paragraph style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
                   Block malicious IPs automatically when threat score exceeds threshold
                 </Paragraph>
               </div>
@@ -282,11 +285,11 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
             </div>
 
             {config.features.auto_block && (
-              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+              <div style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text strong>Block Threshold</Text>
-                    <Tag color="red" className="text-base px-3 py-1">{config.threshold}</Tag>
+                    <Tag color="red" style={{ fontSize: 16, padding: '4px 12px' }}>{config.threshold}</Tag>
                   </div>
                   <Slider
                     min={40}
@@ -294,20 +297,20 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                     value={config.threshold}
                     onChange={(val) => setConfig({ ...config, threshold: val })}
                     marks={{
-                      40: { label: <span className="text-xs">Aggressive</span> },
-                      60: { label: <span className="text-xs">Balanced</span> },
-                      80: { label: <span className="text-xs">Conservative</span> },
+                      40: { label: <span style={{ fontSize: 12 }}>Aggressive</span> },
+                      60: { label: <span style={{ fontSize: 12 }}>Balanced</span> },
+                      80: { label: <span style={{ fontSize: 12 }}>Conservative</span> },
                     }}
                     tooltip={{ formatter: (val) => `Score: ${val}` }}
                   />
                 </div>
 
                 <div>
-                  <Text strong className="block mb-2">Block Duration</Text>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>Block Duration</Text>
                   <Select
                     value={config.duration}
                     onChange={(val) => setConfig({ ...config, duration: val })}
-                    className="w-full"
+                    style={{ width: '100%' }}
                     size="large"
                   >
                     <Option value="1h">1 Hour - Good for testing</Option>
@@ -321,48 +324,74 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
         </Card>
       )}
 
+      {/* Runtime Mode */}
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SettingOutlined style={{ color: '#1890ff' }} />
+            <span>Runtime Mode</span>
+          </div>
+        }
+        style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div style={{ flex: 1, paddingRight: 16 }}>
+            <Text strong style={{ fontSize: 16 }}>Run as Daemon</Text>
+            <Paragraph style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
+              Keep the agent running in the background. Disable to run in foreground.
+            </Paragraph>
+          </div>
+          <Switch
+            checked={config.daemon}
+            onChange={(checked) => setConfig({ ...config, daemon: checked })}
+          />
+        </div>
+      </Card>
+
       {/* Features List */}
       <Card 
         title={
-          <div className="flex items-center gap-2">
-            <CodeOutlined className="text-purple-500" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CodeOutlined style={{ color: '#722ed1' }} />
             <span>Additional Features</span>
           </div>
         }
-        className="shadow-sm"
+        style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
       >
-        <div className="space-y-2">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {features
             ?.filter((f: FeatureInfo) => f.available_in.includes(config.mode))
             .map((feature: FeatureInfo) => (
               <div
                 key={feature.key}
-                className={`flex items-start justify-between p-4 rounded-lg border transition-all duration-200 ${
-                  config.features[feature.key] ?? feature.default_value
-                    ? 'border-blue-200 bg-blue-50/30' 
-                    : 'border-gray-100 hover:border-gray-200'
-                }`}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                  padding: 16, borderRadius: 8, border: '1px solid',
+                  borderColor: config.features[feature.key] ?? feature.default_value ? '#bae7ff' : 'var(--border-subtle)',
+                  background: config.features[feature.key] ?? feature.default_value ? 'rgba(24, 144, 255, 0.05)' : undefined,
+                  transition: 'all 0.2s'
+                }}
               >
-                <div className="flex-1 pr-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Text strong className="text-base">{feature.name}</Text>
+                <div style={{ flex: 1, paddingRight: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Text strong style={{ fontSize: 16 }}>{feature.name}</Text>
                     <Tooltip title={feature.details}>
-                      <InfoCircleOutlined className="text-gray-400 hover:text-blue-500 cursor-help" />
+                      <InfoCircleOutlined style={{ color: 'var(--text-tertiary)', cursor: 'help' }} />
                     </Tooltip>
                   </div>
-                  <Paragraph className="text-sm text-gray-600 mb-2">
+                  <Paragraph style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 8 }}>
                     {feature.description}
                   </Paragraph>
-                  <div className="flex flex-wrap gap-2">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {feature.benefits.slice(0, 2).map((benefit, idx) => (
-                      <Tag key={idx} color="success" className="text-xs rounded-full">
-                        <CheckCircleOutlined className="mr-1" />
+                      <Tag key={idx} color="success" style={{ fontSize: 12, borderRadius: 16 }}>
+                        <CheckCircleOutlined style={{ marginRight: 4 }} />
                         {benefit}
                       </Tag>
                     ))}
                     {feature.risks?.slice(0, 1).map((risk, idx) => (
-                      <Tag key={idx} color="warning" className="text-xs rounded-full">
-                        <WarningOutlined className="mr-1" />
+                      <Tag key={idx} color="warning" style={{ fontSize: 12, borderRadius: 16 }}>
+                        <WarningOutlined style={{ marginRight: 4 }} />
                         {risk}
                       </Tag>
                     ))}
@@ -371,7 +400,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                 <Switch
                   checked={config.features[feature.key] ?? feature.default_value}
                   onChange={(checked) => handleFeatureToggle(feature.key, checked)}
-                  className="mt-1"
+                  style={{ marginTop: 4 }}
                 />
               </div>
             ))}
@@ -381,35 +410,38 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
   );
 
   const renderInstallCommand = () => (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {generatedCommand && (
         <>
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-              <CheckCircleFilled className="text-3xl text-green-500" />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ 
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', 
+              width: 64, height: 64, background: 'rgba(16, 185, 129, 0.1)', borderRadius: '50%', marginBottom: 16 
+            }}>
+              <CheckCircleFilled style={{ fontSize: 32, color: '#10b981' }} />
             </div>
-            <Title level={4} className="mb-1">Installation Ready!</Title>
-            <Paragraph className="text-gray-500">
+            <Title level={4} style={{ marginBottom: 4 }}>Installation Ready!</Title>
+            <Paragraph style={{ color: 'var(--text-secondary)' }}>
               Run this command on your Linux server to install the agent
             </Paragraph>
           </div>
 
-          <Card className="shadow-md">
-            <div className="flex items-center justify-between mb-4">
+          <Card style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <Text strong>One-Line Installer</Text>
               <Tag color="blue">{config.mode}</Tag>
             </div>
 
-            <div className="relative">
-              <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                <code className="text-green-400 text-sm font-mono whitespace-pre-wrap break-all">
+            <div style={{ position: 'relative' }}>
+              <div style={{ background: '#0a0a0f', borderRadius: 8, padding: 16, overflowX: 'auto' }}>
+                <code style={{ color: '#10b981', fontSize: 14, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                   {generatedCommand}
                 </code>
               </div>
               <Button
                 type="primary"
                 icon={copied ? <CheckCircleFilled /> : <CopyFilled />}
-                className="absolute top-3 right-3"
+                style={{ position: 'absolute', top: 12, right: 12 }}
                 onClick={() => copyToClipboard(generatedCommand)}
                 size="small"
               >
@@ -419,9 +451,9 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
 
             <Divider />
 
-            <div className="space-y-3">
-              <Text strong className="block">What happens when you run this:</Text>
-              <ol className="text-sm text-gray-600 space-y-2 ml-4">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Text strong style={{ display: 'block' }}>What happens when you run this:</Text>
+              <ol style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <li>1. Downloads the KernelEye agent binary to <code>/usr/local/bin/kerneleye-agent</code></li>
                 <li>2. Starts the agent with your API key and configuration</li>
                 <li>3. Agent connects to KernelEye and appears in your dashboard</li>
@@ -430,12 +462,12 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
             </div>
           </Card>
 
-          <Card className="bg-blue-50 border-blue-200">
-            <div className="flex items-start gap-3">
-              <InfoCircleOutlined className="text-blue-500 text-lg mt-0.5" />
+          <Card style={{ background: 'rgba(24, 144, 255, 0.05)', borderColor: '#91caff' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <InfoCircleOutlined style={{ color: '#1890ff', fontSize: 18, marginTop: 2 }} />
               <div>
-                <Text strong className="block text-blue-900">Requirements</Text>
-                <ul className="text-sm text-blue-800 mt-1 space-y-1">
+                <Text strong style={{ display: 'block', color: '#0958d9' }}>Requirements</Text>
+                <ul style={{ fontSize: 14, color: '#096dd9', margin: '4px 0 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <li>• Linux server with kernel 5.8+</li>
                   <li>• Root privileges (required for eBPF)</li>
                   <li>• Outbound HTTPS access to kerneleye.cloud</li>
@@ -445,7 +477,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
           </Card>
 
           {onClose && (
-            <div className="text-center pt-4">
+            <div style={{ textAlign: 'center', paddingTop: 16 }}>
               <Button type="primary" size="large" onClick={onClose}>
                 Done
               </Button>
@@ -485,19 +517,11 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
   };
 
   return (
-    <div className="agent-configurator">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <Title level={3} className="mb-2">Add New Server</Title>
-        <Paragraph className="text-gray-500">
-          Configure your KernelEye agent and get the install command
-        </Paragraph>
-      </div>
-
+    <div style={{ padding: '0 24px' }}>
       {/* Steps */}
       <Steps 
         current={currentStep} 
-        className="mb-8"
+        style={{ marginBottom: 32 }}
         items={steps.map((step, index) => ({
           title: step.title,
           description: step.description,
@@ -506,19 +530,19 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
       />
 
       {/* Content */}
-      <div className="min-h-[400px]">
+      <div style={{ minHeight: 400 }}>
         {steps[currentStep].content}
       </div>
 
       {/* Navigation */}
       {currentStep < 3 && (
-        <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border-subtle)' }}>
           <Button 
             size="large"
             onClick={() => setCurrentStep(currentStep - 1)}
             disabled={currentStep === 0}
             icon={<ArrowLeftOutlined />}
-            className="px-6"
+            style={{ paddingLeft: 24, paddingRight: 24 }}
           >
             Back
           </Button>
@@ -529,9 +553,9 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
               size="large"
               loading={createServerMutation.isPending}
               onClick={handleGenerate}
-              icon={<TerminalOutlined />}
-              className="px-8 h-12 text-base font-medium"
+              icon={<ConsoleSqlOutlined />}
               style={{ 
+                paddingLeft: 32, paddingRight: 32, height: 48, fontSize: 16, fontWeight: 500,
                 background: 'linear-gradient(135deg, #1890ff, #722ed1)',
                 border: 'none',
                 boxShadow: '0 4px 14px rgba(24, 144, 255, 0.4)'
@@ -546,7 +570,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
               onClick={() => setCurrentStep(currentStep + 1)}
               disabled={!canProceed()}
               icon={<ArrowRightOutlined />}
-              className="px-6"
+              style={{ paddingLeft: 24, paddingRight: 24 }}
             >
               Continue
             </Button>
@@ -564,7 +588,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
           }
           type="error"
           showIcon
-          className="mt-4"
+          style={{ marginTop: 16 }}
           action={
             (createServerMutation.error as any)?.response?.data?.code === 'NO_SUBSCRIPTION' ? (
               <Button size="small" type="primary" danger href="/subscription">
