@@ -345,7 +345,9 @@ func (h *WebhookHandler) handleSubscriptionCreatedOrUpdated(ctx context.Context,
 
 	userID := sub.Metadata["user_id"]
 	if userID == "" {
-		return fmt.Errorf("no user_id in subscription metadata")
+		// No user_id in metadata - let legacy handler try customer ID lookup
+		log.Printf("[Polar] No user_id in metadata, skipping SDK handler")
+		return nil
 	}
 
 	planName := sub.Metadata["plan"]
@@ -390,7 +392,9 @@ func (h *WebhookHandler) handleSubscriptionCanceled(ctx context.Context, payload
 
 	userID := sub.Metadata["user_id"]
 	if userID == "" {
-		return fmt.Errorf("no user_id in subscription metadata")
+		// No user_id in metadata - let legacy handler try customer ID lookup
+		log.Printf("[Polar] No user_id in metadata, skipping SDK handler")
+		return nil
 	}
 
 	params := database.UpdateUserSubscriptionParams{
@@ -418,7 +422,9 @@ func (h *WebhookHandler) handleSubscriptionUncanceled(ctx context.Context, paylo
 
 	userID := sub.Metadata["user_id"]
 	if userID == "" {
-		return fmt.Errorf("no user_id in subscription metadata")
+		// No user_id in metadata - let legacy handler try customer ID lookup
+		log.Printf("[Polar] No user_id in metadata, skipping SDK handler")
+		return nil
 	}
 
 	planName := sub.Metadata["plan"]

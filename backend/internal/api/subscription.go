@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/email"
 	"github.com/kerneleye/backend/internal/payments/polar"
@@ -830,7 +833,7 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			log.Printf("[Polar] Unhandled event type: %s", event.Type)
 		}
 
-		// Store event in database for audit trail
+		// Store event in database for audit trail (ignore duplicate key errors - event already processed)
 		_, err := queries.CreateSubscriptionEvent(c.Context(), database.CreateSubscriptionEventParams{
 			UserID:       database.ToPgUUID(userID),
 			PolarEventID: database.ToPgText(polarEventID),
@@ -839,7 +842,13 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			ProcessedAt:  database.ToPgTimestamptz(time.Now()),
 		})
 		if err != nil {
-			log.Printf("[Polar] Failed to store event: %v", err)
+			// Check if this is a duplicate key error (event already stored from previous webhook delivery)
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+				log.Printf("[Polar] Event %s already stored (duplicate webhook delivery), ignoring", polarEventID)
+			} else {
+				log.Printf("[Polar] Failed to store event: %v", err)
+			}
 		}
 
 		return c.JSON(fiber.Map{"status": "ok"})
