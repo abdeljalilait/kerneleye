@@ -35,7 +35,7 @@ type XDPRemediator struct {
 	xdpLink           link.Link
 	attached, pinMaps bool
 	pinPath           string
-	objectPath        string // Path to the eBPF object file
+	objectPath        string        // Path to the eBPF object file
 	OnBlock           BlockCallback // Called when an IP is blocked
 
 	mu sync.RWMutex // Protects all mutable fields
@@ -84,6 +84,9 @@ func (r *XDPRemediator) Setup() error {
 	r.objs = &xdpObjects{}
 	opts := &ebpf.CollectionOptions{}
 	if r.pinMaps {
+		if err := os.MkdirAll(r.pinPath, 0755); err != nil {
+			return fmt.Errorf("failed to create BPF pin path %s: %w", r.pinPath, err)
+		}
 		opts.Maps.PinPath = r.pinPath
 	}
 
