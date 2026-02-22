@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -131,7 +132,9 @@ type GenerateAPIKeyRequest struct {
 type CommandBuilder struct {
 	APIKey     string
 	ServerHost string
+	GRPCURL    string
 	Mode       string
+	Systemd    bool
 	Threshold  int
 	Duration   string
 	Features   map[string]bool
@@ -202,12 +205,21 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 		if duration == "" {
 			duration = "1h"
 		}
+		daemonize := false
+		if req.Config.Daemon != nil {
+			daemonize = *req.Config.Daemon
+		}
+
+		serverHost := getServerHost()
+		grpcURL := getGRPCURL(serverHost)
 
 		// Build installation command
 		builder := CommandBuilder{
 			APIKey:     apiKey,
-			ServerHost: getServerHost(),
+			ServerHost: serverHost,
+			GRPCURL:    grpcURL,
 			Mode:       mode,
+			Systemd:    daemonize,
 			Threshold:  threshold,
 			Duration:   duration,
 			Features:   req.Config.Features,
@@ -219,8 +231,6 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 			"server_id":    serverID,
 			"status":       "awaiting_agent_connection",
 			"commands": map[string]string{
-				"docker":   builder.DockerCommand(),
-				"systemd":  builder.SystemdCommand(),
 				"binary":   builder.BinaryCommand(),
 				"download": fmt.Sprintf("curl -sSL %s | bash", getInstallScriptURL()),
 			},
@@ -231,118 +241,79 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 	}
 }
 
-// DockerCommand generates Docker run command
-func (cb *CommandBuilder) DockerCommand() string {
-	env := cb.buildEnvVars()
-
-	cmd := fmt.Sprintf("docker run -d \\\n  --name kerneleye-agent \\\n  --privileged \\\n  --net=host \\\n  -v /sys/kernel/debug:/sys/kernel/debug \\\n%s \\\n  kerneleye/agent:latest", env)
-
-	return cmd
-}
-
-// SystemdCommand generates systemd service setup
-func (cb *CommandBuilder) SystemdCommand() string {
-	env := cb.buildSystemdEnvVars()
-	flags := cb.buildAgentFlags()
-
-	return fmt.Sprintf(`# Download and install
-sudo curl -o /usr/local/bin/kerneleye-agent \
-  https://releases.kerneleye.cloud/agent/latest/kerneleye-agent
-sudo chmod +x /usr/local/bin/kerneleye-agent
-
-# Create environment file
-sudo mkdir -p /etc/kerneleye
-cat << 'EOF' | sudo tee /etc/kerneleye/agent.env
-%sEOF
-
-# Create wrapper script with agent flags
-sudo tee /usr/local/bin/kerneleye-wrapper > /dev/null << 'EOF'
-#!/bin/bash
-/usr/local/bin/kerneleye-agent %s "$@"
-EOF
-sudo chmod +x /usr/local/bin/kerneleye-wrapper
-
-# Create systemd service
-sudo kerneleye-agent install
-sudo systemctl enable --now kerneleye-agent
-
-# Check status
-sudo systemctl status kerneleye-agent`, env, flags)
-}
-
 // BinaryCommand generates one-line curl install command
 func (cb *CommandBuilder) BinaryCommand() string {
-	flags := cb.buildAgentFlags()
+	args := cb.buildInstallerArgs()
 	return fmt.Sprintf("curl -sSL %s | sudo API_KEY=\"%s\" bash -s -- %s",
-		getInstallScriptURL(), cb.APIKey, flags)
+		getInstallScriptURL(), cb.APIKey, args)
 }
 
-// buildEnvVars generates environment variable exports
-func (cb *CommandBuilder) buildEnvVars() string {
-	var vars string
-
-	vars += fmt.Sprintf("  -e KERNELEYE_API_KEY=%s \\\n", cb.APIKey)
-	vars += fmt.Sprintf("  -e KERNELEYE_SERVER=%s \\\n", cb.ServerHost)
-
-	switch cb.Mode {
-	case "block_xdp":
-		vars += "  -e KERNELEYE_XDP=true \\\n"
-	case "block_hybrid":
-		vars += "  -e KERNELEYE_XDP=true \\\n"
-		vars += "  -e KERNELEYE_HYBRID=true \\\n"
+// buildInstallerArgs generates arguments for install.sh.
+// `--daemon` here means "install/run via systemd service" in the installer.
+func (cb *CommandBuilder) buildInstallerArgs() string {
+	mode := cb.Mode
+	if mode == "" {
+		mode = "block_hybrid"
 	}
 
-	return vars
-}
-
-// buildSystemdEnvVars generates environment variables for systemd env file
-func (cb *CommandBuilder) buildSystemdEnvVars() string {
-	var vars string
-
-	vars += fmt.Sprintf("KERNELEYE_API_KEY=%s\n", cb.APIKey)
-	vars += fmt.Sprintf("KERNELEYE_SERVER=%s\n", cb.ServerHost)
-
-	return vars
-}
-
-// buildAgentFlags generates the command-line flags for the agent binary
-func (cb *CommandBuilder) buildAgentFlags() string {
-	var flags []string
-
-	// Mode-specific flags
-	switch cb.Mode {
-	case "monitor":
-		// Monitor mode: no remediation flags
-	case "block_ipset":
-		flags = append(flags, "-enable-remediation")
-	case "block_xdp":
-		flags = append(flags, "-enable-remediation", "-xdp")
-	case "block_hybrid":
-		flags = append(flags, "-enable-remediation", "-xdp")
+	systemdFlag := ""
+	if cb.Systemd {
+		systemdFlag = " --daemon"
 	}
-
-	// Always run as daemon
-	flags = append(flags, "-daemon")
-
-	return strings.Join(flags, " ")
+	if mode == "monitor" {
+		return fmt.Sprintf("--server %s --grpc-url %s%s", cb.ServerHost, cb.GRPCURL, systemdFlag)
+	}
+	return fmt.Sprintf("--mode %s --server %s --grpc-url %s%s", mode, cb.ServerHost, cb.GRPCURL, systemdFlag)
 }
 
 // EnvironmentVariables returns a map of env vars for the API response
 func (cb *CommandBuilder) EnvironmentVariables() map[string]string {
-	// The agent only reads KERNELEYE_API_KEY and KERNELEYE_SERVER from env
+	// The agent reads API key, server, and optional gRPC target from env.
 	// Mode settings are passed via command-line flags
 	return map[string]string{
-		"KERNELEYE_API_KEY": cb.APIKey,
-		"KERNELEYE_SERVER":  cb.ServerHost,
+		"KERNELEYE_API_KEY":  cb.APIKey,
+		"KERNELEYE_SERVER":   cb.ServerHost,
+		"KERNELEYE_GRPC_URL": cb.GRPCURL,
 	}
 }
 
 func getServerHost() string {
-	server := os.Getenv("KERNELEYE_SERVER")
+	server := strings.TrimSpace(os.Getenv("KERNELEYE_SERVER"))
 	if server == "" {
-		server = "api.kerneleye.cloud:443"
+		return "api.kerneleye.cloud:443"
 	}
+
+	// Accept either host:port or full URL in env.
+	// Examples:
+	// - localhost:8080
+	// - https://api.example.com/api/v1  -> api.example.com:443
+	if strings.HasPrefix(server, "http://") || strings.HasPrefix(server, "https://") {
+		parsed, err := url.Parse(server)
+		if err != nil || parsed.Hostname() == "" {
+			return "api.kerneleye.cloud:443"
+		}
+		if parsed.Port() != "" {
+			return fmt.Sprintf("%s:%s", parsed.Hostname(), parsed.Port())
+		}
+		if parsed.Scheme == "https" {
+			return parsed.Hostname() + ":443"
+		}
+		return parsed.Hostname() + ":80"
+	}
+
 	return server
+}
+
+func getGRPCURL(serverHost string) string {
+	grpcURL := strings.TrimSpace(os.Getenv("KERNELEYE_GRPC_URL"))
+	if grpcURL != "" {
+		return grpcURL
+	}
+
+	if !strings.Contains(serverHost, ":") {
+		return serverHost + ":9091"
+	}
+	return strings.Replace(serverHost, ":8080", ":9091", 1)
 }
 
 func getInstallScriptURL() string {
@@ -363,6 +334,7 @@ type AgentConfig struct {
 	Features  map[string]bool `json:"features"`
 	Threshold int             `json:"threshold"`
 	Duration  string          `json:"duration"`
+	Daemon    *bool           `json:"daemon,omitempty"`
 }
 
 // CreateServerWithConfigRequest represents the request to create a server with config
@@ -433,11 +405,20 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 		serverID := uuid.New().String()
 		apiKey := GenerateAPIKey(userIDStr, serverID)
 
+		serverHost := getServerHost()
+		grpcURL := getGRPCURL(serverHost)
+
 		// Build installation commands
+		daemonize := false
+		if req.Config.Daemon != nil {
+			daemonize = *req.Config.Daemon
+		}
 		builder := CommandBuilder{
 			APIKey:     apiKey,
-			ServerHost: getServerHost(),
+			ServerHost: serverHost,
+			GRPCURL:    grpcURL,
 			Mode:       req.Config.Mode,
+			Systemd:    daemonize,
 		}
 
 		response := map[string]interface{}{
@@ -446,9 +427,7 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 			"server_id":    serverID,
 			"status":       "awaiting_agent_connection",
 			"commands": map[string]string{
-				"docker":   builder.DockerCommand(),
-				"systemd":  builder.SystemdCommand(),
-				"binary":   builder.BinaryCommand() + " -daemon",
+				"binary":   builder.BinaryCommand(),
 				"download": fmt.Sprintf("curl -sSL %s | bash", getInstallScriptURL()),
 			},
 			"environment": builder.EnvironmentVariables(),
