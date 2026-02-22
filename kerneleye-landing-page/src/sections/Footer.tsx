@@ -1,5 +1,3 @@
-import { Shield } from 'lucide-react';
-
 const Footer = () => {
   const currentYear = new Date().getFullYear();
 
@@ -9,20 +7,11 @@ const Footer = () => {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="nav-logo" style={{ marginBottom: '1rem' }}>
-              <div 
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '10px',
-                  background: 'var(--gradient-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Shield size={20} color="#0a0c10" strokeWidth={2.5} />
-              </div>
-              <span className="text-gradient">KernelEye</span>
+              <img 
+                src="/logo_kerneleye_dark.png" 
+                alt="KernelEye" 
+                style={{ height: 36, width: 'auto' }}
+              />
             </div>
             <p className="text-body" style={{ fontSize: 'var(--text-sm)' }}>
               Real-time kernel security for Linux servers. See everything, block threats, sleep better.

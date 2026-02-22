@@ -1,7 +1,8 @@
 import { Layout, Menu, Button } from 'antd'
-import { Shield, Activity, Server, AlertTriangle, LogOut, CreditCard } from 'lucide-react'
+import { Activity, Server, AlertTriangle, LogOut, CreditCard } from 'lucide-react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useAuth } from '../context/AuthContext'
+import logo from '../../logo_kerneleye_dark.png'
 
 const { Sider } = Layout
 
@@ -49,10 +50,12 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       theme="dark"
       width={220}
     >
-      <div style={{ height: 64, margin: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-         <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', background: '#4f46e5', borderRadius: 8 }}>
-            <Shield size={18} />
-         </div>
+      <div style={{ height: 64, margin: 16, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12 }}>
+         <img 
+           src={logo} 
+           alt="KernelEye" 
+           style={{ height: 32, width: 'auto' }} 
+         />
          {!collapsed && (
            <span style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>KernelEye</span>
          )}

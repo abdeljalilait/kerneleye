@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Shield } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 
 interface NavigationProps {
   onHomeClick?: () => void;
@@ -44,26 +44,11 @@ const Navigation = ({ onHomeClick }: NavigationProps) => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <motion.div 
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                background: 'var(--gradient-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 16px rgba(0, 212, 255, 0.3)',
-              }}
-              whileHover={{ 
-                rotate: 360,
-                boxShadow: '0 4px 30px rgba(0, 212, 255, 0.5)',
-              }}
-              transition={{ duration: 0.6 }}
-            >
-              <Shield size={20} color="#0a0c10" strokeWidth={2.5} />
-            </motion.div>
-            <span className="text-gradient">KernelEye</span>
+            <img 
+              src="/logo_kerneleye_dark.png" 
+              alt="KernelEye" 
+              style={{ height: 36, width: 'auto' }}
+            />
           </motion.button>
 
           <div className="nav-links">
