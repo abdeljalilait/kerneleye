@@ -20,6 +20,7 @@ type Aggregator struct {
 	flushChan          chan struct{}
 	stopChan           chan struct{}
 	apiKey, serverHost string
+	serverID           string
 	grpcConn           *grpc.ClientConn
 	grpcClient         pb.IngestServiceClient
 	remediator         remediation.Remediator
@@ -63,6 +64,10 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 
 	// Compute boot time for eBPF monotonic timestamp conversion
 	bootTime := getBootTime()
+	serverID := extractServerIDFromAPIKey(apiKey)
+	if serverID == "" {
+		log.Printf("⚠️  Could not extract server UUID from API key; server_id will be omitted in block reports")
+	}
 
 	return &Aggregator{
 		stats:          NewSafeStats(),
@@ -70,6 +75,7 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 		stopChan:       make(chan struct{}),
 		apiKey:         apiKey,
 		serverHost:     serverHost,
+		serverID:       serverID,
 		grpcConn:       conn,
 		grpcClient:     pb.NewIngestServiceClient(conn),
 		remediator:     rem,
@@ -127,6 +133,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	// GetOrCreate atomically gets or creates stats entry
 	stats := a.stats.GetOrCreate(ip, func() *IPStats {
 		return &IPStats{
+			Protocol:    event.Protocol,
 			UniquePorts: make(map[uint16]bool),
 			PortCounts:  make(map[uint16]int),
 			FirstSeen:   eventTime,
@@ -138,6 +145,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	// Update stats under per-entry lock to prevent concurrent map writes and data races
 	stats.mu.Lock()
 	stats.LastSeen = eventTime
+	stats.Protocol = event.Protocol
 	if event.Flags&0x01 != 0 {
 		stats.SYNCount++
 	}
@@ -285,7 +293,7 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 
 	req := &pb.BlockedIPEvent{
 		ApiKey:          a.apiKey,
-		ServerId:        a.cachedPublicIP, // Using public IP as server ID
+		ServerId:        a.serverID,
 		IpAddress:       ip.String(),
 		Action:          blockAction,
 		DurationSeconds: uint32(duration.Seconds()),
