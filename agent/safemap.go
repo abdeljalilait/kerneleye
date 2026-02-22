@@ -15,6 +15,22 @@ type SafeStats struct {
 	maxItems int
 }
 
+// IPStatsSnapshot is an immutable copy of IP statistics used during flush.
+type IPStatsSnapshot struct {
+	Protocol         uint8
+	SYNCount         int
+	ACKCount         int
+	FailedHandshakes int
+	UniquePorts      map[uint16]bool
+	PortCounts       map[uint16]int
+	BytesIn          uint64
+	BytesOut         uint64
+	Direction        uint8
+	LocalIP          string
+	FirstSeen        time.Time
+	LastSeen         time.Time
+}
+
 // NewSafeStats creates a new SafeStats instance with default max items
 func NewSafeStats() *SafeStats {
 	return &SafeStats{
@@ -113,4 +129,44 @@ func (s *SafeStats) Snapshot() map[string]*IPStats {
 		copy[k] = v
 	}
 	return copy
+}
+
+// SnapshotDeep returns a deep, immutable copy safe for concurrent iteration.
+func (s *SafeStats) SnapshotDeep() map[string]IPStatsSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make(map[string]IPStatsSnapshot, len(s.items))
+	for ip, stats := range s.items {
+		stats.mu.Lock()
+
+		uniquePorts := make(map[uint16]bool, len(stats.UniquePorts))
+		for p, seen := range stats.UniquePorts {
+			uniquePorts[p] = seen
+		}
+
+		portCounts := make(map[uint16]int, len(stats.PortCounts))
+		for p, count := range stats.PortCounts {
+			portCounts[p] = count
+		}
+
+		out[ip] = IPStatsSnapshot{
+			Protocol:         stats.Protocol,
+			SYNCount:         stats.SYNCount,
+			ACKCount:         stats.ACKCount,
+			FailedHandshakes: stats.FailedHandshakes,
+			UniquePorts:      uniquePorts,
+			PortCounts:       portCounts,
+			BytesIn:          stats.BytesIn,
+			BytesOut:         stats.BytesOut,
+			Direction:        stats.Direction,
+			LocalIP:          stats.LocalIP,
+			FirstSeen:        stats.FirstSeen,
+			LastSeen:         stats.LastSeen,
+		}
+
+		stats.mu.Unlock()
+	}
+
+	return out
 }

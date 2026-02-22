@@ -78,8 +78,9 @@ func (a *Aggregator) bufferEvents(events []*pb.ConnectionEvent) {
 	}
 	if err := a.buffer.Save(a.apiKey, events); err != nil {
 		log.Printf("❌ Failed to buffer events: %v", err)
+		return
 	}
-	// Clear stats even on buffer - we've saved them
+	// Clear stats only after successful persistence.
 	a.stats.Clear()
 }
 
@@ -123,7 +124,7 @@ func (a *Aggregator) retryPendingBatches() {
 
 // buildProtoEvents converts stats to protobuf events using thread-safe snapshot
 func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
-	snapshot := a.stats.Snapshot()
+	snapshot := a.stats.SnapshotDeep()
 	pbEvents := make([]*pb.ConnectionEvent, 0, len(snapshot))
 
 	for ip, stats := range snapshot {
@@ -153,7 +154,7 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 		}
 		pbEvents = append(pbEvents, &pb.ConnectionEvent{
 			SourceIp: sourceIP, DestinationIp: destIP, DestinationPort: uint32(primaryPort),
-			Protocol: getProtocolFromPort(primaryPort), SynCount: uint32(stats.SYNCount),
+			Protocol: getProtocolFromNumber(stats.Protocol), SynCount: uint32(stats.SYNCount),
 			AckCount: uint32(stats.ACKCount), FailedHandshakes: uint32(stats.FailedHandshakes),
 			BytesIn: stats.BytesIn, BytesOut: stats.BytesOut,
 			FirstSeen: timestamppb.New(stats.FirstSeen), LastSeen: timestamppb.New(stats.LastSeen),

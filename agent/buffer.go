@@ -9,8 +9,8 @@ import (
 	"time"
 
 	pb "github.com/kerneleye/proto/kerneleye/v1"
-	_ "modernc.org/sqlite"
 	"google.golang.org/protobuf/proto"
+	_ "modernc.org/sqlite"
 )
 
 const defaultDBPath = "/var/lib/kerneleye/pending.db"
@@ -148,7 +148,10 @@ func (b *BufferDB) Delete(ids []int64) error {
 	defer stmt.Close()
 
 	for _, id := range ids {
-		stmt.Exec(id)
+		if _, err := stmt.Exec(id); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 	}
 
 	return tx.Commit()
