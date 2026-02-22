@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -226,15 +227,37 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 	}
 }
 
-// isDatacenterIP checks if IP is from known cloud provider
+// isDatacenterIP uses ISP/ASN org metadata as a lightweight signal for cloud/DC IPs.
 func (h *BlockHandler) isDatacenterIP(ip string) bool {
-	// Simplified check - in production, use IP intelligence service
-	datacenterASNs := []int{
-		15169,  // Google
-		16509,  // Amazon AWS
-		8075,   // Microsoft
-		396982, // Google Cloud
+	if h.geoIP == nil {
+		return false
 	}
-	_ = datacenterASNs
+
+	_, _, isp, err := h.geoIP.Lookup(ip)
+	if err != nil || isp == "" {
+		return false
+	}
+
+	ispLower := strings.ToLower(isp)
+	indicators := []string{
+		"amazon",
+		"aws",
+		"google",
+		"gcp",
+		"microsoft",
+		"azure",
+		"digitalocean",
+		"linode",
+		"ovh",
+		"hetzner",
+		"vultr",
+		"cloudflare",
+	}
+	for _, indicator := range indicators {
+		if strings.Contains(ispLower, indicator) {
+			return true
+		}
+	}
+
 	return false
 }
