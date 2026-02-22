@@ -253,16 +253,19 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
             return 1;  // Rate limit exceeded
         }
         
-        // Check BPS limit
-        if (cfg->max_bps > 0 && local.byte_count >= cfg->max_bps) {
-            if (cfg->block_time_ns > 0) {
-                // Overflow check: cap at max value to prevent wrap-around
-                __u64 expires = now + cfg->block_time_ns;
-                if (expires < now) expires = (__u64)-1;  // Cap at ULLONG_MAX
-                struct block_entry block = { .expires_ns = expires };
-                bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
+        // Check BPS limit (include current packet in the decision)
+        if (cfg->max_bps > 0) {
+            __u64 next_bytes = local.byte_count + pkt_len;
+            if (next_bytes < local.byte_count || next_bytes > cfg->max_bps) {
+                if (cfg->block_time_ns > 0) {
+                    // Overflow check: cap at max value to prevent wrap-around
+                    __u64 expires = now + cfg->block_time_ns;
+                    if (expires < now) expires = (__u64)-1;  // Cap at ULLONG_MAX
+                    struct block_entry block = { .expires_ns = expires };
+                    bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
+                }
+                return 1;  // Rate limit exceeded
             }
-            return 1;  // Rate limit exceeded
         }
         
         // Update counters and write back
