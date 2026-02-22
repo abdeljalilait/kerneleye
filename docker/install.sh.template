@@ -20,8 +20,11 @@ LOG_DIR="/var/log/kerneleye"
 
 # Agent configuration from command line
 API_KEY="${API_KEY:-}"
-MODE="block_hybrid"
+# Default is monitor-only (no remediation flags)
+MODE="monitor"
 SERVER_HOST="__INSTALL_DOMAIN__:443"
+GRPC_URL="__INSTALL_DOMAIN__:443"
+DAEMON="false"
 
 # Colors
 RED='\033[0;31m'
@@ -93,6 +96,14 @@ parse_args() {
                 SERVER_HOST="$2"
                 shift 2
                 ;;
+            --grpc-url)
+                GRPC_URL="$2"
+                shift 2
+                ;;
+            --daemon)
+                DAEMON="true"
+                shift
+                ;;
             *)
                 shift
                 ;;
@@ -140,6 +151,7 @@ setup_directories() {
 
 KERNELEYE_API_KEY="${API_KEY}"
 KERNELEYE_SERVER="${SERVER_HOST}"
+KERNELEYE_GRPC_URL="${GRPC_URL}"
 KERNELEYE_MODE="${MODE}"
 ENVEOF
     chmod 0600 "${CONFIG_DIR}/agent.env"
@@ -147,13 +159,18 @@ ENVEOF
 }
 
 create_systemd_service() {
+    if [ "$DAEMON" != "true" ]; then
+        log_info "Foreground mode selected; skipping systemd service creation."
+        return
+    fi
+
     if [ ! -d /etc/systemd/system ]; then
         log_warn "systemd not detected. Skipping service creation."
         return
     fi
 
     # Build agent flags based on mode
-    local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\" -daemon"
+    local agent_flags="-server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"${API_KEY}\""
     
     case "$MODE" in
         block_ipset|block_hybrid)
@@ -197,6 +214,7 @@ WantedBy=multi-user.target
 SVCEOF
 
     systemctl daemon-reload
+    systemctl enable kerneleye-agent
     log_success "Systemd service created"
 }
 
@@ -204,14 +222,18 @@ start_agent() {
     if [ -z "$API_KEY" ]; then
         log_warn "No API_KEY provided. Agent not started automatically."
         echo "Set API_KEY environment variable and run again, or start manually:"
-        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -apikey \"YOUR_KEY\" -daemon"
+        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"YOUR_KEY\""
         return
     fi
 
-    log_info "Starting agent with mode: ${MODE}..."
+    if [ "$DAEMON" = "true" ]; then
+        log_info "Starting agent with mode: ${MODE} (systemd service)..."
+    else
+        log_info "Starting agent with mode: ${MODE} (foreground)..."
+    fi
 
     # Build agent flags
-    local agent_flags="-server \"${SERVER_HOST}\" -apikey \"${API_KEY}\" -daemon"
+    local agent_flags="-server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"${API_KEY}\""
     
     case "$MODE" in
         block_ipset|block_hybrid)
@@ -226,14 +248,18 @@ start_agent() {
     esac
 
     # Start the agent
-    eval "${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}"
-
-    sleep 2
-
-    if pgrep -f "${BINARY_NAME}" > /dev/null; then
-        log_success "Agent started successfully"
+    if [ "$DAEMON" = "true" ]; then
+        if [ -d /etc/systemd/system ] && [ -f /etc/systemd/system/kerneleye-agent.service ]; then
+            systemctl daemon-reload
+            systemctl restart kerneleye-agent
+            log_success "Systemd service started"
+            return
+        fi
+        log_warn "systemd service not available, falling back to foreground run."
+        exec ${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}
     else
-        log_error "Agent failed to start. Check logs: ${LOG_DIR}/agent.log"
+        # Foreground mode intentionally keeps process attached to the terminal.
+        exec ${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}
     fi
 }
 
@@ -260,7 +286,7 @@ print_next_steps() {
         echo -e "${YELLOW}API_KEY not provided. Agent installed but not started.${NC}"
         echo ""
         echo "To start the agent:"
-        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -apikey \"YOUR_KEY\" -daemon"
+        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"YOUR_KEY\""
     fi
     echo ""
 }
@@ -278,6 +304,8 @@ main() {
     log_info "Configuration:"
     echo "  Mode: ${MODE}"
     echo "  Server: ${SERVER_HOST}"
+    echo "  gRPC URL: ${GRPC_URL}"
+    echo "  Daemon: ${DAEMON}"
     [ -n "$API_KEY" ] && echo "  API Key: ${API_KEY:0:8}...${API_KEY: -4}"
     echo ""
     
