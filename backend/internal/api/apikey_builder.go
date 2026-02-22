@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -122,8 +123,8 @@ func HandleGetAgentFeatures(c *fiber.Ctx) error {
 
 // GenerateAPIKeyRequest with configuration options
 type GenerateAPIKeyRequest struct {
-	ServerName string         `json:"server_name" validate:"required"`
-	Config     AgentConfig    `json:"config"`
+	ServerName string      `json:"server_name" validate:"required"`
+	Config     AgentConfig `json:"config"`
 }
 
 // CommandBuilder generates the agent run command
@@ -154,10 +155,10 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 
 		// Check subscription status - accepts active, trialing, or valid trial end date
 		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		hasActiveSub := user.SubscriptionStatus.String == "active" || 
-		                user.SubscriptionStatus.String == "trialing" || 
-		                isTrialing
-		
+		hasActiveSub := user.SubscriptionStatus.String == "active" ||
+			user.SubscriptionStatus.String == "trialing" ||
+			isTrialing
+
 		if !hasActiveSub {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"error":   "No active subscription",
@@ -183,34 +184,10 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 			})
 		}
 
-		// Generate client token first (for identification before full registration)
-		clientToken := uuid.New().String()
-		
-		// Create server in pending state
-		server, err := queries.CreateServerWithAPIKey(c.Context(), database.CreateServerWithAPIKeyParams{
-			UserID:      database.ToPgUUID(userID),
-			Hostname:    req.ServerName,
-			ApiKey:      database.ToPgText("pending"), // Will be set after registration
-			ClientToken: database.ToPgText(clientToken),
-			IpAddress:   nil,
-		})
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to create server")
-		}
-
-		// Generate proper API key with HMAC signature
-		apiKey := GenerateAPIKey(userID, database.FromPgUUID(server.ID))
-		
-		// Update server with actual API key
-		err = queries.UpdateServerAPIKey(c.Context(), database.UpdateServerAPIKeyParams{
-			ID:     server.ID,
-			ApiKey: database.ToPgText(apiKey),
-		})
-		if err != nil {
-			// Rollback: delete the server we just created
-			_ = queries.DeleteServer(c.Context(), server.ID)
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to set API key")
-		}
+		// Generate API key package only.
+		// The server row will be created when the remote agent calls Register.
+		serverID := uuid.New().String()
+		apiKey := GenerateAPIKey(userID, serverID)
 
 		// Use config from request or defaults
 		mode := req.Config.Mode
@@ -238,14 +215,14 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 
 		response := map[string]interface{}{
 			"api_key":      apiKey,
-			"client_token": clientToken,
-			"server_id":    server.ID.String(),
-			"status":       "pending",
+			"client_token": "",
+			"server_id":    serverID,
+			"status":       "awaiting_agent_connection",
 			"commands": map[string]string{
 				"docker":   builder.DockerCommand(),
 				"systemd":  builder.SystemdCommand(),
 				"binary":   builder.BinaryCommand(),
-				"download": "curl -sSL https://install.kerneleye.cloud | bash",
+				"download": fmt.Sprintf("curl -sSL %s | bash", getInstallScriptURL()),
 			},
 			"environment": builder.EnvironmentVariables(),
 		}
@@ -265,7 +242,8 @@ func (cb *CommandBuilder) DockerCommand() string {
 
 // SystemdCommand generates systemd service setup
 func (cb *CommandBuilder) SystemdCommand() string {
-	env := cb.buildEnvVars()
+	env := cb.buildSystemdEnvVars()
+	flags := cb.buildAgentFlags()
 
 	return fmt.Sprintf(`# Download and install
 sudo curl -o /usr/local/bin/kerneleye-agent \
@@ -277,18 +255,26 @@ sudo mkdir -p /etc/kerneleye
 cat << 'EOF' | sudo tee /etc/kerneleye/agent.env
 %sEOF
 
+# Create wrapper script with agent flags
+sudo tee /usr/local/bin/kerneleye-wrapper > /dev/null << 'EOF'
+#!/bin/bash
+/usr/local/bin/kerneleye-agent %s "$@"
+EOF
+sudo chmod +x /usr/local/bin/kerneleye-wrapper
+
 # Create systemd service
 sudo kerneleye-agent install
 sudo systemctl enable --now kerneleye-agent
 
 # Check status
-sudo systemctl status kerneleye-agent`, env)
+sudo systemctl status kerneleye-agent`, env, flags)
 }
 
 // BinaryCommand generates one-line curl install command
 func (cb *CommandBuilder) BinaryCommand() string {
-	return fmt.Sprintf("curl -sSL https://install.kerneleye.cloud/install.sh | sudo API_KEY=\"%s\" bash -s -- --mode %s",
-		cb.APIKey, cb.Mode)
+	flags := cb.buildAgentFlags()
+	return fmt.Sprintf("curl -sSL %s | sudo API_KEY=\"%s\" bash -s -- %s",
+		getInstallScriptURL(), cb.APIKey, flags)
 }
 
 // buildEnvVars generates environment variable exports
@@ -309,48 +295,62 @@ func (cb *CommandBuilder) buildEnvVars() string {
 	return vars
 }
 
-// buildEnvVarsInline generates inline env vars for binary command
-func (cb *CommandBuilder) buildEnvVarsInline() string {
+// buildSystemdEnvVars generates environment variables for systemd env file
+func (cb *CommandBuilder) buildSystemdEnvVars() string {
 	var vars string
 
-	vars += fmt.Sprintf("KERNELEYE_API_KEY=%s ", cb.APIKey)
-	vars += fmt.Sprintf("KERNELEYE_SERVER=%s ", cb.ServerHost)
-
-	switch cb.Mode {
-	case "block_xdp":
-		vars += "KERNELEYE_XDP=true "
-	case "block_hybrid":
-		vars += "KERNELEYE_XDP=true KERNELEYE_HYBRID=true "
-	}
+	vars += fmt.Sprintf("KERNELEYE_API_KEY=%s\n", cb.APIKey)
+	vars += fmt.Sprintf("KERNELEYE_SERVER=%s\n", cb.ServerHost)
 
 	return vars
 }
 
-// EnvironmentVariables returns a map of env vars
+// buildAgentFlags generates the command-line flags for the agent binary
+func (cb *CommandBuilder) buildAgentFlags() string {
+	var flags []string
+
+	// Mode-specific flags
+	switch cb.Mode {
+	case "monitor":
+		// Monitor mode: no remediation flags
+	case "block_ipset":
+		flags = append(flags, "-enable-remediation")
+	case "block_xdp":
+		flags = append(flags, "-enable-remediation", "-xdp")
+	case "block_hybrid":
+		flags = append(flags, "-enable-remediation", "-xdp")
+	}
+
+	// Always run as daemon
+	flags = append(flags, "-daemon")
+
+	return strings.Join(flags, " ")
+}
+
+// EnvironmentVariables returns a map of env vars for the API response
 func (cb *CommandBuilder) EnvironmentVariables() map[string]string {
-	vars := map[string]string{
+	// The agent only reads KERNELEYE_API_KEY and KERNELEYE_SERVER from env
+	// Mode settings are passed via command-line flags
+	return map[string]string{
 		"KERNELEYE_API_KEY": cb.APIKey,
 		"KERNELEYE_SERVER":  cb.ServerHost,
 	}
-
-	switch cb.Mode {
-	case "block_xdp", "block_hybrid":
-		vars["KERNELEYE_XDP"] = "true"
-	}
-
-	if cb.Mode == "block_hybrid" {
-		vars["KERNELEYE_HYBRID"] = "true"
-	}
-
-	return vars
 }
 
 func getServerHost() string {
-	return "api.kerneleye.cloud:443"
+	server := os.Getenv("KERNELEYE_SERVER")
+	if server == "" {
+		server = "api.kerneleye.cloud:443"
+	}
+	return server
 }
 
-func toEnvVar(s string) string {
-	return strings.ToUpper(strings.ReplaceAll(s, "-", "_"))
+func getInstallScriptURL() string {
+	installDomain := os.Getenv("INSTALL_DOMAIN")
+	if installDomain == "" {
+		installDomain = "app.kerneleye.cloud"
+	}
+	return fmt.Sprintf("https://%s/install.sh", installDomain)
 }
 
 // ============================================
@@ -398,9 +398,9 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 
 		// Check subscription status - accepts active, trialing, or valid trial end date
 		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		hasActiveSub := user.SubscriptionStatus.String == "active" || 
-		                user.SubscriptionStatus.String == "trialing" || 
-		                isTrialing
+		hasActiveSub := user.SubscriptionStatus.String == "active" ||
+			user.SubscriptionStatus.String == "trialing" ||
+			isTrialing
 
 		if !hasActiveSub {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
@@ -428,36 +428,10 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 			})
 		}
 
-		// Generate client token and API key
-		clientToken := uuid.New().String()
-		serverID := uuid.New()
-		apiKey := GenerateAPIKey(userIDStr, serverID.String())
-
-		// Create server with API key
-		server, err := queries.CreateServerWithAPIKey(c.Context(), database.CreateServerWithAPIKeyParams{
-			UserID:      database.ToPgUUID(userIDStr),
-			Hostname:    req.ServerName,
-			ApiKey:      database.ToPgText(apiKey),
-			ClientToken: database.ToPgText(clientToken),
-			IpAddress:   nil,
-		})
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to create server")
-		}
-
-		// Store config in database
-		featuresJSON, _ := json.Marshal(req.Config.Features)
-		_, err = queries.CreateAgentConfig(c.Context(), database.CreateAgentConfigParams{
-			ServerID:  server.ID,
-			Mode:      req.Config.Mode,
-			Features:  featuresJSON,
-			Threshold: int32(req.Config.Threshold),
-			Duration:  req.Config.Duration,
-		})
-		if err != nil {
-			// Log error but don't fail - config can be recreated later
-			fmt.Printf("Failed to create agent config: %v\n", err)
-		}
+		// Generate API key package only.
+		// The server row will be created when the remote agent calls Register.
+		serverID := uuid.New().String()
+		apiKey := GenerateAPIKey(userIDStr, serverID)
 
 		// Build installation commands
 		builder := CommandBuilder{
@@ -468,14 +442,14 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 
 		response := map[string]interface{}{
 			"api_key":      apiKey,
-			"client_token": clientToken,
-			"server_id":    server.ID.String(),
-			"status":       "pending",
+			"client_token": "",
+			"server_id":    serverID,
+			"status":       "awaiting_agent_connection",
 			"commands": map[string]string{
 				"docker":   builder.DockerCommand(),
 				"systemd":  builder.SystemdCommand(),
 				"binary":   builder.BinaryCommand() + " -daemon",
-				"download": "curl -sSL https://install.kerneleye.cloud | bash",
+				"download": fmt.Sprintf("curl -sSL %s | bash", getInstallScriptURL()),
 			},
 			"environment": builder.EnvironmentVariables(),
 		}
