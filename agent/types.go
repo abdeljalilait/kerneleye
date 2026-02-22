@@ -38,6 +38,7 @@ type IpBytes struct {
 // IPStats holds per-IP statistics for aggregation
 type IPStats struct {
 	mu               sync.Mutex // Protects all mutable fields below
+	Protocol         uint8
 	SYNCount         int
 	ACKCount         int
 	FailedHandshakes int

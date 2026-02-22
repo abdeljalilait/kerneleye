@@ -71,8 +71,19 @@ func intToIP(ipNum uint32) net.IP {
 	return ip
 }
 
-// getProtocolFromPort returns the protocol enum
-func getProtocolFromPort(_ uint16) pb.Protocol { return pb.Protocol_PROTOCOL_TCP }
+// getProtocolFromNumber maps IP protocol numbers to protobuf enum values.
+func getProtocolFromNumber(proto uint8) pb.Protocol {
+	switch proto {
+	case 6:
+		return pb.Protocol_PROTOCOL_TCP
+	case 17:
+		return pb.Protocol_PROTOCOL_UDP
+	case 1:
+		return pb.Protocol_PROTOCOL_ICMP
+	default:
+		return pb.Protocol_PROTOCOL_UNKNOWN
+	}
+}
 
 // getPublicIP detects the machine's public IP address
 func getPublicIP() string {
