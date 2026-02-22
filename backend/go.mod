@@ -12,6 +12,7 @@ require (
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/polarsource/polar-go v0.12.0
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260218190227-a1773d7ffc57
 	golang.org/x/crypto v0.46.0
 	google.golang.org/grpc v1.77.0
 )
@@ -29,7 +30,6 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 // indirect
 	github.com/spyzhov/ajson v0.8.0 // indirect
-	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260218190227-a1773d7ffc57 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.52.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
