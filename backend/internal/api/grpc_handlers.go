@@ -79,11 +79,16 @@ func (h *GrpcIngestHandler) Register(ctx context.Context, req *pb.RegisterReques
 	// The UserId field now contains the pre-generated API key
 	apiKey := req.UserId
 
-	// Decode the API key to get the real user ID
-	userID, _, err := DecodeAPIKey(apiKey)
+	// Decode the API key to get the real user/server identity.
+	userID, serverID, err := DecodeAPIKey(apiKey)
 	if err != nil {
 		log.Printf("[gRPC Register] Invalid API key: %v", err)
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid API key")
+	}
+	decodedServerUUID := database.ToPgUUID(serverID)
+	if !decodedServerUUID.Valid {
+		log.Printf("[gRPC Register] Invalid server ID in API key: %s", serverID)
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid API key server ID")
 	}
 
 	// Check if a server with this API key already exists
@@ -115,32 +120,35 @@ func (h *GrpcIngestHandler) Register(ctx context.Context, req *pb.RegisterReques
 			IpAddress: ipAddr,
 		})
 		if err == nil {
-			// Server with same IP exists - update it (re-enrollment)
-			log.Printf("[gRPC Register] Re-enrolling existing server %s with new API key", existingByIP.ID)
-			updatedServer, err := h.queries.UpdateServerForReenrollment(ctx, database.UpdateServerForReenrollmentParams{
-				ID:          existingByIP.ID,
-				ApiKey:      database.ToPgText(apiKey),
-				Hostname:    req.Hostname,
-				ClientToken: database.ToPgText(clientToken),
-			})
-			if err != nil {
-				log.Printf("[gRPC Register] Failed to re-enroll: %v", err)
-				return nil, status.Errorf(codes.Internal, "Failed to re-enroll agent")
+			// Only re-enroll when the key maps to the same server ID.
+			// If IDs differ, treat as a new enrollment.
+			if existingByIP.ID == decodedServerUUID {
+				log.Printf("[gRPC Register] Re-enrolling existing server %s with new API key", existingByIP.ID)
+				updatedServer, err := h.queries.UpdateServerForReenrollment(ctx, database.UpdateServerForReenrollmentParams{
+					ID:          existingByIP.ID,
+					ApiKey:      database.ToPgText(apiKey),
+					Hostname:    req.Hostname,
+					ClientToken: database.ToPgText(clientToken),
+				})
+				if err != nil {
+					log.Printf("[gRPC Register] Failed to re-enroll: %v", err)
+					return nil, status.Errorf(codes.Internal, "Failed to re-enroll agent")
+				}
+
+				h.hub.Broadcast(userID, "new_server", map[string]string{
+					"hostname":     req.Hostname,
+					"client_token": clientToken,
+					"status":       "active",
+					"message":      "Server re-enrolled",
+				})
+
+				return &pb.RegisterResponse{
+					Success:     true,
+					Message:     "Server re-enrolled successfully",
+					ClientToken: clientToken,
+					Status:      updatedServer.Status,
+				}, nil
 			}
-
-			h.hub.Broadcast(userID, "new_server", map[string]string{
-				"hostname":     req.Hostname,
-				"client_token": clientToken,
-				"status":       "active",
-				"message":      "Server re-enrolled",
-			})
-
-			return &pb.RegisterResponse{
-				Success:     true,
-				Message:     "Server re-enrolled successfully",
-				ClientToken: clientToken,
-				Status:      updatedServer.Status,
-			}, nil
 		}
 	}
 
@@ -162,13 +170,15 @@ func (h *GrpcIngestHandler) Register(ctx context.Context, req *pb.RegisterReques
 		return nil, status.Errorf(codes.ResourceExhausted, "Server limit reached. Your %s plan allows up to %d servers. Please upgrade at https://polar.sh/kerneleye", user.Plan, user.MaxServers)
 	}
 
-	// No existing server - create new one in pending state
-	_, err = h.queries.CreateServerWithAPIKey(ctx, database.CreateServerWithAPIKeyParams{
+	// No existing server - create pending server using the server ID embedded in API key.
+	_, err = h.queries.CreateServerWithIDAndAPIKey(ctx, database.CreateServerWithIDAndAPIKeyParams{
+		ID:          decodedServerUUID,
 		UserID:      database.ToPgUUID(userID),
 		Hostname:    req.Hostname,
 		ApiKey:      database.ToPgText(apiKey),
 		ClientToken: database.ToPgText(clientToken),
 		IpAddress:   ipAddr,
+		Status:      "pending",
 	})
 
 	if err != nil {
