@@ -49,6 +49,7 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       breakpoint="lg"
       theme="dark"
       width={220}
+      style={{ boxShadow: 'none' }}
     >
       <div style={{ height: 64, margin: 16, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12 }}>
          <img 
