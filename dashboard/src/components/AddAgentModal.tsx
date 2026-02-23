@@ -47,9 +47,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   const { data: subscription, isLoading: subLoading } = useSubscriptionStatus()
 
   // Check if user has an active subscription or trial
-  const hasActiveSubscription = subscription && subscription.status === 'active'
   const hasActiveTrial = subscription && subscription.is_trialing
-  const canAddServer = hasActiveSubscription || hasActiveTrial
   const noSubscription = subscription && subscription.plan === 'none'
 
   const serverHost = (() => {

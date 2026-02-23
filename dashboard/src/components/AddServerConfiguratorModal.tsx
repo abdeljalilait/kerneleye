@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Modal, Button, Typography, Alert, Spin } from 'antd'
 import { Server, Crown } from 'lucide-react'
 import { useSubscriptionStatus } from '../hooks/useQueries'
@@ -13,20 +12,12 @@ interface AddServerConfiguratorModalProps {
   onSuccess?: () => void
 }
 
-export default function AddServerConfiguratorModal({ isOpen, onClose, onSuccess }: AddServerConfiguratorModalProps) {
+export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServerConfiguratorModalProps) {
   const navigate = useNavigate()
   const { data: subscription, isLoading: subLoading } = useSubscriptionStatus()
 
-  // Check if user has an active subscription or trial
-  const hasActiveSubscription = subscription && subscription.status === 'active'
-  const hasActiveTrial = subscription && subscription.is_trialing
-  const canAddServer = hasActiveSubscription || hasActiveTrial
+  // Check subscription status
   const noSubscription = subscription && subscription.plan === 'none'
-
-  const handleSuccess = () => {
-    if (onSuccess) onSuccess()
-    onClose()
-  }
 
   // Show loading state while fetching subscription
   if (subLoading) {

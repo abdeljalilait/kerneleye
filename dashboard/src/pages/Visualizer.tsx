@@ -41,7 +41,6 @@ import {
 } from 'recharts';
 import { 
   useThreats, 
-  useServers,
   useTopSourceIPs,
   useTopASNs,
 } from '../hooks/useQueries';
@@ -74,180 +73,6 @@ interface SourceAS {
   timeline: { time: string; count: number }[];
   topIPs: string[];
 }
-
-// Generate mock timeline data
-const generateTimeline = (baseCount: number) => {
-  const data = [];
-  const now = new Date();
-  for (let i = 23; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-    data.push({
-      time: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      count: Math.floor(Math.random() * baseCount * 0.5) + (Math.random() > 0.7 ? baseCount : 0),
-    });
-  }
-  return data;
-};
-
-const mockSourceIPs: SourceIP[] = [
-  {
-    ip: '123.249.96.46',
-    count: 45,
-    percentage: 4.4,
-    country: 'China',
-    countryCode: 'CN',
-    asn: 'AS4134',
-    isp: 'Huawei Cloud Service data center',
-    firstSeen: '2024-02-18T08:30:00Z',
-    lastSeen: '2024-02-20T14:22:00Z',
-    timeline: generateTimeline(3),
-    threatTypes: ['SSH Bruteforce', 'Port Scan'],
-  },
-  {
-    ip: '143.110.183.221',
-    count: 42,
-    percentage: 4.1,
-    country: 'United States',
-    countryCode: 'US',
-    asn: 'AS14061',
-    isp: 'DigitalOcean, LLC',
-    firstSeen: '2024-02-18T12:15:00Z',
-    lastSeen: '2024-02-20T16:45:00Z',
-    timeline: generateTimeline(3),
-    threatTypes: ['HTTP Scan', 'HTTP Bruteforce'],
-  },
-  {
-    ip: '165.245.130.81',
-    count: 38,
-    percentage: 3.7,
-    country: 'Singapore',
-    countryCode: 'SG',
-    asn: 'AS14061',
-    isp: 'DigitalOcean, LLC',
-    firstSeen: '2024-02-19T03:20:00Z',
-    lastSeen: '2024-02-20T11:30:00Z',
-    timeline: generateTimeline(2),
-    threatTypes: ['SSH Bruteforce'],
-  },
-  {
-    ip: '110.72.242.164',
-    count: 35,
-    percentage: 3.4,
-    country: 'China',
-    countryCode: 'CN',
-    asn: 'AS4837',
-    isp: 'CHINA UNICOM China169 Backbone',
-    firstSeen: '2024-02-18T22:10:00Z',
-    lastSeen: '2024-02-20T09:15:00Z',
-    timeline: generateTimeline(2),
-    threatTypes: ['HTTP Exploit', 'Port Scan'],
-  },
-  {
-    ip: '139.59.77.158',
-    count: 32,
-    percentage: 3.1,
-    country: 'India',
-    countryCode: 'IN',
-    asn: 'AS14061',
-    isp: 'DigitalOcean, LLC',
-    firstSeen: '2024-02-19T15:45:00Z',
-    lastSeen: '2024-02-20T18:20:00Z',
-    timeline: generateTimeline(2),
-    threatTypes: ['SSH Bruteforce'],
-  },
-  {
-    ip: '139.59.180.235',
-    count: 28,
-    percentage: 2.7,
-    country: 'India',
-    countryCode: 'IN',
-    asn: 'AS14061',
-    isp: 'DigitalOcean, LLC',
-    firstSeen: '2024-02-19T08:00:00Z',
-    lastSeen: '2024-02-20T13:40:00Z',
-    timeline: generateTimeline(2),
-    threatTypes: ['HTTP Scan'],
-  },
-  {
-    ip: '151.47.67.96',
-    count: 25,
-    percentage: 2.4,
-    country: 'Italy',
-    countryCode: 'IT',
-    asn: 'AS1267',
-    isp: 'Wind Tre S.p.A.',
-    firstSeen: '2024-02-18T19:30:00Z',
-    lastSeen: '2024-02-20T10:55:00Z',
-    timeline: generateTimeline(1),
-    threatTypes: ['SSH Bruteforce'],
-  },
-  {
-    ip: '159.138.238.77',
-    count: 23,
-    percentage: 2.2,
-    country: 'Hong Kong',
-    countryCode: 'HK',
-    asn: 'AS55990',
-    isp: 'HUAWEI CLOUDS',
-    firstSeen: '2024-02-19T11:20:00Z',
-    lastSeen: '2024-02-20T15:30:00Z',
-    timeline: generateTimeline(1),
-    threatTypes: ['Port Scan'],
-  },
-];
-
-const mockSourceAS: SourceAS[] = [
-  {
-    asn: 'AS14061',
-    name: 'DigitalOcean, LLC',
-    country: 'United States',
-    countryCode: 'US',
-    count: 320,
-    percentage: 31.2,
-    timeline: generateTimeline(15),
-    topIPs: ['143.110.183.221', '165.245.130.81', '139.59.77.158'],
-  },
-  {
-    asn: 'AS4134',
-    name: 'Huawei Cloud Service data center',
-    country: 'China',
-    countryCode: 'CN',
-    count: 180,
-    percentage: 17.5,
-    timeline: generateTimeline(8),
-    topIPs: ['123.249.96.46', '121.37.8.92', '119.3.228.47'],
-  },
-  {
-    asn: 'AS4837',
-    name: 'CHINA UNICOM China169 Backbone',
-    country: 'China',
-    countryCode: 'CN',
-    count: 145,
-    percentage: 14.1,
-    timeline: generateTimeline(6),
-    topIPs: ['110.72.242.164', '123.125.13.79', '221.198.29.108'],
-  },
-  {
-    asn: 'AS55990',
-    name: 'HUAWEI CLOUDS',
-    country: 'Hong Kong',
-    countryCode: 'HK',
-    count: 95,
-    percentage: 9.3,
-    timeline: generateTimeline(4),
-    topIPs: ['159.138.238.77', '119.8.34.101', '159.138.124.55'],
-  },
-  {
-    asn: 'AS1267',
-    name: 'Wind Tre S.p.A.',
-    country: 'Italy',
-    countryCode: 'IT',
-    count: 68,
-    percentage: 6.6,
-    timeline: generateTimeline(3),
-    topIPs: ['151.47.67.96', '151.57.32.184', '151.61.208.92'],
-  },
-];
 
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
@@ -334,7 +159,6 @@ export default function Visualizer() {
   const [timeRange, setTimeRange] = useState('24h');
   const [visibility, setVisibility] = useState('expanded');
   const { isLoading: threatsLoading } = useThreats();
-  const { data: servers } = useServers();
 
   // Calculate date range based on timeRange selection
   const getDateRange = () => {

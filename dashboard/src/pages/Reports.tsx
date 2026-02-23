@@ -44,7 +44,6 @@ import {
   Area,
 } from 'recharts';
 import { 
-  useStats, 
   useServers,
   useDailyAttackStats,
   useAttackTypeBreakdown,
@@ -67,7 +66,6 @@ export default function Reports() {
   });
   const [selectedServer, setSelectedServer] = useState<string>('all');
   
-  const { data: stats, isLoading: statsLoading } = useStats();
   const { data: servers, isLoading: serversLoading } = useServers();
 
   // Format dates for API
@@ -184,7 +182,7 @@ export default function Reports() {
     },
   ];
 
-  const isLoading = statsLoading || serversLoading || dailyStatsLoading || 
+  const isLoading = serversLoading || dailyStatsLoading || 
                     attackTypesLoading || countriesLoading || hourlyLoading;
 
   return (
