@@ -157,6 +157,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 			Protocol:    event.Protocol,
 			UniquePorts: make(map[uint16]bool),
 			PortCounts:  make(map[uint16]int),
+			PortHits:    make(map[uint16]int),
 			FirstSeen:   eventTime,
 			Direction:   event.Direction,
 			LocalIP:     localIP,
@@ -175,6 +176,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	}
 	stats.UniquePorts[event.Lport] = true
 	stats.PortCounts[event.Lport]++
+	stats.PortHits[event.Lport]++ // Track hits per port for service abuse detection
 	stats.mu.Unlock()
 
 	// Analyze traffic for remediation

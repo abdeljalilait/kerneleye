@@ -44,6 +44,7 @@ type IPStats struct {
 	FailedHandshakes int
 	UniquePorts      map[uint16]bool
 	PortCounts       map[uint16]int // Track count per port for primary port detection
+	PortHits         map[uint16]int // NEW: port -> hit count (for service abuse detection)
 	BytesIn          uint64
 	BytesOut         uint64
 	Direction        uint8  // Predominant direction (set on first event)

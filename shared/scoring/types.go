@@ -12,6 +12,17 @@ const (
 	ThreatLevelMalicious  ThreatLevel = "malicious"
 )
 
+type ThreatType string
+
+const (
+	ThreatTypeNone            ThreatType = "none"
+	ThreatTypePortScan        ThreatType = "port_scan"
+	ThreatTypeServiceAbuse    ThreatType = "service_abuse"
+	ThreatTypeSynFlood        ThreatType = "syn_flood"
+	ThreatTypeFailedHandshake ThreatType = "failed_handshake"
+	ThreatTypeConnectionBurst ThreatType = "connection_burst"
+)
+
 type IPMetrics struct {
 	SYNCount         int
 	ACKCount         int
@@ -25,14 +36,19 @@ type IPMetrics struct {
 	WindowEnd        time.Time
 
 	EstablishedConnections int
-	ServicePorts           []int
 	PreviousScore          int
+	ServicePorts           []int
+
+	PortHits    map[int]int // port -> hit count
+	MaxPortHits int         // max hits to single port
+	PrimaryPort int         // most hit port
 }
 
 type ThreatScore struct {
 	Score           int
 	FinalScoreFloat float64
 	Level           ThreatLevel
+	Type            ThreatType
 	Reasons         []string
 	Timestamp       time.Time
 	Confidence      float64
@@ -40,9 +56,10 @@ type ThreatScore struct {
 }
 
 type ScoreComponents struct {
-	SYNComponent      float64
-	PortScanComponent float64
-	FailedComponent   float64
-	BurstComponent    float64
-	WindowDuration    float64
+	SYNComponent          float64
+	PortScanComponent     float64
+	FailedComponent       float64
+	BurstComponent        float64
+	ServiceAbuseComponent float64
+	WindowDuration        float64
 }

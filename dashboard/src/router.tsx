@@ -56,12 +56,9 @@ const registerRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: () => (
-    <WebSocketProvider>
-      <Dashboard />
-    </WebSocketProvider>
-  ), 
-  beforeLoad: authCheck,
+  beforeLoad: () => {
+    throw redirect({ to: '/dashboard' })
+  },
 })
 
 const dashboardRoute = createRoute({

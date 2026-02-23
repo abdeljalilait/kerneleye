@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -37,6 +38,26 @@ func (a *Aggregator) FlushToAPI() {
 
 	// Build proto events using thread-safe snapshot
 	pbEvents := a.buildProtoEvents()
+
+	// Process scores with AutoBlocker (if enabled)
+	if a.autoBlocker != nil && a.scorer != nil {
+		snapshot := a.stats.SnapshotDeep()
+		for ip, stats := range snapshot {
+			metrics := a.buildMetrics(stats)
+			score := a.scorer.CalculateScore(metrics)
+
+			// Log high-score events for debugging
+			if score.Score >= 30 {
+				log.Printf("⚠️  IP %s: score=%d level=%s type=%s reasons=%v",
+					ip, score.Score, score.Level, score.Type, score.Reasons)
+			}
+
+			// Process score for auto-blocking
+			if err := a.autoBlocker.ProcessScore(ip, score); err != nil {
+				log.Printf("❌ AutoBlocker error for %s: %v", ip, err)
+			}
+		}
+	}
 
 	a.grpcMu.RLock()
 	client := a.grpcClient
@@ -180,4 +201,61 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 		})
 	}
 	return pbEvents
+}
+
+// buildMetrics converts IPStatsSnapshot to scoring.IPMetrics for threat scoring
+func (a *Aggregator) buildMetrics(stats IPStatsSnapshot) scoring.IPMetrics {
+	// Calculate max port hits and primary port
+	maxHits := 0
+	primaryPort := 0
+	portHits := make(map[int]int)
+	for port, hits := range stats.PortHits {
+		portHits[int(port)] = hits
+		if hits > maxHits {
+			maxHits = hits
+			primaryPort = int(port)
+		}
+	}
+
+	// Calculate unique ports as int slice
+	uniquePorts := 0
+	for range stats.UniquePorts {
+		uniquePorts++
+	}
+
+	// Determine primary port from PortCounts if not set
+	if primaryPort == 0 && len(stats.PortCounts) > 0 {
+		maxCount := 0
+		for port, count := range stats.PortCounts {
+			if count > maxCount {
+				maxCount = count
+				primaryPort = int(port)
+			}
+		}
+		if maxHits == 0 && primaryPort > 0 {
+			maxHits = maxCount
+		}
+	}
+
+	// Estimate established connections (rough approximation)
+	established := stats.ACKCount - stats.SYNCount
+	if established < 0 {
+		established = 0
+	}
+
+	return scoring.IPMetrics{
+		SYNCount:               stats.SYNCount,
+		ACKCount:               stats.ACKCount,
+		FailedHandshakes:       stats.FailedHandshakes,
+		UniquePorts:            uniquePorts,
+		TotalConnections:       stats.SYNCount + stats.ACKCount,
+		BytesIn:                stats.BytesIn,
+		BytesOut:               stats.BytesOut,
+		WindowStart:            stats.FirstSeen,
+		WindowEnd:              stats.LastSeen,
+		EstablishedConnections: established,
+		PortHits:               portHits,
+		MaxPortHits:            maxHits,
+		PrimaryPort:            primaryPort,
+	}
 }

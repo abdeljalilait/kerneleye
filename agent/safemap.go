@@ -23,6 +23,7 @@ type IPStatsSnapshot struct {
 	FailedHandshakes int
 	UniquePorts      map[uint16]bool
 	PortCounts       map[uint16]int
+	PortHits         map[uint16]int
 	BytesIn          uint64
 	BytesOut         uint64
 	Direction        uint8
@@ -150,6 +151,11 @@ func (s *SafeStats) SnapshotDeep() map[string]IPStatsSnapshot {
 			portCounts[p] = count
 		}
 
+		portHits := make(map[uint16]int, len(stats.PortHits))
+		for p, hits := range stats.PortHits {
+			portHits[p] = hits
+		}
+
 		out[ip] = IPStatsSnapshot{
 			Protocol:         stats.Protocol,
 			SYNCount:         stats.SYNCount,
@@ -157,6 +163,7 @@ func (s *SafeStats) SnapshotDeep() map[string]IPStatsSnapshot {
 			FailedHandshakes: stats.FailedHandshakes,
 			UniquePorts:      uniquePorts,
 			PortCounts:       portCounts,
+			PortHits:         portHits,
 			BytesIn:          stats.BytesIn,
 			BytesOut:         stats.BytesOut,
 			Direction:        stats.Direction,

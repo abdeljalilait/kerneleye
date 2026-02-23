@@ -10,11 +10,13 @@ type ThreatScorer struct {
 	SYNRateWeight         float64
 	UniquePortsWeight     float64
 	FailedHandshakeWeight float64
+	ServiceAbuseWeight    float64
 
-	NormalSYNRate       float64
-	SuspiciousSYNRate   float64
-	PortScanThreshold   int
-	FailedHandshakeRate float64
+	NormalSYNRate         float64
+	SuspiciousSYNRate     float64
+	PortScanThreshold     int
+	FailedHandshakeRate   float64
+	ServiceAbuseThreshold int
 
 	SuspiciousThreshold int
 	MaliciousThreshold  int
@@ -28,15 +30,17 @@ func NewThreatScorer() *ThreatScorer {
 		SYNRateWeight:         10.0,
 		UniquePortsWeight:     2.0,
 		FailedHandshakeWeight: 15.0,
+		ServiceAbuseWeight:    8.0,
 
-		NormalSYNRate:       1.0,
-		SuspiciousSYNRate:   5.0,
-		PortScanThreshold:   20,
-		FailedHandshakeRate: 2.0,
+		NormalSYNRate:         0.1,
+		SuspiciousSYNRate:     1.0,
+		PortScanThreshold:     5,
+		FailedHandshakeRate:   0.5,
+		ServiceAbuseThreshold: 10,
 
 		SuspiciousThreshold: 30,
 		MaliciousThreshold:  60,
-		AutoBlockThreshold:  80,
+		AutoBlockThreshold:  60,
 
 		MinWindowDuration: 10 * time.Second,
 	}
@@ -71,6 +75,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	portComponent := ts.calculatePortScore(metrics.UniquePorts, connectionRate, windowDuration)
 	failedComponent := ts.calculateFailedScore(failedRate, metrics)
 	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration)
+	serviceComponent := ts.calculateServiceAbuseScore(metrics)
 
 	if metrics.RSTCount > 5 {
 		if metrics.EstablishedConnections == 0 ||
@@ -82,6 +87,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	rawScore := (synComponent * ts.SYNRateWeight) +
 		(portComponent * ts.UniquePortsWeight) +
 		(failedComponent * ts.FailedHandshakeWeight) +
+		(serviceComponent * ts.ServiceAbuseWeight) +
 		burstComponent
 
 	serviceHits := 0
@@ -97,7 +103,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 		}
 	}
 
-	adjustedScore := rawScore * confidence
+	adjustedScore := rawScore
 
 	if metrics.PreviousScore > 0 {
 		adjustedScore = (float64(metrics.PreviousScore) * 0.7) + (adjustedScore * 0.3)
@@ -108,22 +114,25 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	}
 	finalScore := int(adjustedScore)
 
-	level := ts.classifyThreat(finalScore, confidence)
-	reasons := ts.generateReasons(metrics, synRate, failedRate, connectionRate, windowDuration, confidence)
+	level := ts.classifyThreat(finalScore)
+	threatType := ts.classifyThreatType(metrics, synComponent, portComponent, failedComponent, serviceComponent, burstComponent)
+	reasons := ts.generateReasons(metrics, synRate, failedRate, connectionRate, windowDuration)
 
 	return ThreatScore{
 		Score:           finalScore,
 		FinalScoreFloat: adjustedScore,
 		Level:           level,
+		Type:            threatType,
 		Reasons:         reasons,
 		Timestamp:       time.Now(),
 		Confidence:      confidence,
 		RawMetrics: ScoreComponents{
-			SYNComponent:      synComponent,
-			PortScanComponent: portComponent,
-			FailedComponent:   failedComponent,
-			BurstComponent:    burstComponent,
-			WindowDuration:    windowDuration,
+			SYNComponent:          synComponent,
+			PortScanComponent:     portComponent,
+			FailedComponent:       failedComponent,
+			BurstComponent:        burstComponent,
+			ServiceAbuseComponent: serviceComponent,
+			WindowDuration:        windowDuration,
 		},
 	}
 }
@@ -162,7 +171,7 @@ func (ts *ThreatScorer) calculateSYNScore(synRate float64, metrics IPMetrics) fl
 }
 
 func (ts *ThreatScorer) calculatePortScore(uniquePorts int, connectionRate float64, duration float64) float64 {
-	if uniquePorts < 5 {
+	if uniquePorts < ts.PortScanThreshold {
 		return 0
 	}
 
@@ -185,7 +194,7 @@ func (ts *ThreatScorer) calculatePortScore(uniquePorts int, connectionRate float
 }
 
 func (ts *ThreatScorer) calculateFailedScore(failedRate float64, metrics IPMetrics) float64 {
-	if failedRate <= 0.5 {
+	if failedRate <= ts.FailedHandshakeRate {
 		return 0
 	}
 
@@ -209,6 +218,32 @@ func (ts *ThreatScorer) calculateFailedScore(failedRate float64, metrics IPMetri
 	return (failedRate - ts.FailedHandshakeRate) * 2.0
 }
 
+func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics) float64 {
+	if metrics.MaxPortHits < ts.ServiceAbuseThreshold {
+		return 0
+	}
+
+	hits := metrics.MaxPortHits
+
+	if hits < 10 {
+		return 0
+	}
+
+	var severity float64
+	switch {
+	case hits >= 100:
+		severity = 10.0
+	case hits >= 50:
+		severity = 7.0
+	case hits >= 25:
+		severity = 5.0
+	default:
+		severity = 3.0
+	}
+
+	return severity
+}
+
 func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64) float64 {
 	if duration < 10.0 && rate > 20.0 {
 		return 5.0
@@ -223,43 +258,67 @@ func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64) floa
 	return 0
 }
 
-func (ts *ThreatScorer) classifyThreat(score int, confidence float64) ThreatLevel {
-	if confidence < 0.1 {
-		return ThreatLevelNormal
-	}
-
-	maliciousThreshold := int(float64(ts.MaliciousThreshold) / confidence)
-	suspiciousThreshold := int(float64(ts.SuspiciousThreshold) / confidence)
-
-	if score >= maliciousThreshold {
+func (ts *ThreatScorer) classifyThreat(score int) ThreatLevel {
+	if score >= ts.MaliciousThreshold {
 		return ThreatLevelMalicious
-	} else if score >= suspiciousThreshold {
+	} else if score >= ts.SuspiciousThreshold {
 		return ThreatLevelSuspicious
 	}
 	return ThreatLevelNormal
 }
 
-func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, connRate, duration, confidence float64) []string {
-	reasons := []string{}
-	prefix := ""
-	if confidence < 0.5 {
-		prefix = "(Low Confidence) "
+func (ts *ThreatScorer) classifyThreatType(metrics IPMetrics, syn, port, failed, service, burst float64) ThreatType {
+	maxComponent := syn
+	threatType := ThreatTypeNone
+
+	if port > maxComponent && metrics.UniquePorts >= ts.PortScanThreshold {
+		maxComponent = port
+		threatType = ThreatTypePortScan
 	}
 
-	if metrics.UniquePorts > ts.PortScanThreshold {
+	if service > maxComponent && metrics.MaxPortHits >= ts.ServiceAbuseThreshold {
+		maxComponent = service
+		threatType = ThreatTypeServiceAbuse
+	}
+
+	if syn > maxComponent && syn > 0 {
+		maxComponent = syn
+		threatType = ThreatTypeSynFlood
+	}
+
+	if failed > maxComponent && failed > 0 {
+		maxComponent = failed
+		threatType = ThreatTypeFailedHandshake
+	}
+
+	if burst > maxComponent && burst > 5.0 {
+		threatType = ThreatTypeConnectionBurst
+	}
+
+	return threatType
+}
+
+func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, connRate, duration float64) []string {
+	reasons := []string{}
+
+	if metrics.MaxPortHits >= ts.ServiceAbuseThreshold {
+		serviceName := ts.getServiceName(metrics.PrimaryPort)
+		reasons = append(reasons, fmt.Sprintf("Service abuse: %d hits on port %d (%s)",
+			metrics.MaxPortHits, metrics.PrimaryPort, serviceName))
+	}
+
+	if metrics.UniquePorts >= ts.PortScanThreshold {
 		portsPerSec := float64(metrics.UniquePorts) / duration
-		reasons = append(reasons,
-			fmt.Sprintf("%sPort scanning detected: %d unique ports (%.1f ports/sec)",
-				prefix, metrics.UniquePorts, portsPerSec))
+		reasons = append(reasons, fmt.Sprintf("Port scanning: %d unique ports (%.1f ports/sec)",
+			metrics.UniquePorts, portsPerSec))
 	}
 
 	totalPackets := metrics.SYNCount + metrics.ACKCount
 	if totalPackets > 10 {
 		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
 		if synRatio > 0.75 && synRate > ts.SuspiciousSYNRate {
-			reasons = append(reasons,
-				fmt.Sprintf("%sPossible SYN flood: %.1f SYN/sec with %.0f%% SYN ratio",
-					prefix, synRate, synRatio*100))
+			reasons = append(reasons, fmt.Sprintf("SYN flood: %.1f SYN/sec (%.0f%% SYN ratio)",
+				synRate, synRatio*100))
 		}
 	}
 
@@ -269,33 +328,48 @@ func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, 
 		if totalAttempts > 0 {
 			failureRatio = float64(metrics.FailedHandshakes) / float64(totalAttempts) * 100
 		}
-		reasons = append(reasons,
-			fmt.Sprintf("High failure rate: %.1f failed/sec (%.0f%% failure ratio)",
-				failedRate, failureRatio))
+		reasons = append(reasons, fmt.Sprintf("Failed handshakes: %.1f/sec (%.0f%% failure ratio)",
+			failedRate, failureRatio))
 	}
 
 	if connRate > 15.0 {
-		reasons = append(reasons,
-			fmt.Sprintf("Connection burst: %.1f connections/sec", connRate))
-	}
-
-	if duration < ts.MinWindowDuration.Seconds() {
-		reasons = append(reasons,
-			fmt.Sprintf("Limited observation time (%.1fs) - confidence: %.0f%%",
-				duration, ts.calculateConfidence(duration)*100))
+		reasons = append(reasons, fmt.Sprintf("Connection burst: %.1f connections/sec", connRate))
 	}
 
 	if len(reasons) == 0 {
-		reasons = append(reasons, "Normal traffic pattern")
+		reasons = append(reasons, "Normal traffic")
 	}
 
 	return reasons
 }
 
+func (ts *ThreatScorer) getServiceName(port int) string {
+	services := map[int]string{
+		22:    "SSH",
+		80:    "HTTP",
+		443:   "HTTPS",
+		25:    "SMTP",
+		3306:  "MySQL",
+		5432:  "PostgreSQL",
+		6379:  "Redis",
+		27017: "MongoDB",
+		21:    "FTP",
+		23:    "Telnet",
+		3389:  "RDP",
+		587:   "SMTP",
+		110:   "POP3",
+		143:   "IMAP",
+	}
+	if name, ok := services[port]; ok {
+		return name
+	}
+	return "Unknown"
+}
+
 func (ts *ThreatScorer) IsBlockWorthy(score ThreatScore) bool {
 	return score.Level == ThreatLevelMalicious &&
 		score.Score >= ts.AutoBlockThreshold &&
-		score.Confidence >= 0.8
+		score.Confidence >= 0.5
 }
 
 func (ts *ThreatScorer) CalculateBatchScores(metricsMap map[string]IPMetrics) map[string]ThreatScore {
