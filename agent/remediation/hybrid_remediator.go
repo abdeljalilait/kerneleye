@@ -71,7 +71,10 @@ func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 		if xdpErr == nil {
 			// XDP succeeded - also add to iptables for redundancy
 			// This ensures the block persists even if XDP is detached
-			h.iptables.Block(ip, duration)
+			if err := h.iptables.Block(ip, duration); err != nil {
+				log.Printf("⚠️  XDP succeeded but iptables redundancy failed: %v", err)
+				// Don't fail - XDP block is active
+			}
 			reason = "XDP_BLOCK"
 			if h.OnBlock != nil {
 				h.OnBlock(ip, ActionBlock, reason, duration)
@@ -151,6 +154,44 @@ func (h *HybridRemediator) XDPMode() string {
 		return h.xdp.Mode().String()
 	}
 	return "disabled"
+}
+
+// BlockCIDR blocks a CIDR range using XDP (if available) or iptables
+func (h *HybridRemediator) BlockCIDR(cidr string, duration time.Duration) error {
+	// Try XDP first (faster)
+	if h.xdpEnabled && h.xdp != nil {
+		xdpErr := h.xdp.BlockCIDR(cidr, duration)
+		if xdpErr == nil {
+			// XDP succeeded - also add to iptables for redundancy
+			if err := h.iptables.BlockCIDR(cidr, duration); err != nil {
+				log.Printf("⚠️  XDP CIDR succeeded but iptables redundancy failed: %v", err)
+			}
+			return nil
+		}
+		log.Printf("⚠️  XDP CIDR block failed, using iptables: %v", xdpErr)
+	}
+
+	// Fallback to iptables
+	return h.iptables.BlockCIDR(cidr, duration)
+}
+
+// UnblockCIDR removes a CIDR from both XDP and iptables
+func (h *HybridRemediator) UnblockCIDR(cidr string) error {
+	var errs []error
+
+	// Remove from XDP
+	if h.xdpEnabled && h.xdp != nil {
+		if err := h.xdp.UnblockCIDR(cidr); err != nil {
+			errs = append(errs, fmt.Errorf("XDP unblock CIDR: %w", err))
+		}
+	}
+
+	// IPSetRemediator doesn't have UnblockCIDR - uses timeout
+
+	if len(errs) > 0 {
+		return fmt.Errorf("unblock CIDR errors: %v", errs)
+	}
+	return nil
 }
 
 // Unblock removes an IP from both XDP and iptables blocklists

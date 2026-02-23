@@ -24,7 +24,7 @@ const (
 	rateLimitSetV6 = "kernel_eye_ratelimit_v6"
 	chainName      = "KERNEL_EYE"
 	dockerChain    = "DOCKER-USER"
-	
+
 	// Persistence file for restoring across reboots
 	persistDir  = "/var/lib/kerneleye"
 	persistFile = "ipset.state"
@@ -35,21 +35,21 @@ type CommandRunner func(name string, args ...string) error
 
 // IPSetStats holds statistics about the blocklist
 type IPSetStats struct {
-	BlockedCountV4    int
-	BlockedCountV6    int
+	BlockedCountV4     int
+	BlockedCountV6     int
 	RateLimitedCountV4 int
 	RateLimitedCountV6 int
-	TotalDropped      uint64 // From iptables counters
-	IsHealthy         bool
+	TotalDropped       uint64 // From iptables counters
+	IsHealthy          bool
 }
 
 // IPSetRemediator implements blocking using iptables + ipset
 type IPSetRemediator struct {
-	Runner     CommandRunner // Exported for testing
-	onBlock    BlockCallback
+	Runner      CommandRunner // Exported for testing
+	onBlock     BlockCallback
 	persistPath string
-	mu         sync.RWMutex
-	
+	mu          sync.RWMutex
+
 	// Track blocked IPs in memory for fast lookup
 	blockedIPs map[string]time.Time
 }
@@ -74,7 +74,7 @@ func (r *IPSetRemediator) Setup() error {
 	if err := r.checkDependencies(); err != nil {
 		return err
 	}
-	
+
 	// Create persistence directory
 	if err := os.MkdirAll(persistDir, 0755); err != nil {
 		log.Printf("⚠️  Cannot create persist dir %s: %v", persistDir, err)
@@ -108,12 +108,12 @@ func (r *IPSetRemediator) checkDependencies() error {
 			return fmt.Errorf("%s not found. Install: sudo apt-get install %s", dep, dep)
 		}
 	}
-	
+
 	// Check for ip6tables (optional)
 	if _, err := exec.LookPath("ip6tables"); err != nil {
 		log.Printf("⚠️  ip6tables not found, IPv6 blocking disabled")
 	}
-	
+
 	return nil
 }
 
@@ -145,16 +145,16 @@ func (r *IPSetRemediator) createIPSets() error {
 func (r *IPSetRemediator) setupIPTables() error {
 	// Create custom chain
 	_ = r.Runner("iptables", "-N", chainName) // Ignore exists error
-	
+
 	// Flush to ensure clean state
 	if err := r.Runner("iptables", "-F", chainName); err != nil {
 		return err
 	}
 
 	// Add block rule (DROP matching IPs)
-	if err := r.Runner("iptables", "-A", chainName, 
-		"-m", "set", "--match-set", blockSet, "src", 
-		"-j", "DROP", 
+	if err := r.Runner("iptables", "-A", chainName,
+		"-m", "set", "--match-set", blockSet, "src",
+		"-j", "DROP",
 		"-m", "comment", "--comment", "KernelEye blocked IPs"); err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (r *IPSetRemediator) setupIPTables() error {
 	}
 	if err := r.Runner("iptables", "-A", chainName,
 		"-m", "set", "--match-set", rateLimitSet, "src",
-		"-j", "DROP", 
+		"-j", "DROP",
 		"-m", "comment", "--comment", "KernelEye rate limited"); err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func (r *IPSetRemediator) Block(ip net.IP, duration time.Duration) error {
 	if err := r.validateIP(ip); err != nil {
 		return err
 	}
-	if !r.isExternalIP(ip) {
+	if !isExternalIP(ip) {
 		log.Printf("⚠️  Skipping block for non-external IP: %s", ip)
 		return nil
 	}
@@ -297,23 +297,33 @@ func (r *IPSetRemediator) BlockCIDR(cidr string, duration time.Duration) error {
 	}
 
 	// Create hash:net set if not exists
+	isIPv6 := ipnet.IP.To4() == nil
 	setName := "kerneleye_block_cidr"
-	if ipnet.IP.To4() == nil {
+	if isIPv6 {
 		setName = "kerneleye_block_cidr_v6"
 	}
 
 	// Ensure set exists
 	args := []string{"create", setName, "hash:net", "timeout", "0", "-exist"}
-	if ipnet.IP.To4() == nil {
+	if isIPv6 {
 		args = append(args, "family", "inet6")
 	}
 	r.Runner("ipset", args...)
 
-	// Add rule to chain if not exists (one-time setup)
+	// Add rule to iptables chain if not exists
 	if !r.setRuleExists(chainName, setName) {
 		r.Runner("iptables", "-I", chainName, "1",
 			"-m", "set", "--match-set", setName, "src",
 			"-j", "DROP")
+	}
+
+	// Add rule to ip6tables chain for IPv6 if not exists
+	if isIPv6 {
+		if !r.setRuleExistsIP6(chainName, setName) {
+			r.Runner("ip6tables", "-I", chainName, "1",
+				"-m", "set", "--match-set", setName, "src",
+				"-j", "DROP")
+		}
 	}
 
 	// Add CIDR to set
@@ -336,7 +346,7 @@ func (r *IPSetRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 	if err := r.validateIP(ip); err != nil {
 		return err
 	}
-	if !r.isExternalIP(ip) {
+	if !isExternalIP(ip) {
 		return fmt.Errorf("refusing to rate-limit internal IP: %s", ip)
 	}
 
@@ -350,7 +360,7 @@ func (r *IPSetRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 		timeoutSec = 600 // Default 10 minutes
 	}
 
-	if err := r.Runner("ipset", "add", set, ip.String(), 
+	if err := r.Runner("ipset", "add", set, ip.String(),
 		"timeout", strconv.Itoa(timeoutSec), "-exist"); err != nil {
 		return err
 	}
@@ -372,7 +382,7 @@ func (r *IPSetRemediator) IsBlocked(ip net.IP) bool {
 	if !exists {
 		return false
 	}
-	
+
 	// Check if expired
 	if time.Now().After(expires) {
 		r.mu.Lock()
@@ -454,7 +464,7 @@ func (r *IPSetRemediator) Save() error {
 	if err := os.WriteFile(tmpFile, []byte(filtered.String()), 0600); err != nil {
 		return err
 	}
-	
+
 	return os.Rename(tmpFile, r.persistPath)
 }
 
@@ -506,7 +516,7 @@ func (r *IPSetRemediator) Teardown() error {
 	r.Runner("iptables", "-X", chainName)
 
 	// Destroy ipsets
-	sets := []string{blockSet, blockSetV6, rateLimitSet, rateLimitSetV6, 
+	sets := []string{blockSet, blockSetV6, rateLimitSet, rateLimitSetV6,
 		"kerneleye_block_cidr", "kerneleye_block_cidr_v6"}
 	for _, set := range sets {
 		if err := r.Runner("ipset", "destroy", set); err != nil {
@@ -534,7 +544,7 @@ func (r *IPSetRemediator) SyncBlocklist(ips []net.IP) error {
 
 	// Populate
 	for _, ip := range ips {
-		if !r.isExternalIP(ip) {
+		if !isExternalIP(ip) {
 			continue
 		}
 		set := tempBlock
@@ -568,14 +578,6 @@ func (r *IPSetRemediator) validateIP(ip net.IP) error {
 	return nil
 }
 
-func (r *IPSetRemediator) isExternalIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || 
-	   ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
-		return false
-	}
-	return true
-}
-
 func (r *IPSetRemediator) chainExists(chain string) bool {
 	err := r.Runner("iptables", "-L", chain, "-n")
 	return err == nil
@@ -599,6 +601,12 @@ func (r *IPSetRemediator) setRuleExists(chain, setName string) bool {
 	return strings.Contains(string(out), setName)
 }
 
+func (r *IPSetRemediator) setRuleExistsIP6(chain, setName string) bool {
+	cmd := exec.Command("ip6tables", "-L", chain, "-n")
+	out, _ := cmd.Output()
+	return strings.Contains(string(out), setName)
+}
+
 func (r *IPSetRemediator) parseMemberCount(output string) int {
 	// Parse "Number of entries: X" from ipset list output
 	for _, line := range strings.Split(output, "\n") {
@@ -618,7 +626,7 @@ func (r *IPSetRemediator) getDropCount() uint64 {
 	// Parse iptables -L -v -n output for drop count
 	cmd := exec.Command("iptables", "-L", chainName, "-v", "-n", "-x")
 	out, _ := cmd.Output()
-	
+
 	var total uint64
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.Contains(line, "DROP") && strings.Contains(line, blockSet) {
