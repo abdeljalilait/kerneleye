@@ -214,7 +214,6 @@ type User struct {
 	PasswordHash                   string             `json:"password_hash"`
 	Plan                           string             `json:"plan"`
 	MaxServers                     int32              `json:"max_servers"`
-	StripeCustomerID               pgtype.Text        `json:"stripe_customer_id"`
 	CreatedAt                      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt                      pgtype.Timestamptz `json:"updated_at"`
 	PolarCustomerID                pgtype.Text        `json:"polar_customer_id"`
@@ -224,6 +223,7 @@ type User struct {
 	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
 	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
 	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
+	HasUsedTrial                   pgtype.Bool        `json:"has_used_trial"`
 	RefreshToken                   pgtype.Text        `json:"refresh_token"`
 	RefreshTokenExpiresAt          pgtype.Timestamptz `json:"refresh_token_expires_at"`
 }

@@ -202,6 +202,7 @@ SET plan = $2,
     subscription_current_period_end = COALESCE($7, subscription_current_period_end),
     subscription_cancel_at_period_end = COALESCE($8, subscription_cancel_at_period_end),
     trial_ends_at = COALESCE($9, trial_ends_at),
+    has_used_trial = COALESCE($10, has_used_trial),
     updated_at = NOW()
 WHERE id = $1;
 

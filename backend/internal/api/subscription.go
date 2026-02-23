@@ -77,6 +77,7 @@ type SubscriptionStatusResponse struct {
 	CancelAtPeriodEnd  bool                   `json:"cancel_at_period_end"`
 	TrialEndsAt        *time.Time             `json:"trial_ends_at,omitempty"`
 	IsTrialing         bool                   `json:"is_trialing"`
+	HasUsedTrial       bool                   `json:"has_used_trial"`
 	CustomerPortalURL  string                 `json:"customer_portal_url,omitempty"`
 }
 
@@ -169,6 +170,7 @@ func HandleGetSubscriptionStatus(queries *database.Queries) fiber.Handler {
 				Features:          map[string]interface{}{},
 				CancelAtPeriodEnd: false,
 				IsTrialing:        false,
+				HasUsedTrial:      user.HasUsedTrial.Bool,
 			})
 		}
 
@@ -198,6 +200,7 @@ func HandleGetSubscriptionStatus(queries *database.Queries) fiber.Handler {
 			Features:          features,
 			CancelAtPeriodEnd: user.SubscriptionCancelAtPeriodEnd.Bool,
 			IsTrialing:        isTrialing,
+			HasUsedTrial:      user.HasUsedTrial.Bool,
 		}
 
 		if user.SubscriptionCurrentPeriodStart.Valid {
@@ -605,7 +608,7 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			log.Printf("[Polar] Subscription ID: %s, Status: %s, CustomerID: %s", sub.ID, sub.Status, sub.CustomerID)
 			log.Printf("[Polar] ProductID: %s, PriceID: %s", sub.ProductID, sub.PriceID)
 			log.Printf("[Polar] Metadata: %+v", sub.Metadata)
-			
+
 			// Try to get user_id from metadata first
 			if uid, ok := sub.Metadata["user_id"]; ok && uid != "" {
 				userID = uid
@@ -649,7 +652,7 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			// Update user's subscription directly
 			if userID != "" {
 				log.Printf("[Polar] Updating user %s subscription: plan=%s, status=%s", userID, planName, status)
-				
+
 				params := database.UpdateUserSubscriptionParams{
 					ID:                             database.ToPgUUID(userID),
 					Plan:                           planName,
@@ -659,13 +662,14 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 					SubscriptionCurrentPeriodEnd:   database.ToPgTimestamptz(sub.CurrentPeriodEnd),
 					SubscriptionCancelAtPeriodEnd:  database.ToPgBool(sub.CancelAtPeriodEnd),
 					TrialEndsAt:                    database.ToPgTimestamptzPtr(sub.TrialEndsAt),
+					HasUsedTrial:                   database.ToPgBool(sub.IsTrialing),
 				}
 
 				if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
 					log.Printf("[Polar] UpdateUserSubscription ERROR: %v", err)
 				} else {
 					log.Printf("[Polar] Successfully updated subscription for user %s", userID)
-					
+
 					// Only send welcome email on subscription.active event to avoid duplicates
 					// Multiple events fire (created, updated, active) but we only want one email
 					if event.Type == "subscription.active" && emailService != nil && emailService.IsEnabled() {
@@ -696,49 +700,49 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			// Handle order paid - this happens when payment is confirmed
 			log.Printf("[Polar] Processing order.paid event")
 			var orderData struct {
-				ID         string            `json:"id"`
-				CustomerID string            `json:"customer_id"`
-				Metadata   map[string]string `json:"metadata"`
-				Status     string            `json:"status"`
-				ProductID  string            `json:"product_id"`
-				SubscriptionID string        `json:"subscription_id"`
+				ID             string            `json:"id"`
+				CustomerID     string            `json:"customer_id"`
+				Metadata       map[string]string `json:"metadata"`
+				Status         string            `json:"status"`
+				ProductID      string            `json:"product_id"`
+				SubscriptionID string            `json:"subscription_id"`
 			}
 			if err := json.Unmarshal(event.Data, &orderData); err != nil {
 				log.Printf("[Polar] Failed to parse order: %v", err)
 			} else {
-				log.Printf("[Polar] Order paid: %s, Customer: %s, Subscription: %s, Metadata: %+v", 
+				log.Printf("[Polar] Order paid: %s, Customer: %s, Subscription: %s, Metadata: %+v",
 					orderData.ID, orderData.CustomerID, orderData.SubscriptionID, orderData.Metadata)
 				polarEventID = orderData.ID
-				
+
 				// Get user_id from metadata
 				if uid, ok := orderData.Metadata["user_id"]; ok && uid != "" {
 					userID = uid
 					log.Printf("[Polar] Found user_id in order metadata: %s", userID)
-					
+
 					// Also update the user's subscription status from order.paid as a fallback
 					// The subscription webhook should handle this, but order.paid is a good backup
 					planName := "starter"
 					if p, ok := orderData.Metadata["plan"]; ok && p != "" {
 						planName = p
 					}
-					
+
 					// Try to find plan by product ID if not in metadata
 					if planName == "starter" && orderData.ProductID != "" {
 						if plan, err := queries.GetPlanByPolarProductID(c.Context(), database.ToPgText(orderData.ProductID)); err == nil {
 							planName = plan.Name
 						}
 					}
-					
+
 					log.Printf("[Polar] Order.paid updating user %s to plan %s", userID, planName)
-					
+
 					// Update user to active status (payment confirmed)
 					params := database.UpdateUserSubscriptionParams{
-						ID:                 database.ToPgUUID(userID),
-						Plan:               planName,
+						ID:                  database.ToPgUUID(userID),
+						Plan:                planName,
 						PolarSubscriptionID: database.ToPgText(orderData.SubscriptionID),
-						SubscriptionStatus: database.ToPgText("active"),
+						SubscriptionStatus:  database.ToPgText("active"),
 					}
-					
+
 					if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
 						log.Printf("[Polar] Order.paid update ERROR: %v", err)
 					} else {
@@ -753,8 +757,8 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			// Store Polar customer ID mapping
 			log.Printf("[Polar] Processing customer.created event")
 			var customerData struct {
-				ID       string `json:"id"`
-				Email    string `json:"email"`
+				ID       string            `json:"id"`
+				Email    string            `json:"email"`
 				Metadata map[string]string `json:"metadata"`
 			}
 			if err := json.Unmarshal(event.Data, &customerData); err != nil {
@@ -897,8 +901,6 @@ func updateUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 	return nil
 }
 
-
-
 // cancelUserSubscription marks a user's subscription as canceled
 func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID string, sub PolarSubscription) error {
 	params := database.UpdateUserSubscriptionParams{
@@ -962,6 +964,11 @@ func HandleStartTrial(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to fetch user")
 		}
 
+		// Check if user has already used their free trial
+		if user.HasUsedTrial.Bool {
+			return fiber.NewError(fiber.StatusBadRequest, "You have already used your free trial. Please subscribe to continue.")
+		}
+
 		// Check if user already has an active subscription or trial
 		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
 		if user.SubscriptionStatus.String == "active" || isTrialing {
@@ -977,12 +984,13 @@ func HandleStartTrial(queries *database.Queries) fiber.Handler {
 		// Set trial to end in 7 days
 		trialEndsAt := time.Now().Add(7 * 24 * time.Hour)
 
-		// Update user with trial
+		// Update user with trial and mark as having used trial
 		params := database.UpdateUserSubscriptionParams{
 			ID:                 database.ToPgUUID(userID),
 			Plan:               req.PlanName,
 			SubscriptionStatus: database.ToPgText("trialing"),
 			TrialEndsAt:        database.ToPgTimestamptz(trialEndsAt),
+			HasUsedTrial:       database.ToPgBool(true),
 		}
 
 		if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {

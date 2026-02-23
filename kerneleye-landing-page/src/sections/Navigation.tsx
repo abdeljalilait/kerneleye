@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface NavigationProps {
   onHomeClick?: () => void;
@@ -43,12 +44,15 @@ const Navigation = ({ onHomeClick }: NavigationProps) => {
             className="nav-logo"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
           >
-            <img 
-              src="/logo_kerneleye_dark.png" 
-              alt="KernelEye" 
-              style={{ height: 36, width: 'auto' }}
-            />
+            <Link to="/">
+              <img 
+                src="/logo_kerneleye_dark.png" 
+                alt="KernelEye" 
+                style={{ height: 48, width: 'auto' }}
+              />
+            </Link>
           </motion.button>
 
           <div className="nav-links">

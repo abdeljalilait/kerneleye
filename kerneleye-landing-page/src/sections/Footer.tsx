@@ -41,8 +41,8 @@ const Footer = () => {
           <div>
             <h4 className="footer-title">Legal</h4>
             <ul className="footer-links">
-              <li><a href="#" className="footer-link">Privacy</a></li>
-              <li><a href="#" className="footer-link">Terms</a></li>
+              <li><a href="/privacy" className="footer-link">Privacy</a></li>
+              <li><a href="/terms" className="footer-link">Terms</a></li>
               <li><a href="#" className="footer-link">Security</a></li>
               <li><a href="#" className="footer-link">Cookies</a></li>
             </ul>

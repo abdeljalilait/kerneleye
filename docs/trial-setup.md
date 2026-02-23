@@ -242,7 +242,7 @@ POLAR_PRICE_ID_STARTER=price_test_xxx
 ```
 
 ### Test Cards
-Use Stripe test cards (Polar uses Stripe):
+Use Polar test cards:
 - **Success**: `4242 4242 4242 4242`
 - **Decline**: `4000 0000 0000 0002`
 - **Require auth**: `4000 0025 0000 3155`

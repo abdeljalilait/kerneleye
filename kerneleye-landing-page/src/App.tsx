@@ -1,3 +1,4 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import Navigation from './sections/Navigation';
 import HeroSection from './sections/HeroSection';
@@ -6,9 +7,11 @@ import HowItWorksSection from './sections/HowItWorksSection';
 import PricingSection from './sections/PricingSection';
 import ContactSection from './sections/ContactSection';
 import Footer from './sections/Footer';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 import { homeSEO, organizationSchema, softwareApplicationSchema } from './seo';
 
-function App() {
+function Landing() {
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -60,6 +63,30 @@ function App() {
         <Footer />
       </div>
     </>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/terms" element={
+          <>
+            <Navigation onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
+            <Terms />
+            <Footer />
+          </>
+        } />
+        <Route path="/privacy" element={
+          <>
+            <Navigation onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
+            <Privacy />
+            <Footer />
+          </>
+        } />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

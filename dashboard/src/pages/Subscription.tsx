@@ -267,13 +267,24 @@ const Subscription = () => {
             </Col>
           </Row>
 
-          {status.plan === 'none' && (
+          {status.plan === 'none' && !status.has_used_trial && (
             <Alert
               message="Start Your Free Trial"
               description="Choose a plan below to start your 7-day free trial. Your credit card will be charged only after the trial ends. Cancel anytime."
               type="info"
               showIcon
               icon={<Sparkles size={16} />}
+              style={{ marginTop: 16, background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+            />
+          )}
+
+          {status.plan === 'none' && status.has_used_trial && (
+            <Alert
+              message="Subscribe to Continue"
+              description="You have already used your free trial. Subscribe to a plan to continue using KernelEye."
+              type="info"
+              showIcon
+              icon={<CreditCard size={16} />}
               style={{ marginTop: 16, background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)' }}
             />
           )}
@@ -393,21 +404,35 @@ const Subscription = () => {
 
                 {/* Show trial button for new users, subscribe button for others */}
                 {status?.plan === 'none' ? (
-                  <Space direction="vertical" style={{ width: '100%', marginTop: 24 }} size={8}>
+                  !status?.has_used_trial ? (
+                    <Space direction="vertical" style={{ width: '100%', marginTop: 24 }} size={8}>
+                      <Button
+                        type="primary"
+                        size="large"
+                        block
+                        loading={selectedPlan === plan.name && checkoutMutation.isPending}
+                        onClick={() => handleSelectPlan(plan)}
+                        icon={<Sparkles size={16} />}
+                      >
+                        {selectedPlan === plan.name && checkoutMutation.isPending ? 'Loading Checkout...' : 'Start 7-Day Free Trial'}
+                      </Button>
+                      <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', display: 'block' }}>
+                        Credit card required. Cancel anytime during trial.
+                      </Text>
+                    </Space>
+                  ) : (
                     <Button
                       type="primary"
                       size="large"
                       block
+                      style={{ marginTop: 24 }}
                       loading={selectedPlan === plan.name && checkoutMutation.isPending}
                       onClick={() => handleSelectPlan(plan)}
-                      icon={<Sparkles size={16} />}
+                      icon={<CreditCard size={16} />}
                     >
-                      {selectedPlan === plan.name && checkoutMutation.isPending ? 'Loading Checkout...' : 'Start 7-Day Free Trial'}
+                      {selectedPlan === plan.name && checkoutMutation.isPending ? 'Loading Checkout...' : 'Subscribe'}
                     </Button>
-                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', display: 'block' }}>
-                      Credit card required. Cancel anytime during trial.
-                    </Text>
-                  </Space>
+                  )
                 ) : (
                   <Button
                     type={isCurrentPlan ? 'default' : 'primary'}

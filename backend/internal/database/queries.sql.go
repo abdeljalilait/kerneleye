@@ -17,7 +17,7 @@ UPDATE users
 SET refresh_token = NULL,
     refresh_token_expires_at = NULL
 WHERE id = $1
-RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at
+RETURNING id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at
 `
 
 func (q *Queries) ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -29,7 +29,6 @@ func (q *Queries) ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (Us
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -39,6 +38,7 @@ func (q *Queries) ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (Us
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -247,7 +247,7 @@ func (q *Queries) CreateSubscriptionEvent(ctx context.Context, arg CreateSubscri
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, plan)
 VALUES ($1, $2, $3)
-RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at
+RETURNING id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at
 `
 
 type CreateUserParams struct {
@@ -265,7 +265,6 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -275,6 +274,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -1024,7 +1024,7 @@ func (q *Queries) GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at FROM users
 WHERE email = $1
 `
 
@@ -1037,7 +1037,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -1047,6 +1046,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -1054,7 +1054,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at FROM users
 WHERE id = $1
 `
 
@@ -1067,7 +1067,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -1077,6 +1076,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -1085,7 +1085,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 
 const getUserByPolarCustomerID = `-- name: GetUserByPolarCustomerID :one
 
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at FROM users
 WHERE polar_customer_id = $1
 `
 
@@ -1101,7 +1101,6 @@ func (q *Queries) GetUserByPolarCustomerID(ctx context.Context, polarCustomerID 
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -1111,6 +1110,7 @@ func (q *Queries) GetUserByPolarCustomerID(ctx context.Context, polarCustomerID 
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -1118,7 +1118,7 @@ func (q *Queries) GetUserByPolarCustomerID(ctx context.Context, polarCustomerID 
 }
 
 const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at FROM users
 WHERE refresh_token = $1
 `
 
@@ -1131,7 +1131,6 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -1141,6 +1140,7 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -1601,7 +1601,7 @@ UPDATE users
 SET refresh_token = $2,
     refresh_token_expires_at = $3
 WHERE id = $1
-RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at
+RETURNING id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at
 `
 
 type UpdateUserRefreshTokenParams struct {
@@ -1619,7 +1619,6 @@ func (q *Queries) UpdateUserRefreshToken(ctx context.Context, arg UpdateUserRefr
 		&i.PasswordHash,
 		&i.Plan,
 		&i.MaxServers,
-		&i.StripeCustomerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PolarCustomerID,
@@ -1629,6 +1628,7 @@ func (q *Queries) UpdateUserRefreshToken(ctx context.Context, arg UpdateUserRefr
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.HasUsedTrial,
 		&i.RefreshToken,
 		&i.RefreshTokenExpiresAt,
 	)
@@ -1645,6 +1645,7 @@ SET plan = $2,
     subscription_current_period_end = COALESCE($7, subscription_current_period_end),
     subscription_cancel_at_period_end = COALESCE($8, subscription_cancel_at_period_end),
     trial_ends_at = COALESCE($9, trial_ends_at),
+    has_used_trial = COALESCE($10, has_used_trial),
     updated_at = NOW()
 WHERE id = $1
 `
@@ -1659,6 +1660,7 @@ type UpdateUserSubscriptionParams struct {
 	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
 	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
 	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
+	HasUsedTrial                   pgtype.Bool        `json:"has_used_trial"`
 }
 
 func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error {
@@ -1672,6 +1674,7 @@ func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubs
 		arg.SubscriptionCurrentPeriodEnd,
 		arg.SubscriptionCancelAtPeriodEnd,
 		arg.TrialEndsAt,
+		arg.HasUsedTrial,
 	)
 	return err
 }

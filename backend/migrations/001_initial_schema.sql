@@ -13,13 +13,11 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     plan VARCHAR(50) NOT NULL DEFAULT 'free', -- free, starter, pro, team
     max_servers INTEGER NOT NULL DEFAULT 1,
-    stripe_customer_id VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_stripe_customer ON users(stripe_customer_id);
 
 -- ============================================
 -- Servers Table (Monitored Hosts)

@@ -329,6 +329,7 @@ export interface SubscriptionStatus {
   cancel_at_period_end: boolean;
   trial_ends_at?: string;
   is_trialing: boolean;
+  has_used_trial: boolean;
 }
 
 export const useSubscriptionPlans = () => {
