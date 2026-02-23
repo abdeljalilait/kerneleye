@@ -23,6 +23,14 @@ const (
 	ThreatTypeConnectionBurst ThreatType = "connection_burst"
 )
 
+type Direction string
+
+const (
+	DirectionUnknown  Direction = ""
+	DirectionInbound  Direction = "inbound"
+	DirectionOutbound Direction = "outbound"
+)
+
 type IPMetrics struct {
 	SYNCount         int
 	ACKCount         int
@@ -42,6 +50,8 @@ type IPMetrics struct {
 	PortHits    map[int]int // port -> hit count
 	MaxPortHits int         // max hits to single port
 	PrimaryPort int         // most hit port
+
+	Direction Direction // Traffic direction
 }
 
 type ThreatScore struct {
@@ -53,6 +63,7 @@ type ThreatScore struct {
 	Timestamp       time.Time
 	Confidence      float64
 	RawMetrics      ScoreComponents
+	Direction       Direction // Traffic direction
 }
 
 type ScoreComponents struct {

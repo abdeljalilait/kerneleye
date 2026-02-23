@@ -126,6 +126,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 		Reasons:         reasons,
 		Timestamp:       time.Now(),
 		Confidence:      confidence,
+		Direction:       metrics.Direction,
 		RawMetrics: ScoreComponents{
 			SYNComponent:          synComponent,
 			PortScanComponent:     portComponent,

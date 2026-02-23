@@ -115,6 +115,11 @@ func (ab *AutoBlocker) ProcessScore(ip string, score scoring.ThreatScore) error 
 		return nil
 	}
 
+	// Only block inbound traffic - never block outbound connections
+	if score.Direction == scoring.DirectionOutbound {
+		return nil
+	}
+
 	// Check threshold
 	if score.Score < ab.config.BlockThreshold {
 		return nil
