@@ -59,6 +59,15 @@ func main() {
 	hub := api.NewHub()
 	go hub.Run()
 
+	// Initialize Rate Limiter
+	rateLimiter, err := api.InitRateLimiterFromEnv()
+	if err != nil {
+		log.Printf("Warning: Rate limiter initialization failed: %v", err)
+	}
+	if rateLimiter != nil {
+		defer rateLimiter.Close()
+	}
+
 	// Initialize Email Service
 	emailService := email.NewService()
 	if emailService != nil && emailService.IsEnabled() {
@@ -111,6 +120,11 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	// Rate limiting (if configured)
+	if rateLimiter != nil {
+		app.Use(api.RateLimitMiddleware(rateLimiter))
+	}
+
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -126,6 +140,7 @@ func main() {
 	// Public routes
 	v1.Post("/auth/register", api.HandleRegister(queries))
 	v1.Post("/auth/login", api.HandleLogin(queries))
+	v1.Post("/auth/refresh", api.HandleRefreshToken(queries))
 	v1.Get("/auth/providers", api.HandleGetAuthProviders())
 
 	// OAuth routes

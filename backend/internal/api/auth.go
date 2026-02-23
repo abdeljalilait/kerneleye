@@ -1,6 +1,10 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"log"
 	"os"
 	"strings"
@@ -8,11 +12,19 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var jwtSecret []byte
+
+const (
+	AccessTokenExpiry  = 24 * time.Hour     // JWT access token: 24 hours
+	RefreshTokenExpiry = 7 * 24 * time.Hour // Refresh token: 7 days
+	RefreshTokenSize   = 64                 // 64 bytes of random data
+	CookieName         = "kerneleye_refresh"
+)
 
 func init() {
 	secret := os.Getenv("JWT_SECRET")
@@ -205,6 +217,18 @@ func HandleLogin(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
 		}
 
+		// Generate and store refresh token
+		refreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			log.Printf("[Auth] Warning: Failed to generate refresh token: %v", err)
+		} else {
+			if err := StoreRefreshToken(queries, c.Context(), user.ID, refreshToken); err != nil {
+				log.Printf("[Auth] Warning: Failed to store refresh token: %v", err)
+			} else {
+				SetRefreshTokenCookie(c, refreshToken)
+			}
+		}
+
 		return c.JSON(fiber.Map{
 			"user":  user,
 			"token": token,
@@ -230,5 +254,140 @@ func HandleMe(queries *database.Queries) fiber.Handler {
 			"email": user.Email,
 			"plan":  user.Plan,
 		})
+	}
+}
+
+// GenerateRefreshToken creates a cryptographically secure random token
+func GenerateRefreshToken() (string, error) {
+	b := make([]byte, RefreshTokenSize)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// HashToken creates a SHA-256 hash of the token for storage
+func HashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return base64.StdEncoding.EncodeToString(h[:])
+}
+
+// StoreRefreshToken saves the refresh token to the database
+func StoreRefreshToken(queries *database.Queries, ctx context.Context, userID pgtype.UUID, token string) error {
+	hashedToken := HashToken(token)
+	expiresAt := time.Now().Add(RefreshTokenExpiry)
+
+	_, err := queries.UpdateUserRefreshToken(ctx, database.UpdateUserRefreshTokenParams{
+		ID:                    userID,
+		RefreshToken:          database.ToPgText(hashedToken),
+		RefreshTokenExpiresAt: database.ToPgTimestamptz(expiresAt),
+	})
+	return err
+}
+
+// ValidateRefreshToken checks if the token is valid and not expired
+func ValidateRefreshToken(queries *database.Queries, ctx context.Context, token string) (*database.User, error) {
+	hashedToken := HashToken(token)
+
+	user, err := queries.GetUserByRefreshToken(ctx, database.ToPgText(hashedToken))
+	if err != nil {
+		return nil, err
+	}
+
+	if user.RefreshTokenExpiresAt.Time.Before(time.Now()) {
+		return nil, fiber.NewError(fiber.StatusUnauthorized, "Refresh token expired")
+	}
+
+	return &user, nil
+}
+
+// DeleteRefreshToken removes the refresh token from the database
+func DeleteRefreshToken(queries *database.Queries, ctx context.Context, userID pgtype.UUID) error {
+	_, err := queries.ClearUserRefreshToken(ctx, userID)
+	return err
+}
+
+// SetRefreshTokenCookie sets the HttpOnly secure cookie for refresh token
+func SetRefreshTokenCookie(c *fiber.Ctx, token string) {
+	cookie := &fiber.Cookie{
+		Name:     CookieName,
+		Value:    token,
+		Expires:  time.Now().Add(RefreshTokenExpiry),
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+	}
+	c.Cookie(cookie)
+}
+
+// ClearRefreshTokenCookie removes the refresh token cookie
+func ClearRefreshTokenCookie(c *fiber.Ctx) {
+	c.ClearCookie(CookieName)
+}
+
+// HandleRefreshToken handles token refresh requests
+func HandleRefreshToken(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Read refresh token from HttpOnly cookie
+		refreshToken := c.Cookies(CookieName)
+		if refreshToken == "" {
+			return fiber.NewError(fiber.StatusUnauthorized, "No refresh token provided")
+		}
+
+		// Validate the refresh token
+		user, err := ValidateRefreshToken(queries, c.Context(), refreshToken)
+		if err != nil {
+			ClearRefreshTokenCookie(c)
+			return fiber.NewError(fiber.StatusUnauthorized, "Invalid or expired refresh token")
+		}
+
+		// Generate new access token
+		newAccessToken, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate access token")
+		}
+
+		// Optionally rotate the refresh token for security
+		newRefreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			// If we can't generate a new refresh token, just return the access token
+			log.Printf("[Auth] Warning: Failed to rotate refresh token: %v", err)
+			return c.JSON(fiber.Map{
+				"token": newAccessToken,
+			})
+		}
+
+		// Store new refresh token and invalidate old one
+		if err := StoreRefreshToken(queries, c.Context(), user.ID, newRefreshToken); err != nil {
+			log.Printf("[Auth] Warning: Failed to store rotated refresh token: %v", err)
+			return c.JSON(fiber.Map{
+				"token": newAccessToken,
+			})
+		}
+
+		// Set new refresh token cookie
+		SetRefreshTokenCookie(c, newRefreshToken)
+
+		return c.JSON(fiber.Map{
+			"token": newAccessToken,
+		})
+	}
+}
+
+// RequireRefreshToken is a middleware that requires a valid refresh token
+func RequireRefreshToken(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		refreshToken := c.Cookies(CookieName)
+		if refreshToken == "" {
+			return fiber.NewError(fiber.StatusUnauthorized, "Authentication required")
+		}
+
+		_, err := ValidateRefreshToken(queries, c.Context(), refreshToken)
+		if err != nil {
+			ClearRefreshTokenCookie(c)
+			return fiber.NewError(fiber.StatusUnauthorized, "Invalid or expired session")
+		}
+
+		return c.Next()
 	}
 }
