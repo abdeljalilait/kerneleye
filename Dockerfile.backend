@@ -23,8 +23,11 @@ RUN go mod edit -replace github.com/kerneleye/proto=/proto/gen/go && \
 # Copy source code from backend directory
 COPY backend/ .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o kerneleye-api ./cmd/api
+# Build the application with version info
+RUN VERSION=$$(cat /app/backend/VERSION 2>/dev/null || echo "0.0.0") && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags "-X 'main.AppVersion=$$VERSION'" \
+    -o kerneleye-api ./cmd/api
 
 # Runtime stage
 FROM alpine:latest

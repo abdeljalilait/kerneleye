@@ -71,9 +71,15 @@ RUN go mod edit -replace github.com/kerneleye/proto=/proto/gen/go && \
     go mod download
 
 # Build static release binary (eBPF objects are pre-compiled in the repo)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN VERSION=$$(cat /app/agent/VERSION 2>/dev/null || echo "0.0.0") && \
+    GIT_COMMIT=$$(cd /app && git rev-parse --short HEAD 2>/dev/null || echo "unknown") && \
+    BUILD_DATE=$$(date -u +"%Y-%m-%dT%H:%M:%SZ") && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -a -installsuffix cgo \
-    -ldflags "-s -w -extldflags '-static'" \
+    -ldflags "-s -w -extldflags '-static' \
+    -X 'main.Version=$$VERSION' \
+    -X 'main.GitCommit=$$GIT_COMMIT' \
+    -X 'main.BuildDate=$$BUILD_DATE'" \
     -o kerneleye-agent .
 
 # ==========================================
