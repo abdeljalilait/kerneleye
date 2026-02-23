@@ -3,10 +3,16 @@ package remediation
 import (
 	"fmt"
 	"net"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 )
+
+func hasIPSet() bool {
+	cmd := exec.Command("ipset", "-version")
+	return cmd.Run() == nil
+}
 
 type mockRunner struct {
 	cmds []string
@@ -82,6 +88,10 @@ func TestIPSetRemediator_PrivateIP(t *testing.T) {
 }
 
 func TestSetup_Teardown(t *testing.T) {
+	if !hasIPSet() {
+		t.Skip("ipset not found. Install: sudo apt-get install ipset")
+	}
+
 	mock := &mockRunner{}
 	remediator := NewIPSetRemediator()
 	remediator.Runner = mock.Run
@@ -120,6 +130,10 @@ func TestSetup_Teardown(t *testing.T) {
 }
 
 func TestSetup_DockerUserChain(t *testing.T) {
+	if !hasIPSet() {
+		t.Skip("ipset not found. Install: sudo apt-get install ipset")
+	}
+
 	mock := &mockRunner{}
 	remediator := NewIPSetRemediator()
 	remediator.Runner = mock.Run
@@ -180,26 +194,26 @@ func TestSetup_DockerUserChain(t *testing.T) {
 
 	// Now Test Teardown
 	calls = nil // reset
-	
+
 	// Update mock for Teardown: simulate rule EXISTS so deletion is attempted
 	remediator.Runner = func(name string, args ...string) error {
 		cmd := name + " " + strings.Join(args, " ")
 		calls = append(calls, cmd)
-		
+
 		// Simulate chain exists
 		if name == "iptables" && args[0] == "-L" {
 			return nil
 		}
-		
+
 		// During teardown, simulate rule EXISTS (so it will try to delete)
 		// but return error on delete to simulate successful deletion (test mock limitation)
 		if name == "iptables" && args[0] == "-C" {
 			return nil // rule exists
 		}
-		
+
 		return nil
 	}
-	
+
 	if err := remediator.Teardown(); err != nil {
 		t.Fatalf("Teardown failed: %v", err)
 	}
@@ -296,8 +310,6 @@ func TestSyncBlocklist(t *testing.T) {
 }
 
 func TestIsExternalIP_Extended(t *testing.T) {
-	remediator := NewIPSetRemediator()
-
 	tests := []struct {
 		ip   string
 		want bool
@@ -315,7 +327,7 @@ func TestIsExternalIP_Extended(t *testing.T) {
 
 	for _, tt := range tests {
 		ip := net.ParseIP(tt.ip)
-		if got := remediator.isExternalIP(ip); got != tt.want {
+		if got := isExternalIP(ip); got != tt.want {
 			t.Errorf("isExternalIP(%s) = %v, want %v", tt.ip, got, tt.want)
 		}
 	}
