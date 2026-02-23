@@ -5,6 +5,7 @@ agent/bpf_*.go
 agent/bpf_*.o
 agent/xdp_*.o
 agent/ebpf/vmlinux.h
+agent/agent
 
 # Go
 *.exe
