@@ -302,8 +302,15 @@ const regionNameToCode = (() => {
   return map;
 })();
 
+const sanitizeText = (value: string) =>
+  value
+    .normalize('NFC')
+    .replace(/\uFFFD/g, '')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim();
+
 const normalizeCountryCode = (country: string) => {
-  const value = country.trim();
+  const value = sanitizeText(country);
   if (!value) return '';
   if (/^[A-Za-z]{2}$/.test(value)) return value.toUpperCase();
   return regionNameToCode.get(value.toLowerCase()) || '';
@@ -356,12 +363,12 @@ export default function Visualizer() {
   const isLoading = threatsLoading || ipsLoading || asnsLoading;
 
   // Transform API data to match expected format
-  const sourceIPsData = (topSourceIPs || []).map((ip: any, index: number) => ({
+  const sourceIPsData = (topSourceIPs || []).map((ip: any) => ({
     ip: ip.ip,
     count: ip.count || 0,
     percentage: 0, // Will be calculated
-    country: ip.country || 'Unknown',
-    countryCode: ip.country_code || ip.country || 'Unknown',
+    country: sanitizeText(ip.country || 'Unknown'),
+    countryCode: normalizeCountryCode(ip.country_code || '') || normalizeCountryCode(ip.country || ''),
     asn: 'N/A',
     isp: ip.isp || 'Unknown',
     firstSeen: ip.first_seen,
@@ -376,11 +383,11 @@ export default function Visualizer() {
     ip.percentage = totalCount > 0 ? parseFloat(((ip.count / totalCount) * 100).toFixed(1)) : 0;
   });
 
-  const sourceASData = (topASNs || []).map((as: any, index: number) => ({
+  const sourceASData = (topASNs || []).map((as: any) => ({
     asn: as.asn || 'Unknown',
     name: as.isp_name || as.asn || 'Unknown',
-    country: as.country || 'Unknown',
-    countryCode: as.country_code || as.country || 'Unknown',
+    country: sanitizeText(as.country || 'Unknown'),
+    countryCode: normalizeCountryCode(as.country_code || '') || normalizeCountryCode(as.country || ''),
     count: as.count || 0,
     percentage: 0,
     timeline: [],

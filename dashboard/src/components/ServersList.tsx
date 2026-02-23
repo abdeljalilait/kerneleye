@@ -1,7 +1,7 @@
 import { Table, Tag, Typography, Button, Popconfirm, Space, Card, Avatar, Badge, Progress } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Server } from '../types'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useDeleteServer } from '../hooks/useQueries'
 import { Trash2, Server as ServerIcon, Activity, ChevronRight } from 'lucide-react'
 
@@ -14,9 +14,14 @@ interface ServersListProps {
 
 export default function ServersList({ servers, showCard = true }: ServersListProps) {
   const deleteServer = useDeleteServer()
+  const navigate = useNavigate()
 
   const handleDelete = (id: string) => {
     deleteServer.mutate(id)
+  }
+
+  const handleRowClick = (id: string) => {
+    navigate({ to: '/dashboard/servers/$id', params: { id } })
   }
 
   const getStatusConfig = (status: string) => {
@@ -136,7 +141,11 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
       minWidth: 100,
       align: 'right',
       render: (_, record) => (
-        <Space size={4}>
+        <Space
+          size={4}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <Link to="/dashboard/servers/$id" params={{ id: record.id }}>
             <Button 
               size="small" 
@@ -175,6 +184,10 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
       rowKey="id"
       pagination={false}
       scroll={{ x: 'max-content' }}
+      onRow={(record) => ({
+        onClick: () => handleRowClick(record.id),
+        style: { cursor: 'pointer' },
+      })}
       locale={{ 
         emptyText: (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
