@@ -450,7 +450,7 @@ const Subscription = () => {
               type="primary" 
               size="large"
               icon={<ExternalLink size={16} />}
-              onClick={() => window.open('mailto:sales@kerneleye.cloud', '_blank')}
+              onClick={() => window.open('mailto:sales@kerneleye.net', '_blank')}
             >
               Contact Sales
             </Button>

@@ -253,7 +253,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
           <div style={{ textAlign: 'center' }}>
             <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
               Need a custom enterprise solution?{' '}
-              <a href="mailto:sales@kerneleye.cloud" style={{ color: '#6366f1' }}>Contact Sales</a>
+              <a href="mailto:sales@kerneleye.net" style={{ color: '#6366f1' }}>Contact Sales</a>
             </Text>
           </div>
         </Space>
