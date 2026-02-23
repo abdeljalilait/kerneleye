@@ -12,6 +12,7 @@ import (
 	"github.com/kerneleye/agent/remediation"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 // Aggregator holds per-IP statistics and manages flushing to the API
@@ -20,6 +21,7 @@ type Aggregator struct {
 	flushChan          chan struct{}
 	stopChan           chan struct{}
 	apiKey, serverHost string
+	grpcURL            string
 	serverID           string
 	grpcConn           *grpc.ClientConn
 	grpcClient         pb.IngestServiceClient
@@ -32,6 +34,12 @@ type Aggregator struct {
 	heartbeatTicker    *time.Ticker
 	bootTime           time.Time      // System boot time for eBPF timestamp conversion
 	wg                 sync.WaitGroup // Tracks background goroutines for graceful shutdown
+
+	// Reconnection state
+	reconnectMu       sync.Mutex
+	reconnectCount    int           // Number of reconnection attempts
+	lastReconnect     time.Time     // Last reconnection attempt
+	maxReconnectDelay time.Duration // Max delay between reconnects
 }
 
 // NewAggregator creates a new aggregator with gRPC connection
@@ -65,6 +73,34 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 	// Compute boot time for eBPF monotonic timestamp conversion
 	bootTime := getBootTime()
 	serverID := extractServerIDFromAPIKey(apiKey)
+	if serverID == "" {
+		log.Printf("⚠️  Could not extract server UUID from API key; server_id will be omitted in block reports")
+	}
+
+	agg := &Aggregator{
+		stats:             NewSafeStats(),
+		flushChan:         make(chan struct{}),
+		stopChan:          make(chan struct{}),
+		apiKey:            apiKey,
+		serverHost:        serverHost,
+		grpcURL:           grpcTarget,
+		serverID:          serverID,
+		grpcConn:          conn,
+		grpcClient:        pb.NewIngestServiceClient(conn),
+		remediator:        rem,
+		analyzer:          ana,
+		buffer:            buffer,
+		cachedPublicIP:    cachedPublicIP,
+		serverIPs:         serverIPs,
+		bootTime:          bootTime,
+		maxReconnectDelay: 5 * time.Minute,
+	}
+
+	// Start connection monitor
+	agg.wg.Add(1)
+	go agg.monitorConnection()
+
+	return agg, nil
 	if serverID == "" {
 		log.Printf("⚠️  Could not extract server UUID from API key; server_id will be omitted in block reports")
 	}
@@ -205,6 +241,7 @@ func (a *Aggregator) StartFlushTimer(interval time.Duration) {
 func (a *Aggregator) SendHeartbeat() {
 	if a.grpcClient == nil {
 		log.Printf("⚠️  gRPC client not initialized, skipping heartbeat")
+		a.scheduleReconnect()
 		return
 	}
 	hostname, _ := os.Hostname()
@@ -215,12 +252,119 @@ func (a *Aggregator) SendHeartbeat() {
 	})
 	if err != nil {
 		log.Printf("❌ gRPC heartbeat error: %v", err)
+		a.scheduleReconnect()
 		return
 	}
 	if !resp.Success {
 		log.Printf("⚠️  Server status: %s - Agent will exit", resp.Message)
 		a.Stop()
 	}
+}
+
+// monitorConnection monitors gRPC connection health and reconnects on failure
+func (a *Aggregator) monitorConnection() {
+	defer a.wg.Done()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			a.checkConnection()
+		case <-a.stopChan:
+			return
+		}
+	}
+}
+
+// checkConnection verifies connection is alive and reconnects if needed
+func (a *Aggregator) checkConnection() {
+	a.reconnectMu.Lock()
+	defer a.reconnectMu.Unlock()
+
+	if a.grpcConn == nil {
+		a.attemptReconnect()
+		return
+	}
+
+	state := a.grpcConn.GetState()
+	if state == connectivity.TransientFailure || state == connectivity.Shutdown {
+		log.Printf("🔄 gRPC connection state: %v - attempting reconnect", state)
+		a.attemptReconnect()
+	}
+}
+
+// scheduleReconnect schedules a reconnection attempt with exponential backoff
+func (a *Aggregator) scheduleReconnect() {
+	a.reconnectMu.Lock()
+	defer a.reconnectMu.Unlock()
+
+	// Calculate delay with exponential backoff
+	delay := time.Duration(1<<uint(a.reconnectCount)) * time.Second
+	if delay > a.maxReconnectDelay {
+		delay = a.maxReconnectDelay
+	}
+
+	// Don't reconnect if we just tried (within last 10 seconds)
+	if time.Since(a.lastReconnect) < 10*time.Second {
+		return
+	}
+
+	a.reconnectCount++
+	a.lastReconnect = time.Now()
+
+	log.Printf("⏳ Scheduling reconnection attempt %d in %v", a.reconnectCount, delay)
+
+	go func() {
+		select {
+		case <-time.After(delay):
+			a.attemptReconnect()
+		case <-a.stopChan:
+			return
+		}
+	}()
+}
+
+// attemptReconnect tries to reconnect to the gRPC server
+func (a *Aggregator) attemptReconnect() {
+	a.reconnectMu.Lock()
+	defer a.reconnectMu.Unlock()
+
+	log.Printf("🔄 Attempting to reconnect to gRPC server %s (attempt %d)...", a.grpcURL, a.reconnectCount+1)
+
+	// Close existing connection
+	if a.grpcConn != nil {
+		a.grpcConn.Close()
+	}
+
+	// Create new connection
+	conn, err := grpc.NewClient("passthrough:///"+a.grpcURL, buildGRPCOpts(a.grpcURL)...)
+	if err != nil {
+		log.Printf("❌ Failed to create new gRPC connection: %v", err)
+		return
+	}
+
+	// Test connection with a simple call
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	testClient := pb.NewIngestServiceClient(conn)
+	_, err = testClient.Heartbeat(ctx, &pb.HeartbeatRequest{
+		ApiKey: a.apiKey,
+	})
+
+	if err != nil {
+		log.Printf("❌ Reconnection test failed: %v", err)
+		conn.Close()
+		return
+	}
+
+	// Success - update connection
+	a.grpcConn = conn
+	a.grpcClient = testClient
+	a.reconnectCount = 0 // Reset counter on success
+
+	log.Printf("✅ Successfully reconnected to gRPC server")
 }
 
 // Stop signals the aggregator to stop
