@@ -83,18 +83,30 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
     },
     {
       title: 'Detection Reason',
-      dataIndex: 'reason',
+      dataIndex: 'threat_type',
       key: 'reason',
-      render: (text) => (
-        <div>
-          <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-            {text || 'Detected by heuristics'}
-          </Text>
-          <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block', marginTop: 2 }}>
-            Automated analysis
-          </Text>
-        </div>
-      )
+      render: (threatType, record) => {
+        const typeLabels: Record<string, string> = {
+          port_scan: 'Port Scanning',
+          service_abuse: 'Service Abuse',
+          syn_flood: 'SYN Flood',
+          failed_handshake: 'Failed Handshake',
+          connection_burst: 'Connection Burst',
+          none: 'Normal Traffic',
+        }
+        return (
+          <div>
+            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+              {typeLabels[threatType] || 'Detected by heuristics'}
+            </Text>
+            {record.reason && (
+              <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block', marginTop: 2 }}>
+                {record.reason}
+              </Text>
+            )}
+          </div>
+        )
+      }
     },
     {
       title: 'Risk Score',

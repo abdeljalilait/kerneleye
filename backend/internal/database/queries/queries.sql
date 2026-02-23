@@ -92,9 +92,9 @@ WHERE api_key = $3;
 INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
     syn_count, ack_count, failed_handshakes, unique_ports,
-    bytes_in, bytes_out, threat_score, threat_level,
+    bytes_in, bytes_out, threat_score, threat_level, threat_type,
     first_seen, last_seen, country, city, isp, asn, hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 1)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -106,6 +106,10 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     threat_level = CASE 
         WHEN EXCLUDED.threat_score > traffic_events.threat_score THEN EXCLUDED.threat_level 
         ELSE traffic_events.threat_level 
+    END,
+    threat_type = CASE 
+        WHEN EXCLUDED.threat_score > traffic_events.threat_score THEN EXCLUDED.threat_type 
+        ELSE traffic_events.threat_type 
     END,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1

@@ -22,6 +22,113 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ThreatLevel int32
+
+const (
+	ThreatLevel_THREAT_LEVEL_NORMAL     ThreatLevel = 0
+	ThreatLevel_THREAT_LEVEL_SUSPICIOUS ThreatLevel = 1
+	ThreatLevel_THREAT_LEVEL_MALICIOUS  ThreatLevel = 2
+)
+
+// Enum value maps for ThreatLevel.
+var (
+	ThreatLevel_name = map[int32]string{
+		0: "THREAT_LEVEL_NORMAL",
+		1: "THREAT_LEVEL_SUSPICIOUS",
+		2: "THREAT_LEVEL_MALICIOUS",
+	}
+	ThreatLevel_value = map[string]int32{
+		"THREAT_LEVEL_NORMAL":     0,
+		"THREAT_LEVEL_SUSPICIOUS": 1,
+		"THREAT_LEVEL_MALICIOUS":  2,
+	}
+)
+
+func (x ThreatLevel) Enum() *ThreatLevel {
+	p := new(ThreatLevel)
+	*p = x
+	return p
+}
+
+func (x ThreatLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ThreatLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_kerneleye_v1_ingest_proto_enumTypes[0].Descriptor()
+}
+
+func (ThreatLevel) Type() protoreflect.EnumType {
+	return &file_kerneleye_v1_ingest_proto_enumTypes[0]
+}
+
+func (x ThreatLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ThreatLevel.Descriptor instead.
+func (ThreatLevel) EnumDescriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{0}
+}
+
+type ThreatType int32
+
+const (
+	ThreatType_THREAT_TYPE_NONE             ThreatType = 0
+	ThreatType_THREAT_TYPE_PORT_SCAN        ThreatType = 1
+	ThreatType_THREAT_TYPE_SERVICE_ABUSE    ThreatType = 2
+	ThreatType_THREAT_TYPE_SYN_FLOOD        ThreatType = 3
+	ThreatType_THREAT_TYPE_FAILED_HANDSHAKE ThreatType = 4
+	ThreatType_THREAT_TYPE_CONNECTION_BURST ThreatType = 5
+)
+
+// Enum value maps for ThreatType.
+var (
+	ThreatType_name = map[int32]string{
+		0: "THREAT_TYPE_NONE",
+		1: "THREAT_TYPE_PORT_SCAN",
+		2: "THREAT_TYPE_SERVICE_ABUSE",
+		3: "THREAT_TYPE_SYN_FLOOD",
+		4: "THREAT_TYPE_FAILED_HANDSHAKE",
+		5: "THREAT_TYPE_CONNECTION_BURST",
+	}
+	ThreatType_value = map[string]int32{
+		"THREAT_TYPE_NONE":             0,
+		"THREAT_TYPE_PORT_SCAN":        1,
+		"THREAT_TYPE_SERVICE_ABUSE":    2,
+		"THREAT_TYPE_SYN_FLOOD":        3,
+		"THREAT_TYPE_FAILED_HANDSHAKE": 4,
+		"THREAT_TYPE_CONNECTION_BURST": 5,
+	}
+)
+
+func (x ThreatType) Enum() *ThreatType {
+	p := new(ThreatType)
+	*p = x
+	return p
+}
+
+func (x ThreatType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ThreatType) Descriptor() protoreflect.EnumDescriptor {
+	return file_kerneleye_v1_ingest_proto_enumTypes[1].Descriptor()
+}
+
+func (ThreatType) Type() protoreflect.EnumType {
+	return &file_kerneleye_v1_ingest_proto_enumTypes[1]
+}
+
+func (x ThreatType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ThreatType.Descriptor instead.
+func (ThreatType) EnumDescriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{1}
+}
+
 type Protocol int32
 
 const (
@@ -58,11 +165,11 @@ func (x Protocol) String() string {
 }
 
 func (Protocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_kerneleye_v1_ingest_proto_enumTypes[0].Descriptor()
+	return file_kerneleye_v1_ingest_proto_enumTypes[2].Descriptor()
 }
 
 func (Protocol) Type() protoreflect.EnumType {
-	return &file_kerneleye_v1_ingest_proto_enumTypes[0]
+	return &file_kerneleye_v1_ingest_proto_enumTypes[2]
 }
 
 func (x Protocol) Number() protoreflect.EnumNumber {
@@ -71,7 +178,7 @@ func (x Protocol) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Protocol.Descriptor instead.
 func (Protocol) EnumDescriptor() ([]byte, []int) {
-	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{0}
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{2}
 }
 
 type Direction int32
@@ -107,11 +214,11 @@ func (x Direction) String() string {
 }
 
 func (Direction) Descriptor() protoreflect.EnumDescriptor {
-	return file_kerneleye_v1_ingest_proto_enumTypes[1].Descriptor()
+	return file_kerneleye_v1_ingest_proto_enumTypes[3].Descriptor()
 }
 
 func (Direction) Type() protoreflect.EnumType {
-	return &file_kerneleye_v1_ingest_proto_enumTypes[1]
+	return &file_kerneleye_v1_ingest_proto_enumTypes[3]
 }
 
 func (x Direction) Number() protoreflect.EnumNumber {
@@ -120,7 +227,7 @@ func (x Direction) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Direction.Descriptor instead.
 func (Direction) EnumDescriptor() ([]byte, []int) {
-	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{1}
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{3}
 }
 
 type Severity int32
@@ -156,11 +263,11 @@ func (x Severity) String() string {
 }
 
 func (Severity) Descriptor() protoreflect.EnumDescriptor {
-	return file_kerneleye_v1_ingest_proto_enumTypes[2].Descriptor()
+	return file_kerneleye_v1_ingest_proto_enumTypes[4].Descriptor()
 }
 
 func (Severity) Type() protoreflect.EnumType {
-	return &file_kerneleye_v1_ingest_proto_enumTypes[2]
+	return &file_kerneleye_v1_ingest_proto_enumTypes[4]
 }
 
 func (x Severity) Number() protoreflect.EnumNumber {
@@ -169,7 +276,7 @@ func (x Severity) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Severity.Descriptor instead.
 func (Severity) EnumDescriptor() ([]byte, []int) {
-	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{2}
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{4}
 }
 
 type BlockAction int32
@@ -205,11 +312,11 @@ func (x BlockAction) String() string {
 }
 
 func (BlockAction) Descriptor() protoreflect.EnumDescriptor {
-	return file_kerneleye_v1_ingest_proto_enumTypes[3].Descriptor()
+	return file_kerneleye_v1_ingest_proto_enumTypes[5].Descriptor()
 }
 
 func (BlockAction) Type() protoreflect.EnumType {
-	return &file_kerneleye_v1_ingest_proto_enumTypes[3]
+	return &file_kerneleye_v1_ingest_proto_enumTypes[5]
 }
 
 func (x BlockAction) Number() protoreflect.EnumNumber {
@@ -218,7 +325,7 @@ func (x BlockAction) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BlockAction.Descriptor instead.
 func (BlockAction) EnumDescriptor() ([]byte, []int) {
-	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{3}
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{5}
 }
 
 type RegisterRequest struct {
@@ -749,6 +856,11 @@ type ConnectionEvent struct {
 	Direction Direction `protobuf:"varint,13,opt,name=direction,proto3,enum=kerneleye.v1.Direction" json:"direction,omitempty"`
 	// Destination endpoint IP (for proper source/destination display)
 	DestinationIp string `protobuf:"bytes,14,opt,name=destination_ip,json=destinationIp,proto3" json:"destination_ip,omitempty"`
+	// Threat scoring fields (computed by agent)
+	ThreatScore   uint32      `protobuf:"varint,15,opt,name=threat_score,json=threatScore,proto3" json:"threat_score,omitempty"`
+	ThreatLevel   ThreatLevel `protobuf:"varint,16,opt,name=threat_level,json=threatLevel,proto3,enum=kerneleye.v1.ThreatLevel" json:"threat_level,omitempty"`
+	ThreatType    ThreatType  `protobuf:"varint,17,opt,name=threat_type,json=threatType,proto3,enum=kerneleye.v1.ThreatType" json:"threat_type,omitempty"`
+	Reasons       []string    `protobuf:"bytes,18,rep,name=reasons,proto3" json:"reasons,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -879,6 +991,34 @@ func (x *ConnectionEvent) GetDestinationIp() string {
 		return x.DestinationIp
 	}
 	return ""
+}
+
+func (x *ConnectionEvent) GetThreatScore() uint32 {
+	if x != nil {
+		return x.ThreatScore
+	}
+	return 0
+}
+
+func (x *ConnectionEvent) GetThreatLevel() ThreatLevel {
+	if x != nil {
+		return x.ThreatLevel
+	}
+	return ThreatLevel_THREAT_LEVEL_NORMAL
+}
+
+func (x *ConnectionEvent) GetThreatType() ThreatType {
+	if x != nil {
+		return x.ThreatType
+	}
+	return ThreatType_THREAT_TYPE_NONE
+}
+
+func (x *ConnectionEvent) GetReasons() []string {
+	if x != nil {
+		return x.Reasons
+	}
+	return nil
 }
 
 type TrafficResponse struct {
@@ -1373,7 +1513,7 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\rtimestamp_end\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ftimestampEnd\x125\n" +
 	"\x06events\x18\x05 \x03(\v2\x1d.kerneleye.v1.ConnectionEventR\x06events\x12!\n" +
 	"\ftotal_events\x18\x06 \x01(\x04R\vtotalEvents\x12<\n" +
-	"\x1aaggregation_window_seconds\x18\a \x01(\rR\x18aggregationWindowSeconds\"\xd3\x04\n" +
+	"\x1aaggregation_window_seconds\x18\a \x01(\rR\x18aggregationWindowSeconds\"\x89\x06\n" +
 	"\x0fConnectionEvent\x12\x1b\n" +
 	"\tsource_ip\x18\x01 \x01(\tR\bsourceIp\x12)\n" +
 	"\x10destination_port\x18\x02 \x01(\rR\x0fdestinationPort\x122\n" +
@@ -1390,7 +1530,12 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\x12unique_ports_count\x18\v \x01(\rR\x10uniquePortsCount\x12%\n" +
 	"\x0eports_accessed\x18\f \x03(\rR\rportsAccessed\x125\n" +
 	"\tdirection\x18\r \x01(\x0e2\x17.kerneleye.v1.DirectionR\tdirection\x12%\n" +
-	"\x0edestination_ip\x18\x0e \x01(\tR\rdestinationIp\"\x9d\x01\n" +
+	"\x0edestination_ip\x18\x0e \x01(\tR\rdestinationIp\x12!\n" +
+	"\fthreat_score\x18\x0f \x01(\rR\vthreatScore\x12<\n" +
+	"\fthreat_level\x18\x10 \x01(\x0e2\x19.kerneleye.v1.ThreatLevelR\vthreatLevel\x129\n" +
+	"\vthreat_type\x18\x11 \x01(\x0e2\x18.kerneleye.v1.ThreatTypeR\n" +
+	"threatType\x12\x18\n" +
+	"\areasons\x18\x12 \x03(\tR\areasons\"\x9d\x01\n" +
 	"\x0fTrafficResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12)\n" +
@@ -1428,7 +1573,19 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\n" +
 	"blocked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tblockedAt\"-\n" +
 	"\x11BlockedIPResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess*W\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess*_\n" +
+	"\vThreatLevel\x12\x17\n" +
+	"\x13THREAT_LEVEL_NORMAL\x10\x00\x12\x1b\n" +
+	"\x17THREAT_LEVEL_SUSPICIOUS\x10\x01\x12\x1a\n" +
+	"\x16THREAT_LEVEL_MALICIOUS\x10\x02*\xbb\x01\n" +
+	"\n" +
+	"ThreatType\x12\x14\n" +
+	"\x10THREAT_TYPE_NONE\x10\x00\x12\x19\n" +
+	"\x15THREAT_TYPE_PORT_SCAN\x10\x01\x12\x1d\n" +
+	"\x19THREAT_TYPE_SERVICE_ABUSE\x10\x02\x12\x19\n" +
+	"\x15THREAT_TYPE_SYN_FLOOD\x10\x03\x12 \n" +
+	"\x1cTHREAT_TYPE_FAILED_HANDSHAKE\x10\x04\x12 \n" +
+	"\x1cTHREAT_TYPE_CONNECTION_BURST\x10\x05*W\n" +
 	"\bProtocol\x12\x14\n" +
 	"\x10PROTOCOL_UNKNOWN\x10\x00\x12\x10\n" +
 	"\fPROTOCOL_TCP\x10\x01\x12\x10\n" +
@@ -1466,65 +1623,69 @@ func file_kerneleye_v1_ingest_proto_rawDescGZIP() []byte {
 	return file_kerneleye_v1_ingest_proto_rawDescData
 }
 
-var file_kerneleye_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_kerneleye_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
 var file_kerneleye_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_kerneleye_v1_ingest_proto_goTypes = []any{
-	(Protocol)(0),                 // 0: kerneleye.v1.Protocol
-	(Direction)(0),                // 1: kerneleye.v1.Direction
-	(Severity)(0),                 // 2: kerneleye.v1.Severity
-	(BlockAction)(0),              // 3: kerneleye.v1.BlockAction
-	(*RegisterRequest)(nil),       // 4: kerneleye.v1.RegisterRequest
-	(*RegisterResponse)(nil),      // 5: kerneleye.v1.RegisterResponse
-	(*GetStatusRequest)(nil),      // 6: kerneleye.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),     // 7: kerneleye.v1.GetStatusResponse
-	(*HeartbeatRequest)(nil),      // 8: kerneleye.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),     // 9: kerneleye.v1.HeartbeatResponse
-	(*ConfigUpdate)(nil),          // 10: kerneleye.v1.ConfigUpdate
-	(*TrafficBatch)(nil),          // 11: kerneleye.v1.TrafficBatch
-	(*ConnectionEvent)(nil),       // 12: kerneleye.v1.ConnectionEvent
-	(*TrafficResponse)(nil),       // 13: kerneleye.v1.TrafficResponse
-	(*Alert)(nil),                 // 14: kerneleye.v1.Alert
-	(*BlockListRequest)(nil),      // 15: kerneleye.v1.BlockListRequest
-	(*BlockListResponse)(nil),     // 16: kerneleye.v1.BlockListResponse
-	(*BlockDirective)(nil),        // 17: kerneleye.v1.BlockDirective
-	(*BlockedIPEvent)(nil),        // 18: kerneleye.v1.BlockedIPEvent
-	(*BlockedIPResponse)(nil),     // 19: kerneleye.v1.BlockedIPResponse
-	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(ThreatLevel)(0),              // 0: kerneleye.v1.ThreatLevel
+	(ThreatType)(0),               // 1: kerneleye.v1.ThreatType
+	(Protocol)(0),                 // 2: kerneleye.v1.Protocol
+	(Direction)(0),                // 3: kerneleye.v1.Direction
+	(Severity)(0),                 // 4: kerneleye.v1.Severity
+	(BlockAction)(0),              // 5: kerneleye.v1.BlockAction
+	(*RegisterRequest)(nil),       // 6: kerneleye.v1.RegisterRequest
+	(*RegisterResponse)(nil),      // 7: kerneleye.v1.RegisterResponse
+	(*GetStatusRequest)(nil),      // 8: kerneleye.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),     // 9: kerneleye.v1.GetStatusResponse
+	(*HeartbeatRequest)(nil),      // 10: kerneleye.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),     // 11: kerneleye.v1.HeartbeatResponse
+	(*ConfigUpdate)(nil),          // 12: kerneleye.v1.ConfigUpdate
+	(*TrafficBatch)(nil),          // 13: kerneleye.v1.TrafficBatch
+	(*ConnectionEvent)(nil),       // 14: kerneleye.v1.ConnectionEvent
+	(*TrafficResponse)(nil),       // 15: kerneleye.v1.TrafficResponse
+	(*Alert)(nil),                 // 16: kerneleye.v1.Alert
+	(*BlockListRequest)(nil),      // 17: kerneleye.v1.BlockListRequest
+	(*BlockListResponse)(nil),     // 18: kerneleye.v1.BlockListResponse
+	(*BlockDirective)(nil),        // 19: kerneleye.v1.BlockDirective
+	(*BlockedIPEvent)(nil),        // 20: kerneleye.v1.BlockedIPEvent
+	(*BlockedIPResponse)(nil),     // 21: kerneleye.v1.BlockedIPResponse
+	(*timestamppb.Timestamp)(nil), // 22: google.protobuf.Timestamp
 }
 var file_kerneleye_v1_ingest_proto_depIdxs = []int32{
-	10, // 0: kerneleye.v1.HeartbeatResponse.config:type_name -> kerneleye.v1.ConfigUpdate
-	20, // 1: kerneleye.v1.TrafficBatch.timestamp_start:type_name -> google.protobuf.Timestamp
-	20, // 2: kerneleye.v1.TrafficBatch.timestamp_end:type_name -> google.protobuf.Timestamp
-	12, // 3: kerneleye.v1.TrafficBatch.events:type_name -> kerneleye.v1.ConnectionEvent
-	0,  // 4: kerneleye.v1.ConnectionEvent.protocol:type_name -> kerneleye.v1.Protocol
-	20, // 5: kerneleye.v1.ConnectionEvent.first_seen:type_name -> google.protobuf.Timestamp
-	20, // 6: kerneleye.v1.ConnectionEvent.last_seen:type_name -> google.protobuf.Timestamp
-	1,  // 7: kerneleye.v1.ConnectionEvent.direction:type_name -> kerneleye.v1.Direction
-	14, // 8: kerneleye.v1.TrafficResponse.alerts:type_name -> kerneleye.v1.Alert
-	2,  // 9: kerneleye.v1.Alert.severity:type_name -> kerneleye.v1.Severity
-	20, // 10: kerneleye.v1.BlockListRequest.since:type_name -> google.protobuf.Timestamp
-	17, // 11: kerneleye.v1.BlockListResponse.directives:type_name -> kerneleye.v1.BlockDirective
-	3,  // 12: kerneleye.v1.BlockDirective.action:type_name -> kerneleye.v1.BlockAction
-	20, // 13: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
-	3,  // 14: kerneleye.v1.BlockedIPEvent.action:type_name -> kerneleye.v1.BlockAction
-	20, // 15: kerneleye.v1.BlockedIPEvent.blocked_at:type_name -> google.protobuf.Timestamp
-	8,  // 16: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
-	11, // 17: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
-	4,  // 18: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
-	6,  // 19: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
-	15, // 20: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
-	18, // 21: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
-	9,  // 22: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
-	13, // 23: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
-	5,  // 24: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
-	7,  // 25: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
-	16, // 26: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
-	19, // 27: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
-	22, // [22:28] is the sub-list for method output_type
-	16, // [16:22] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	12, // 0: kerneleye.v1.HeartbeatResponse.config:type_name -> kerneleye.v1.ConfigUpdate
+	22, // 1: kerneleye.v1.TrafficBatch.timestamp_start:type_name -> google.protobuf.Timestamp
+	22, // 2: kerneleye.v1.TrafficBatch.timestamp_end:type_name -> google.protobuf.Timestamp
+	14, // 3: kerneleye.v1.TrafficBatch.events:type_name -> kerneleye.v1.ConnectionEvent
+	2,  // 4: kerneleye.v1.ConnectionEvent.protocol:type_name -> kerneleye.v1.Protocol
+	22, // 5: kerneleye.v1.ConnectionEvent.first_seen:type_name -> google.protobuf.Timestamp
+	22, // 6: kerneleye.v1.ConnectionEvent.last_seen:type_name -> google.protobuf.Timestamp
+	3,  // 7: kerneleye.v1.ConnectionEvent.direction:type_name -> kerneleye.v1.Direction
+	0,  // 8: kerneleye.v1.ConnectionEvent.threat_level:type_name -> kerneleye.v1.ThreatLevel
+	1,  // 9: kerneleye.v1.ConnectionEvent.threat_type:type_name -> kerneleye.v1.ThreatType
+	16, // 10: kerneleye.v1.TrafficResponse.alerts:type_name -> kerneleye.v1.Alert
+	4,  // 11: kerneleye.v1.Alert.severity:type_name -> kerneleye.v1.Severity
+	22, // 12: kerneleye.v1.BlockListRequest.since:type_name -> google.protobuf.Timestamp
+	19, // 13: kerneleye.v1.BlockListResponse.directives:type_name -> kerneleye.v1.BlockDirective
+	5,  // 14: kerneleye.v1.BlockDirective.action:type_name -> kerneleye.v1.BlockAction
+	22, // 15: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
+	5,  // 16: kerneleye.v1.BlockedIPEvent.action:type_name -> kerneleye.v1.BlockAction
+	22, // 17: kerneleye.v1.BlockedIPEvent.blocked_at:type_name -> google.protobuf.Timestamp
+	10, // 18: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
+	13, // 19: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
+	6,  // 20: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
+	8,  // 21: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
+	17, // 22: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
+	20, // 23: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
+	11, // 24: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
+	15, // 25: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
+	7,  // 26: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
+	9,  // 27: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
+	18, // 28: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
+	21, // 29: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
+	24, // [24:30] is the sub-list for method output_type
+	18, // [18:24] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_kerneleye_v1_ingest_proto_init() }
@@ -1539,7 +1700,7 @@ func file_kerneleye_v1_ingest_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kerneleye_v1_ingest_proto_rawDesc), len(file_kerneleye_v1_ingest_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      6,
 			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,

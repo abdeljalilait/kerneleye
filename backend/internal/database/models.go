@@ -205,6 +205,7 @@ type TrafficEvent struct {
 	Direction        string             `json:"direction"`
 	DestinationIp    *netip.Addr        `json:"destination_ip"`
 	Asn              pgtype.Text        `json:"asn"`
+	ThreatType       pgtype.Text        `json:"threat_type"`
 }
 
 // KernelEye customer accounts

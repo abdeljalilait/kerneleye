@@ -22,6 +22,7 @@ export interface Threat {
   unique_ports: number;
   threat_score: number;
   threat_level: 'normal' | 'suspicious' | 'malicious';
+  threat_type: 'none' | 'port_scan' | 'service_abuse' | 'syn_flood' | 'failed_handshake' | 'connection_burst';
   first_seen: string;
   last_seen: string;
   location?: string; // Optional if we add GeoIP later

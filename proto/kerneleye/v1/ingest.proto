@@ -119,6 +119,27 @@ message ConnectionEvent {
   
   // Destination endpoint IP (for proper source/destination display)
   string destination_ip = 14;
+
+  // Threat scoring fields (computed by agent)
+  uint32 threat_score = 15;
+  ThreatLevel threat_level = 16;
+  ThreatType threat_type = 17;
+  repeated string reasons = 18;
+}
+
+enum ThreatLevel {
+  THREAT_LEVEL_NORMAL = 0;
+  THREAT_LEVEL_SUSPICIOUS = 1;
+  THREAT_LEVEL_MALICIOUS = 2;
+}
+
+enum ThreatType {
+  THREAT_TYPE_NONE = 0;
+  THREAT_TYPE_PORT_SCAN = 1;
+  THREAT_TYPE_SERVICE_ABUSE = 2;
+  THREAT_TYPE_SYN_FLOOD = 3;
+  THREAT_TYPE_FAILED_HANDSHAKE = 4;
+  THREAT_TYPE_CONNECTION_BURST = 5;
 }
 
 enum Protocol {

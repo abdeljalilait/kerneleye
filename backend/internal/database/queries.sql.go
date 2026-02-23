@@ -1352,7 +1352,7 @@ func (q *Queries) ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]
 }
 
 const listThreats = `-- name: ListThreats :many
-SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn FROM traffic_events te
+SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1 
   AND te.threat_level IN ('suspicious', 'malicious')
@@ -1398,6 +1398,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 			&i.Direction,
 			&i.DestinationIp,
 			&i.Asn,
+			&i.ThreatType,
 		); err != nil {
 			return nil, err
 		}
@@ -1410,7 +1411,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 }
 
 const listTrafficEventsByServer = `-- name: ListTrafficEventsByServer :many
-SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn FROM traffic_events
+SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type FROM traffic_events
 WHERE server_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -1454,6 +1455,7 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 			&i.Direction,
 			&i.DestinationIp,
 			&i.Asn,
+			&i.ThreatType,
 		); err != nil {
 			return nil, err
 		}
@@ -1700,9 +1702,9 @@ const upsertTrafficEvent = `-- name: UpsertTrafficEvent :one
 INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
     syn_count, ack_count, failed_handshakes, unique_ports,
-    bytes_in, bytes_out, threat_score, threat_level,
+    bytes_in, bytes_out, threat_score, threat_level, threat_type,
     first_seen, last_seen, country, city, isp, asn, hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 1)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -1715,9 +1717,13 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
         WHEN EXCLUDED.threat_score > traffic_events.threat_score THEN EXCLUDED.threat_level 
         ELSE traffic_events.threat_level 
     END,
+    threat_type = CASE 
+        WHEN EXCLUDED.threat_score > traffic_events.threat_score THEN EXCLUDED.threat_type 
+        ELSE traffic_events.threat_type 
+    END,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
-RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn
+RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type
 `
 
 type UpsertTrafficEventParams struct {
@@ -1735,6 +1741,7 @@ type UpsertTrafficEventParams struct {
 	BytesOut         int64              `json:"bytes_out"`
 	ThreatScore      int32              `json:"threat_score"`
 	ThreatLevel      string             `json:"threat_level"`
+	ThreatType       pgtype.Text        `json:"threat_type"`
 	FirstSeen        pgtype.Timestamptz `json:"first_seen"`
 	LastSeen         pgtype.Timestamptz `json:"last_seen"`
 	Country          pgtype.Text        `json:"country"`
@@ -1759,6 +1766,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		arg.BytesOut,
 		arg.ThreatScore,
 		arg.ThreatLevel,
+		arg.ThreatType,
 		arg.FirstSeen,
 		arg.LastSeen,
 		arg.Country,
@@ -1791,6 +1799,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.Direction,
 		&i.DestinationIp,
 		&i.Asn,
+		&i.ThreatType,
 	)
 	return i, err
 }

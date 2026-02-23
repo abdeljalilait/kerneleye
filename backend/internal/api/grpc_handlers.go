@@ -301,6 +301,7 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 			BytesOut:         int64(event.BytesOut),
 			ThreatScore:      int32(score.Score),
 			ThreatLevel:      string(score.Level),
+			ThreatType:       database.ToPgText(string(score.Type)),
 			FirstSeen:        database.ToPgTimestamptz(event.FirstSeen.AsTime()),
 			LastSeen:         database.ToPgTimestamptz(event.LastSeen.AsTime()),
 			Country:          database.ToPgText(country),
