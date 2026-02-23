@@ -202,28 +202,28 @@ app.Use(limiter.New(limiter.Config{
 ### Test Agent Authentication
 ```bash
 # Valid API key
-curl -H "X-API-Key: ke_abc123..." https://api.kerneleye.cloud/v1/ingest
+curl -H "X-API-Key: ke_abc123..." https://api.kerneleye.net/v1/ingest
 
 # Invalid API key
-curl -H "X-API-Key: invalid_key" https://api.kerneleye.cloud/v1/ingest
+curl -H "X-API-Key: invalid_key" https://api.kerneleye.net/v1/ingest
 # Expected: 401 Unauthorized
 
 # Revoked server
-curl -H "X-API-Key: ke_revoked_server_key" https://api.kerneleye.cloud/v1/ingest
+curl -H "X-API-Key: ke_revoked_server_key" https://api.kerneleye.net/v1/ingest
 # Expected: 403 Forbidden
 ```
 
 ### Test JWT Authentication
 ```bash
 # Valid token
-curl -H "Authorization: Bearer valid_jwt_token" https://api.kerneleye.cloud/v1/servers
+curl -H "Authorization: Bearer valid_jwt_token" https://api.kerneleye.net/v1/servers
 
 # Invalid token
-curl -H "Authorization: Bearer invalid_token" https://api.kerneleye.cloud/v1/servers
+curl -H "Authorization: Bearer invalid_token" https://api.kerneleye.net/v1/servers
 # Expected: 401 Unauthorized
 
 # Expired token
-curl -H "Authorization: Bearer expired_token" https://api.kerneleye.cloud/v1/servers
+curl -H "Authorization: Bearer expired_token" https://api.kerneleye.net/v1/servers
 # Expected: 401 Unauthorized
 ```
 

@@ -17,6 +17,7 @@ BINARY_NAME="kerneleye-agent"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/kerneleye"
 LOG_DIR="/var/log/kerneleye"
+DATA_DIR="/var/lib/kerneleye"
 
 # Agent configuration from command line
 API_KEY="${API_KEY:-}"
@@ -143,6 +144,7 @@ download_binary() {
 setup_directories() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$LOG_DIR"
+    mkdir -p "$DATA_DIR"
 
     # Save configuration
     cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
@@ -203,7 +205,7 @@ StandardError=append:${LOG_DIR}/agent.log
 NoNewPrivileges=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=${LOG_DIR}
+ReadWritePaths=${LOG_DIR} ${DATA_DIR}
 
 # Increase memlock limit for eBPF
 LimitMEMLOCK=infinity

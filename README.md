@@ -155,7 +155,7 @@ sudo ./kerneleye-agent
 
 Open http://localhost:3000 and login with:
 
-- **Email**: `demo@kerneleye.cloud`
+- **Email**: `demo@kerneleye.net`
 - **Password**: `demo`
 
 📖 **Full Guide**: See [docs/getting-started.md](docs/getting-started.md)
@@ -241,8 +241,8 @@ kerneleye/
 
 ## 📧 Contact
 
-- **Website**: https://kerneleye.cloud
-- **Email**: hello@kerneleye.cloud
+- **Website**: https://kerneleye.net
+- **Email**: hello@kerneleye.net
 - **Support**: support@kerneleye.net
 
 ## 📄 License

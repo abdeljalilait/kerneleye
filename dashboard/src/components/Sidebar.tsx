@@ -29,7 +29,7 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   useEffect(() => {
     versionAPI.get()
       .then(res => setVersions(res.data))
-      .catch(() => setVersions({ version: '1.0.0', agentVersion: '0.4.0' }))
+      .catch(() => setVersions({ version: '0.1.0', agentVersion: '0.4.0' }))
   }, [])
   
   // Find selected key. Assuming logic: exact match or prefix

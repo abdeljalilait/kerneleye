@@ -99,7 +99,7 @@ const HeroSection = () => {
             >
               <GlowPulse color="primary">
                 <motion.a 
-                  href="https://app.kerneleye.cloud" 
+                  href="https://app.kerneleye.net" 
                   className="btn btn-primary"
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.98 }}

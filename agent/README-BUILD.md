@@ -199,7 +199,7 @@ Configuration file: `/etc/kerneleye/agent.env`
 KERNELEYE_API_KEY=your-api-key-here
 
 # Optional
-KERNELEYE_SERVER=api.kerneleye.cloud:443
+KERNELEYE_SERVER=api.kerneleye.net:443
 ENABLE_REMEDIATION=true
 ENABLE_XDP=true
 INTERFACE=eth0

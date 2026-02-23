@@ -52,7 +52,7 @@ const plans: Plan[] = [
 ];
 
 // Dashboard URL - update this to your actual dashboard URL
-const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || 'https://app.kerneleye.cloud';
+const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || 'https://app.kerneleye.net';
 
 const PricingSection = () => {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);

@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 )
 
 const defaultDBPath = "/var/lib/kerneleye/pending.db"
+const fallbackDBPath = "/tmp/kerneleye/pending.db"
 
 // BufferDB handles SQLite-based storage for pending events
 type BufferDB struct {
@@ -23,10 +25,30 @@ type BufferDB struct {
 
 // NewBufferDB creates a new buffer database
 func NewBufferDB(dbPath string) (*BufferDB, error) {
-	if dbPath == "" {
-		dbPath = defaultDBPath
+	// If caller provides explicit path, only try that path.
+	if dbPath != "" {
+		return openBufferDB(dbPath)
 	}
 
+	// Auto mode: prefer persistent system path, then fallback to /tmp if not writable.
+	candidates := []string{defaultDBPath, fallbackDBPath}
+	var lastErr error
+	for i, path := range candidates {
+		buf, err := openBufferDB(path)
+		if err == nil {
+			if i > 0 {
+				log.Printf("⚠️  Using fallback buffer DB path %s (default %s unavailable)", path, defaultDBPath)
+			}
+			return buf, nil
+		}
+		lastErr = err
+		log.Printf("⚠️  Buffer DB path %s unavailable: %v", path, err)
+	}
+
+	return nil, fmt.Errorf("all buffer DB paths failed: %w", lastErr)
+}
+
+func openBufferDB(dbPath string) (*BufferDB, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -49,6 +71,22 @@ func NewBufferDB(dbPath string) (*BufferDB, error) {
 		CREATE INDEX IF NOT EXISTS idx_created_at ON pending_events(created_at);
 	`)
 	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	// Verify that DB is writable now (catches readonly mounts / strict systemd paths early).
+	tx, err := db.Begin()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := tx.Exec("INSERT INTO pending_events (data, api_key) VALUES (?, ?)", []byte{0x00}, "__rw_test__"); err != nil {
+		_ = tx.Rollback()
+		db.Close()
+		return nil, fmt.Errorf("db not writable: %w", err)
+	}
+	if err := tx.Rollback(); err != nil {
 		db.Close()
 		return nil, err
 	}

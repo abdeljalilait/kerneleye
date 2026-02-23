@@ -196,7 +196,7 @@ UPDATE users
 SET plan = 'pro', 
     max_servers = 50,
     subscription_status = 'active'
-WHERE email = 'demo@kerneleye.cloud';
+WHERE email = 'demo@kerneleye.net';
 
 -- Set any existing users without a plan to starter
 UPDATE users 

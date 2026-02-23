@@ -51,7 +51,7 @@ func NewService() *Service {
 
 	fromEmail := os.Getenv("EMAIL_FROM")
 	if fromEmail == "" {
-		fromEmail = "noreply@kerneleye.cloud"
+		fromEmail = "noreply@kerneleye.net"
 	}
 	fromName := os.Getenv("EMAIL_FROM_NAME")
 	if fromName == "" {
@@ -131,7 +131,7 @@ func (s *Service) sendEmail(toEmail, toName, subject, htmlContent, category stri
 func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
-		dashboardURL = "https://app.kerneleye.cloud"
+		dashboardURL = "https://app.kerneleye.net"
 	}
 
 	subject := "Welcome to KernelEye - Your Dashboard Access"
@@ -198,7 +198,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
 func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
-		dashboardURL = "https://app.kerneleye.cloud"
+		dashboardURL = "https://app.kerneleye.net"
 	}
 
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", dashboardURL, resetToken)
@@ -255,7 +255,7 @@ func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) err
 func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
-		dashboardURL = "https://app.kerneleye.cloud"
+		dashboardURL = "https://app.kerneleye.net"
 	}
 
 	billingURL := fmt.Sprintf("%s/billing", dashboardURL)

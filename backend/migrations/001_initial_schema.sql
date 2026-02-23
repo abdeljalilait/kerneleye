@@ -208,7 +208,7 @@ CREATE TRIGGER update_ip_stats_updated_at BEFORE UPDATE ON ip_stats
 
 -- Create a demo user for testing
 INSERT INTO users (email, password_hash, plan, max_servers)
-VALUES ('demo@kerneleye.cloud', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'pro', 10)
+VALUES ('demo@kerneleye.net', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'pro', 10)
 ON CONFLICT (email) DO NOTHING;
 
 -- ============================================

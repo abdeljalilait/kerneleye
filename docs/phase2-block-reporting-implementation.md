@@ -160,7 +160,7 @@ docker run -d \
   --privileged \
   --net=host \
   -e KERNELEYE_API_KEY=ke_xxx \
-  -e KERNELEYE_SERVER=api.kerneleye.cloud \
+  -e KERNELEYE_SERVER=api.kerneleye.net \
   -e KERNELEYE_AUTO_BLOCK=true \
   -e KERNELEYE_BLOCK_THRESHOLD=80 \
   kerneleye/agent:latest
@@ -169,13 +169,13 @@ docker run -d \
 ### Systemd
 ```bash
 sudo curl -o /usr/local/bin/kerneleye-agent \
-  https://releases.kerneleye.cloud/agent/latest/kerneleye-agent
+  https://releases.kerneleye.net/agent/latest/kerneleye-agent
 sudo chmod +x /usr/local/bin/kerneleye-agent
 
 # Create environment file
 cat << 'EOF' | sudo tee /etc/kerneleye/agent.env
 KERNELEYE_API_KEY=ke_xxx
-KERNELEYE_SERVER=api.kerneleye.cloud
+KERNELEYE_SERVER=api.kerneleye.net
 KERNELEYE_AUTO_BLOCK=true
 KERNELEYE_BLOCK_THRESHOLD=80
 EOF

@@ -15,8 +15,8 @@ export interface SEOConfig {
 // Base site config
 export const siteConfig = {
   name: 'KernelEye',
-  url: 'https://kerneleye.cloud',
-  logo: 'https://kerneleye.cloud/logo.png',
+  url: 'https://kerneleye.net',
+  logo: 'https://kerneleye.net/logo.png',
   twitter: '@kerneleye',
 };
 
@@ -37,8 +37,8 @@ export const homeSEO: SEOConfig = {
     'network security',
     'intrusion detection',
   ],
-  ogImage: 'https://kerneleye.cloud/og-image.png',
-  canonical: 'https://kerneleye.cloud/',
+  ogImage: 'https://kerneleye.net/og-image.png',
+  canonical: 'https://kerneleye.net/',
 };
 
 // Features page SEO
@@ -54,8 +54,8 @@ export const featuresSEO: SEOConfig = {
     'network analytics',
     'threat intelligence',
   ],
-  ogImage: 'https://kerneleye.cloud/og-features.png',
-  canonical: 'https://kerneleye.cloud/features',
+  ogImage: 'https://kerneleye.net/og-features.png',
+  canonical: 'https://kerneleye.net/features',
 };
 
 // Pricing page SEO
@@ -69,8 +69,8 @@ export const pricingSEO: SEOConfig = {
     'security software pricing',
     'enterprise security',
   ],
-  ogImage: 'https://kerneleye.cloud/og-pricing.png',
-  canonical: 'https://kerneleye.cloud/pricing',
+  ogImage: 'https://kerneleye.net/og-pricing.png',
+  canonical: 'https://kerneleye.net/pricing',
 };
 
 // Contact page SEO
@@ -79,8 +79,8 @@ export const contactSEO: SEOConfig = {
   description:
     'Contact the KernelEye team for sales inquiries, support, or to schedule a demo. Secure your infrastructure today.',
   keywords: ['contact kernel security', 'linux security sales', 'security demo', 'kernel security support'],
-  ogImage: 'https://kerneleye.cloud/og-contact.png',
-  canonical: 'https://kerneleye.cloud/contact',
+  ogImage: 'https://kerneleye.net/og-contact.png',
+  canonical: 'https://kerneleye.net/contact',
 };
 
 // Default/fallback SEO
@@ -88,7 +88,7 @@ export const defaultSEO: SEOConfig = {
   title: 'KernelEye - Kernel Security Platform',
   description: 'Real-time kernel security monitoring and threat detection for Linux servers.',
   keywords: ['kernel security', 'linux', 'ebpf', 'monitoring'],
-  ogImage: 'https://kerneleye.cloud/og-image.png',
+  ogImage: 'https://kerneleye.net/og-image.png',
 };
 
 // Generate meta tags helper

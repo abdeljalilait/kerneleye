@@ -127,7 +127,7 @@ Target: `backend/internal/api/apikey_builder.go`
 ### Observed design notes
 
 - It supports a pending registration model (`CreateServerWithAPIKey` with pending status) then activation via heartbeat/update flow.
-- It hardcodes backend host in `getServerHost()` (`api.kerneleye.cloud:443`), which is convenient for SaaS but reduces deploy-time flexibility.
+- It hardcodes backend host in `getServerHost()` (`api.kerneleye.net:443`), which is convenient for SaaS but reduces deploy-time flexibility.
 - It duplicates some logic present in `HandleGenerateAPIKey` in `handlers.go` (subscription + server limit checks), suggesting future consolidation potential.
 
 ## Notable Maintenance Hotspots
