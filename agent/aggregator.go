@@ -136,6 +136,21 @@ func getServerIPs() map[string]bool {
 	return ips
 }
 
+// trackedPortForEvent returns the destination/service port to aggregate for a remote IP.
+// For outbound connections, Lport is usually a local ephemeral source port, so we use Rport.
+func trackedPortForEvent(event Event) uint16 {
+	if event.Direction == DirOutbound {
+		if event.Rport != 0 {
+			return event.Rport
+		}
+		return event.Lport
+	}
+	if event.Lport != 0 {
+		return event.Lport
+	}
+	return event.Rport
+}
+
 // ProcessEvent processes a single eBPF event (thread-safe via SafeStats)
 func (a *Aggregator) ProcessEvent(event Event) {
 	ipObj := intToIP(event.Saddr)
@@ -150,6 +165,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	if event.Timestamp > 0 {
 		eventTime = a.bootTime.Add(time.Duration(event.Timestamp))
 	}
+	trackedPort := trackedPortForEvent(event)
 
 	// GetOrCreate atomically gets or creates stats entry
 	stats := a.stats.GetOrCreate(ip, func() *IPStats {
@@ -174,16 +190,16 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	if event.Flags&0x02 != 0 {
 		stats.ACKCount++
 	}
-	stats.UniquePorts[event.Lport] = true
-	stats.PortCounts[event.Lport]++
-	stats.PortHits[event.Lport]++ // Track hits per port for service abuse detection
+	stats.UniquePorts[trackedPort] = true
+	stats.PortCounts[trackedPort]++
+	stats.PortHits[trackedPort]++ // Track hits per port for service abuse detection
 	stats.mu.Unlock()
 
 	// Analyze traffic for remediation
 	if a.analyzer != nil && a.remediator != nil {
 		te := remediation.TrafficEvent{
 			SourceIP: ipObj,
-			DestPort: event.Lport,
+			DestPort: trackedPort,
 			Protocol: event.Protocol,
 			Flags:    event.Flags,
 			Time:     eventTime,
