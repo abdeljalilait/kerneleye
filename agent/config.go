@@ -48,6 +48,7 @@ func parseConfig() AgentConfig {
 	cfg := AgentConfig{
 		APIKey:            os.Getenv("KERNELEYE_API_KEY"),
 		ServerHost:        os.Getenv("KERNELEYE_SERVER"),
+		GRPCURL:           os.Getenv("KERNELEYE_GRPC_URL"),
 		EnableRemediation: *enableRemediation,
 		EnableXDP:         *enableXDP,
 		AutoBlockConfig:   autoBlockConfig,
@@ -61,7 +62,7 @@ func parseConfig() AgentConfig {
 	if *serverFlag != "" {
 		cfg.ServerHost = *serverFlag
 	}
-	// gRPC URL only from flag (not from env)
+	// gRPC URL from env, overridden by flag when present
 	if *grpcURLFlag != "" {
 		cfg.GRPCURL = *grpcURLFlag
 	}

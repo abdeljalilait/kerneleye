@@ -50,7 +50,7 @@ type Aggregator struct {
 // NewAggregator creates a new aggregator with gRPC connection
 func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
-	conn, err := grpc.NewClient("dns:///"+grpcTarget, buildGRPCOpts(grpcTarget)...)
+	conn, err := grpc.NewClient(grpcDialTargetPrefix+grpcTarget, buildGRPCOpts(grpcTarget)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
@@ -326,7 +326,7 @@ func (a *Aggregator) attemptReconnect(attempt int) {
 	log.Printf("🔄 Attempting to reconnect to gRPC server %s (attempt %d)...", a.grpcURL, attempt)
 
 	// Create new connection
-	conn, err := grpc.NewClient("dns:///"+a.grpcURL, buildGRPCOpts(a.grpcURL)...)
+	conn, err := grpc.NewClient(grpcDialTargetPrefix+a.grpcURL, buildGRPCOpts(a.grpcURL)...)
 	if err != nil {
 		log.Printf("❌ Failed to create new gRPC connection: %v", err)
 		a.reconnectMu.Lock()
