@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/kerneleye/agent/remediation"
 )
 
 // AgentConfig holds all agent configuration
@@ -13,8 +14,9 @@ type AgentConfig struct {
 	APIKey            string
 	ServerHost        string
 	GRPCURL           string // gRPC server URL (overrides ServerHost if set)
-	EnableRemediation bool
+	EnableRemediation bool   // Enables both remediation AND auto-blocking
 	EnableXDP         bool
+	AutoBlockConfig   remediation.AutoBlockerConfig
 	InterfaceName     string
 	LogFile           string // Path to log file (empty = stdout only)
 }
@@ -34,17 +36,21 @@ func parseConfig() AgentConfig {
 	serverFlag := flag.String("server", "", "Backend server address")
 	apiKeyFlag := flag.String("apikey", "", "API key")
 	grpcURLFlag := flag.String("grpc-url", "", "gRPC server URL (overrides server address)")
-	enableRemediation := flag.Bool("enable-remediation", false, "Enable active remediation (requires root and iptables)")
+	enableRemediation := flag.Bool("enable-remediation", false, "Enable active remediation with auto-blocking (requires root and iptables)")
 	enableXDP := flag.Bool("xdp", false, "Enable XDP fast-path blocking (requires root, kernel 5.4+)")
 	interfaceName := flag.String("interface", "", "Network interface for XDP attachment (e.g., eth0)")
 	logFile := flag.String("log", os.Getenv("KERNELEYE_LOG_FILE"), "Log file path (default: stdout)")
 	flag.Parse()
+
+	autoBlockConfig := remediation.DefaultAutoBlockerConfig()
+	autoBlockConfig.Enabled = *enableRemediation // Auto-block is enabled when remediation is enabled
 
 	cfg := AgentConfig{
 		APIKey:            os.Getenv("KERNELEYE_API_KEY"),
 		ServerHost:        os.Getenv("KERNELEYE_SERVER"),
 		EnableRemediation: *enableRemediation,
 		EnableXDP:         *enableXDP,
+		AutoBlockConfig:   autoBlockConfig,
 		InterfaceName:     *interfaceName,
 		LogFile:           *logFile,
 	}
@@ -98,5 +104,8 @@ func printBanner(cfg AgentConfig) {
 	}
 	if cfg.EnableXDP {
 		log.Printf("XDP: Enabled on %s\n", cfg.InterfaceName)
+	}
+	if cfg.EnableRemediation {
+		log.Printf("Auto-Block: Enabled (threshold: %d)\n", cfg.AutoBlockConfig.BlockThreshold)
 	}
 }

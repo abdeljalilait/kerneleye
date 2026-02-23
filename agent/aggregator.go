@@ -11,6 +11,7 @@ import (
 
 	"github.com/kerneleye/agent/remediation"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -28,6 +29,8 @@ type Aggregator struct {
 	grpcMu             sync.RWMutex // Protects grpcConn/grpcClient during RPCs and reconnect swaps
 	remediator         remediation.Remediator
 	analyzer           *remediation.Analyzer
+	autoBlocker        *remediation.AutoBlocker
+	scorer             *scoring.ThreatScorer
 	buffer             *BufferDB       // SQLite buffer for fault tolerance
 	cachedPublicIP     string          // Cached public IP
 	serverIPs          map[string]bool // Server's local IPs for direction detection
@@ -45,7 +48,7 @@ type Aggregator struct {
 }
 
 // NewAggregator creates a new aggregator with gRPC connection
-func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer) (*Aggregator, error) {
+func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 	conn, err := grpc.NewClient("dns:///"+grpcTarget, buildGRPCOpts(grpcTarget)...)
 	if err != nil {

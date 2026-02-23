@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
+	github.com/kerneleye/shared/scoring v0.1.0
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/polarsource/polar-go v0.12.0
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260218190227-a1773d7ffc57
@@ -47,3 +48,4 @@ require (
 )
 
 replace github.com/kerneleye/proto => ../proto/gen/go
+replace github.com/kerneleye/shared/scoring => ../shared/scoring

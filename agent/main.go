@@ -17,6 +17,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/kerneleye/agent/remediation"
+	"github.com/kerneleye/shared/scoring"
 )
 
 // Version information - injected at build time via ldflags
@@ -128,13 +129,28 @@ func main() {
 		log.Println("ℹ️  Remediation disabled (use -enable-remediation to enable)")
 	}
 
+	// Initialize scoring engine
+	scorer := scoring.NewThreatScorer()
+
+	// Initialize auto-blocker (enabled when remediation is enabled)
+	var autoBlocker *remediation.AutoBlocker
+	if cfg.EnableRemediation && remediator != nil {
+		var err error
+		autoBlocker, err = remediation.NewAutoBlocker(cfg.AutoBlockConfig, scorer, remediator.GetIPSetRemediator())
+		if err != nil {
+			log.Printf("❌ Auto-blocker setup failed: %v", err)
+			os.Exit(1)
+		}
+		log.Printf("🎯 Auto-blocker enabled (threshold: %d)", cfg.AutoBlockConfig.BlockThreshold)
+	}
+
 	analyzer := remediation.NewAnalyzer(remediation.DefaultAnalyzerConfig())
 	// Start cleanup routine with a cancellable context for graceful shutdown
 	analyzerCtx, analyzerCancel := context.WithCancel(context.Background())
 	defer analyzerCancel()
 	analyzer.CleanupRoutine(analyzerCtx, 5*time.Minute)
 
-	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, remediator, analyzer)
+	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, remediator, analyzer, autoBlocker, scorer)
 	if err != nil {
 		log.Fatalf("Failed to create aggregator: %v", err)
 	}

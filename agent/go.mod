@@ -6,6 +6,7 @@ require (
 	github.com/cilium/ebpf v0.12.3
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
+	github.com/kerneleye/shared/scoring v0.1.0
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sys v0.39.0
 	google.golang.org/grpc v1.77.0
@@ -30,3 +31,4 @@ require (
 )
 
 replace github.com/kerneleye/proto => ../proto/gen/go
+replace github.com/kerneleye/shared/scoring => ../shared/scoring

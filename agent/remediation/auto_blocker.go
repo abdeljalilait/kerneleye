@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kerneleye/agent/internal/scoring"
+	"github.com/kerneleye/shared/scoring"
 )
 
 // AutoBlockerConfig configures automatic blocking behavior

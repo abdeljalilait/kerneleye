@@ -213,3 +213,8 @@ func (h *HybridRemediator) Unblock(ip net.IP) error {
 	}
 	return nil
 }
+
+// GetIPSetRemediator returns the underlying IPSetRemediator for use with AutoBlocker
+func (h *HybridRemediator) GetIPSetRemediator() *IPSetRemediator {
+	return h.iptables
+}

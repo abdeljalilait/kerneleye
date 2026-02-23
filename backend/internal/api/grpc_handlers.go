@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/geoip"
-	"github.com/kerneleye/backend/internal/scoring"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
