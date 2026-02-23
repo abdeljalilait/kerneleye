@@ -93,6 +93,10 @@ export const subscriptionAPI = {
   createCustomerPortal: () => api.post('/subscription/portal', {}),
 };
 
+export const versionAPI = {
+  get: () => publicApi.get('/version'),
+};
+
 export const analyticsAPI = {
   // Reports
   getDailyAttacks: (startDate?: string, endDate?: string) => 

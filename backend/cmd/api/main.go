@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"os"
@@ -22,6 +23,14 @@ import (
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"google.golang.org/grpc"
 )
+
+var AppVersion = "dev"
+
+func init() {
+	if data, err := os.ReadFile("VERSION"); err == nil {
+		AppVersion = string(bytes.TrimSpace(data))
+	}
+}
 
 func main() {
 	// Load environment variables
@@ -111,7 +120,7 @@ func main() {
 	}))
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 	if corsOrigins == "" {
-		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.cloud,https://kerneleye.hakiware.com,https://kerneleye-api.hakiware.com"
+		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.net,https://kerneleye.hakiware.com,https://kerneleye-api.hakiware.com"
 	}
 
 	app.Use(cors.New(cors.Config{
@@ -130,7 +139,16 @@ func main() {
 		return c.JSON(fiber.Map{
 			"status":  "healthy",
 			"service": "kerneleye-api",
-			"version": "1.0.0",
+			"version": AppVersion,
+		})
+	})
+
+	// Version endpoint
+	app.Get("/version", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"version":      AppVersion,
+			"agent":        "kerneleye-agent",
+			"agentVersion": "0.4.0",
 		})
 	})
 

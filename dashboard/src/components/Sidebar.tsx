@@ -1,7 +1,9 @@
-import { Layout, Menu, Button } from 'antd'
+import { Layout, Menu, Button, Tag } from 'antd'
 import { Activity, Server, AlertTriangle, LogOut, CreditCard, Shield } from 'lucide-react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useAuth } from '../context/AuthContext'
+import { versionAPI } from '../api/client'
+import { useEffect, useState } from 'react'
 import logo from '../../logo_kerneleye_dark.png'
 
 const { Sider } = Layout
@@ -22,6 +24,13 @@ const navItems = [
 export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const { pathname } = useLocation()
   const { logout } = useAuth()
+  const [versions, setVersions] = useState<{ version: string; agentVersion: string } | null>(null)
+  
+  useEffect(() => {
+    versionAPI.get()
+      .then(res => setVersions(res.data))
+      .catch(() => setVersions({ version: '1.0.0', agentVersion: '0.4.0' }))
+  }, [])
   
   // Find selected key. Assuming logic: exact match or prefix
   // Simplified for MVP: exact match usually or check startsWith
@@ -69,6 +78,15 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
         items={menuItems}
       />
       
+      <div style={{ position: 'absolute', bottom: 50, width: '100%', borderTop: '1px solid rgba(255,255,255,0.1)', padding: collapsed ? '8px 0' : '8px 16px' }}>
+        {versions && (
+          <div style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', gap: 4, justifyContent: 'center' }}>
+            <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>App: {versions.version}</Tag>
+            {!collapsed && <Tag color="green" style={{ margin: 0, fontSize: 10 }}>Agent: {versions.agentVersion}</Tag>}
+          </div>
+        )}
+      </div>
+
       <div style={{ position: 'absolute', bottom: 0, width: '100%', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
         <Button 
           type="text" 
