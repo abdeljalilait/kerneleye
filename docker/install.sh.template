@@ -26,6 +26,8 @@ MODE="monitor"
 SERVER_HOST="__INSTALL_DOMAIN__:443"
 GRPC_URL="__INSTALL_DOMAIN__:443"
 DAEMON="false"
+UPDATE="false"
+SKIP_UPDATE="false"
 
 # Colors
 RED='\033[0;31m'
@@ -105,6 +107,14 @@ parse_args() {
                 DAEMON="true"
                 shift
                 ;;
+            --update)
+                UPDATE="true"
+                shift
+                ;;
+            --skip-update)
+                SKIP_UPDATE="true"
+                shift
+                ;;
             *)
                 shift
                 ;;
@@ -141,89 +151,23 @@ download_binary() {
     log_success "Agent installed to ${INSTALL_DIR}/${BINARY_NAME}"
 }
 
-setup_directories() {
-    mkdir -p "$CONFIG_DIR"
-    mkdir -p "$LOG_DIR"
-    mkdir -p "$DATA_DIR"
-
-    # Save configuration
-    cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
-# KernelEye Agent Configuration
-# Generated on $(date)
-
-KERNELEYE_API_KEY="${API_KEY}"
-KERNELEYE_SERVER="${SERVER_HOST}"
-KERNELEYE_GRPC_URL="${GRPC_URL}"
-KERNELEYE_MODE="${MODE}"
-ENVEOF
-    chmod 0600 "${CONFIG_DIR}/agent.env"
-    log_success "Config saved to ${CONFIG_DIR}/agent.env"
-}
-
-create_systemd_service() {
-    if [ "$DAEMON" != "true" ]; then
-        log_info "Foreground mode selected; skipping systemd service creation."
-        return
-    fi
-
-    if [ ! -d /etc/systemd/system ]; then
-        log_warn "systemd not detected. Skipping service creation."
-        return
-    fi
-
-    # Build agent flags based on mode
-    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL} -apikey ${API_KEY}"
+stop_agent() {
+    log_info "Stopping existing agent..."
     
-    case "$MODE" in
-        block_ipset|block_hybrid)
-            agent_flags="$agent_flags -enable-remediation"
-            ;;
-    esac
+    # Stop systemd service if it exists
+    if [ -d /etc/systemd/system ] && [ -f /etc/systemd/system/kerneleye-agent.service ]; then
+        if systemctl is-active --quiet kerneleye-agent 2>/dev/null; then
+            systemctl stop kerneleye-agent
+            log_success "Stopped systemd service"
+        fi
+    fi
     
-    case "$MODE" in
-        block_xdp|block_hybrid)
-            agent_flags="$agent_flags -xdp"
-            ;;
-    esac
-
-    cat > /etc/systemd/system/kerneleye-agent.service <<SVCEOF
-[Unit]
-Description=KernelEye Agent - Real-time Linux Security Monitoring
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile=-${CONFIG_DIR}/agent.env
-ExecStart=${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}
-Restart=on-failure
-RestartSec=10
-StandardOutput=append:${LOG_DIR}/agent.log
-StandardError=append:${LOG_DIR}/agent.log
-
-# Security hardening
-NoNewPrivileges=true
-ProtectHome=true
-ProtectSystem=strict
-ReadWritePaths=${LOG_DIR} ${DATA_DIR}
-
-# Increase memlock limit for eBPF
-LimitMEMLOCK=infinity
-
-# Required capabilities for eBPF:
-# - CAP_BPF + CAP_PERFMON for loading/attaching tracing programs (kprobe/kretprobe)
-# - CAP_NET_ADMIN for tc/XDP operations
-# - CAP_SYS_RESOURCE for rlimit/memlock adjustments
-AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
-CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
-
-[Install]
-WantedBy=multi-user.target
-SVCEOF
-
-    systemctl daemon-reload
-    systemctl enable kerneleye-agent
-    log_success "Systemd service created"
+    # Also kill any running foreground process
+    if pgrep -f "kerneleye-agent" > /dev/null 2>&1; then
+        pkill -f "kerneleye-agent" || true
+        sleep 1
+        log_success "Stopped running process"
+    fi
 }
 
 start_agent() {
@@ -272,9 +216,14 @@ start_agent() {
 }
 
 print_next_steps() {
+    local action="installed"
+    if [ "$UPDATE" = "true" ]; then
+        action="updated"
+    fi
+    
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}         Installation Complete! 🎉                        ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}         ${action^} Complete! 🎉                        ${GREEN}║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
@@ -288,8 +237,9 @@ print_next_steps() {
         echo ""
         echo -e "${BLUE}Management Commands:${NC}"
         echo "  View logs:   sudo tail -f ${LOG_DIR}/agent.log"
-        echo "  Stop agent:  sudo pkill -f ${BINARY_NAME}"
-        echo "  Restart:     sudo systemctl restart ${BINARY_NAME}"
+        echo "  Stop agent:  sudo systemctl stop kerneleye-agent"
+        echo "  Restart:     sudo systemctl restart kerneleye-agent"
+        echo "  Update:      curl -fsSL https://${SERVER_HOST}/install.sh | sudo bash -s -- --update"
     else
         echo -e "${YELLOW}API_KEY not provided. Agent installed but not started.${NC}"
         echo ""
@@ -314,8 +264,19 @@ main() {
     echo "  Server: ${SERVER_HOST}"
     echo "  gRPC URL: ${GRPC_URL}"
     echo "  Daemon: ${DAEMON}"
+    echo "  Update: ${UPDATE}"
     [ -n "$API_KEY" ] && echo "  API Key: ${API_KEY:0:8}...${API_KEY: -4}"
     echo ""
+    
+    # Check for existing installation
+    if [ -f "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        if [ "$UPDATE" = "true" ]; then
+            log_info "Updating existing installation..."
+            stop_agent
+        elif [ "$SKIP_UPDATE" = "false" ]; then
+            log_warn "Agent already installed. Use --update to update or --skip-update to skip."
+        fi
+    fi
     
     download_binary
     setup_directories
