@@ -304,11 +304,20 @@ func getServerHost() string {
 }
 
 func getGRPCURL(serverHost string) string {
+	// Check for explicit gRPC host first (recommended approach)
+	grpcHost := strings.TrimSpace(os.Getenv("KERNELEYE_GRPC_HOST"))
+	if grpcHost != "" {
+		// Use explicit gRPC host with port 443 (HTTPS)
+		return grpcHost + ":443"
+	}
+
+	// Fallback: check full gRPC URL
 	grpcURL := strings.TrimSpace(os.Getenv("KERNELEYE_GRPC_URL"))
 	if grpcURL != "" {
 		return grpcURL
 	}
 
+	// Derive from server host
 	if !strings.Contains(serverHost, ":") {
 		return serverHost + ":9091"
 	}
