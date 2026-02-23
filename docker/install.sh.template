@@ -170,7 +170,7 @@ create_systemd_service() {
     fi
 
     # Build agent flags based on mode
-    local agent_flags="-server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"${API_KEY}\""
+    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL} -apikey ${API_KEY}"
     
     case "$MODE" in
         block_ipset|block_hybrid)
@@ -232,8 +232,8 @@ start_agent() {
         log_info "Starting agent with mode: ${MODE} (foreground)..."
     fi
 
-    # Build agent flags
-    local agent_flags="-server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"${API_KEY}\""
+    # Build agent flags (without quotes in variable)
+    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL} -apikey ${API_KEY}"
     
     case "$MODE" in
         block_ipset|block_hybrid)
