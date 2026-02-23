@@ -85,9 +85,9 @@ type GoogleUser struct {
 func HandleGetAuthProviders() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		config := GetOAuthConfig()
-		
+
 		providers := []map[string]interface{}{}
-		
+
 		if config.GitHubClientID != "" {
 			providers = append(providers, map[string]interface{}{
 				"id":   "github",
@@ -95,7 +95,7 @@ func HandleGetAuthProviders() fiber.Handler {
 				"icon": "github",
 			})
 		}
-		
+
 		if config.GoogleClientID != "" {
 			providers = append(providers, map[string]interface{}{
 				"id":   "google",
@@ -103,7 +103,7 @@ func HandleGetAuthProviders() fiber.Handler {
 				"icon": "google",
 			})
 		}
-		
+
 		return c.JSON(fiber.Map{
 			"providers": providers,
 		})
@@ -149,7 +149,7 @@ func HandleGitHubLogin() fiber.Handler {
 func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		config := GetOAuthConfig()
-		
+
 		// Verify state
 		state := c.Query("state")
 		cookieState := c.Cookies("oauth_state")
@@ -193,14 +193,10 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 			}
 		}
 
-		if githubUser.Email == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "Email is required")
-		}
-
 		// Find or create user
 		user, err := queries.GetUserByEmail(c.Context(), githubUser.Email)
 		if err != nil {
-			// Create new user with no active plan
+			// Create new user
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
 				Email:        githubUser.Email,
 				PasswordHash: "oauth", // OAuth users don't have passwords
@@ -216,6 +212,18 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
+		}
+
+		// Generate and store refresh token
+		refreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			log.Printf("[OAuth] Warning: Failed to generate refresh token: %v", err)
+		} else {
+			if err := StoreRefreshToken(queries, c.Context(), user.ID, refreshToken); err != nil {
+				log.Printf("[OAuth] Warning: Failed to store refresh token: %v", err)
+			} else {
+				SetRefreshTokenCookie(c, refreshToken)
+			}
 		}
 
 		// Redirect to dashboard with token
@@ -437,6 +445,18 @@ func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
 		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
+		}
+
+		// Generate and store refresh token
+		refreshToken, err := GenerateRefreshToken()
+		if err != nil {
+			log.Printf("[OAuth] Warning: Failed to generate refresh token: %v", err)
+		} else {
+			if err := StoreRefreshToken(queries, c.Context(), user.ID, refreshToken); err != nil {
+				log.Printf("[OAuth] Warning: Failed to store refresh token: %v", err)
+			} else {
+				SetRefreshTokenCookie(c, refreshToken)
+			}
 		}
 
 		// Redirect to dashboard with token
