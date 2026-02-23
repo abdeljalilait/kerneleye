@@ -42,8 +42,12 @@ func (h *GrpcIngestHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequ
 		}, nil
 	}
 
+	log.Printf("[gRPC Heartbeat] Received heartbeat from server_id=%s hostname=%s ip=%s agent_version=%s",
+		server.ID.String(), req.Hostname, req.IpAddress, req.AgentVersion)
+
 	// Check if server is rejected or inactive
 	if server.Status == "rejected" || server.Status == "deleted" {
+		log.Printf("[gRPC Heartbeat] Ignoring heartbeat for server_id=%s due to status=%s", server.ID.String(), server.Status)
 		return &pb.HeartbeatResponse{
 			Success: false,
 			Message: server.Status,
@@ -66,6 +70,8 @@ func (h *GrpcIngestHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequ
 		log.Printf("[gRPC Heartbeat] Failed to update: %v", err)
 		return nil, status.Errorf(codes.Internal, "Failed to update heartbeat")
 	}
+
+	log.Printf("[gRPC Heartbeat] Updated heartbeat for server_id=%s", server.ID.String())
 
 	return &pb.HeartbeatResponse{
 		Success: true,
@@ -221,10 +227,15 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 	// 1. Authenticate server with HMAC verification
 	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
 	if err != nil {
+		log.Printf("[gRPC Traffic] API key validation failed: %v", err)
 		return nil, status.Errorf(codes.Unauthenticated, "Invalid API Key")
 	}
 
+	log.Printf("[gRPC Traffic] Received batch from server_id=%s hostname=%s events=%d reported_total=%d window_seconds=%d",
+		server.ID.String(), server.Hostname, len(req.Events), req.TotalEvents, req.AggregationWindowSeconds)
+
 	if server.Status != "active" {
+		log.Printf("[gRPC Traffic] Rejecting batch for server_id=%s due to status=%s", server.ID.String(), server.Status)
 		return nil, status.Errorf(codes.PermissionDenied, "Server not active")
 	}
 
@@ -318,11 +329,15 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 				"bytes_out":        event.BytesOut,
 			})
 		} else {
-			log.Printf("Failed to create traffic event: %v", err)
+			log.Printf("[gRPC Traffic] Failed to persist event for server_id=%s source_ip=%s dest_ip=%s dest_port=%d: %v",
+				server.ID.String(), event.SourceIp, event.DestinationIp, event.DestinationPort, err)
 		}
 
 		// Alerts logic could go here similar to HTTP handler
 	}
+
+	log.Printf("[gRPC Traffic] Processed batch for server_id=%s processed=%d dropped=%d",
+		server.ID.String(), eventsProcessed, uint64(len(req.Events))-eventsProcessed)
 
 	return &pb.TrafficResponse{
 		Success:         true,

@@ -38,21 +38,27 @@ func (a *Aggregator) FlushToAPI() {
 	// Build proto events using thread-safe snapshot
 	pbEvents := a.buildProtoEvents()
 
-	if a.grpcClient == nil {
+	a.grpcMu.RLock()
+	client := a.grpcClient
+	if client == nil {
+		a.grpcMu.RUnlock()
 		log.Printf("❌ gRPC client not initialized, buffering events")
 		a.bufferEvents(pbEvents)
+		a.scheduleReconnect()
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := a.grpcClient.SubmitTraffic(ctx, &pb.TrafficBatch{
+	resp, err := client.SubmitTraffic(ctx, &pb.TrafficBatch{
 		ApiKey: a.apiKey, Events: pbEvents,
 		TotalEvents: uint64(len(pbEvents)), AggregationWindowSeconds: 10,
 	})
+	a.grpcMu.RUnlock()
 	if err != nil {
 		log.Printf("❌ gRPC error, buffering %d events: %v", len(pbEvents), err)
 		a.bufferEvents(pbEvents)
+		a.scheduleReconnect()
 		if strings.Contains(err.Error(), "Server not active") ||
 			strings.Contains(err.Error(), "PermissionDenied") {
 			log.Printf("🚫 Server deleted or inactive. Agent terminating...")
@@ -86,7 +92,7 @@ func (a *Aggregator) bufferEvents(events []*pb.ConnectionEvent) {
 
 // retryPendingBatches attempts to send buffered events
 func (a *Aggregator) retryPendingBatches() {
-	if a.buffer == nil || a.grpcClient == nil {
+	if a.buffer == nil {
 		return
 	}
 
@@ -100,12 +106,23 @@ func (a *Aggregator) retryPendingBatches() {
 	var sentIDs []int64
 	for _, p := range pending {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		resp, err := a.grpcClient.SubmitTraffic(ctx, p.Batch)
+
+		a.grpcMu.RLock()
+		client := a.grpcClient
+		if client == nil {
+			a.grpcMu.RUnlock()
+			cancel()
+			a.scheduleReconnect()
+			return
+		}
+		resp, err := client.SubmitTraffic(ctx, p.Batch)
+		a.grpcMu.RUnlock()
 		cancel()
 
 		if err != nil {
 			log.Printf("❌ Retry failed for batch %d: %v", p.ID, err)
-			break // Stop on first failure - backend still down
+			a.scheduleReconnect()
+			return // Stop on first failure - backend still down
 		}
 
 		if resp.Success {
