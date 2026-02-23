@@ -78,11 +78,20 @@ func main() {
 	}
 	log.Println("✅ Agent approved! Starting monitoring...")
 	if err := rlimit.RemoveMemlock(); err != nil {
-		log.Fatalf("Failed to remove memlock: %v", err)
+		log.Printf("⚠️  Failed to remove memlock: %v", err)
 	}
 	ebpfRes, err := LoadAndAttacheBPF()
 	if err != nil {
-		log.Fatalf("Failed to load eBPF objects: %v", err)
+		log.Printf("Failed to load eBPF objects: %v", err)
+		log.Println("\n⚠️  eBPF loading failed. Possible causes:")
+		log.Println("  1. Not running as root (try: sudo)")
+		log.Println("  2. Missing kernel capabilities (need: CAP_BPF, CAP_NET_ADMIN)")
+		log.Println("  3. eBPF disabled in kernel (check: /proc/sys/kernel/unprivileged_bpf_disabled)")
+		log.Println("\nTo check eBPF status:")
+		log.Println("  cat /proc/sys/kernel/unprivileged_bpf_disabled")
+		log.Println("\nTo enable eBPF (as root):")
+		log.Println("  echo 0 | sudo tee /proc/sys/kernel/unprivileged_bpf_disabled")
+		log.Fatal("\nAgent cannot run without eBPF support.")
 	}
 	defer ebpfRes.Close()
 	SetupBandwidthTracking(ebpfRes)

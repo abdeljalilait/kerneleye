@@ -205,6 +205,9 @@ ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=${LOG_DIR}
 
+# Increase memlock limit for eBPF
+LimitMEMLOCK=infinity
+
 # Required capabilities for eBPF
 AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
 CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE

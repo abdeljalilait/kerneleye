@@ -269,8 +269,51 @@ const Sparkline = ({ data, color }: { data: { time: string; count: number }[]; c
   </div>
 );
 
+type RegionDisplayNames = {
+  of: (code: string) => string | undefined;
+};
+
+type DisplayNamesCtor = new (
+  locales?: string | string[],
+  options?: { type: 'region' }
+) => RegionDisplayNames;
+
+const regionDisplayNamesCtor = (Intl as unknown as { DisplayNames?: DisplayNamesCtor }).DisplayNames;
+const regionDisplayNames = regionDisplayNamesCtor
+  ? new regionDisplayNamesCtor(['en'], { type: 'region' })
+  : null;
+
+const regionNameToCode = (() => {
+  const map = new Map<string, string>();
+  if (!regionDisplayNames) return map;
+
+  for (let i = 65; i <= 90; i++) {
+    for (let j = 65; j <= 90; j++) {
+      const code = String.fromCharCode(i, j);
+      const name = regionDisplayNames.of(code);
+      if (!name || name === code) continue;
+      map.set(name.toLowerCase(), code);
+    }
+  }
+
+  map.set('uk', 'GB');
+  map.set('usa', 'US');
+  map.set('unknown', '');
+  return map;
+})();
+
+const normalizeCountryCode = (country: string) => {
+  const value = country.trim();
+  if (!value) return '';
+  if (/^[A-Za-z]{2}$/.test(value)) return value.toUpperCase();
+  return regionNameToCode.get(value.toLowerCase()) || '';
+};
+
 // Country flag emoji
-const getFlagEmoji = (countryCode: string) => {
+const getFlagEmoji = (country: string) => {
+  const countryCode = normalizeCountryCode(country);
+  if (!countryCode) return '🌐';
+
   const codePoints = countryCode
     .toUpperCase()
     .split('')
@@ -318,7 +361,7 @@ export default function Visualizer() {
     count: ip.count || 0,
     percentage: 0, // Will be calculated
     country: ip.country || 'Unknown',
-    countryCode: ip.country || 'UN',
+    countryCode: ip.country_code || ip.country || 'Unknown',
     asn: 'N/A',
     isp: ip.isp || 'Unknown',
     firstSeen: ip.first_seen,
@@ -337,7 +380,7 @@ export default function Visualizer() {
     asn: as.asn || 'Unknown',
     name: as.isp_name || as.asn || 'Unknown',
     country: as.country || 'Unknown',
-    countryCode: as.country || 'UN',
+    countryCode: as.country_code || as.country || 'Unknown',
     count: as.count || 0,
     percentage: 0,
     timeline: [],
