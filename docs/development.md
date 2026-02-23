@@ -338,4 +338,4 @@ go install github.com/bufbuild/buf/cmd/buf@latest
 
 - Documentation: [docs/](.)
 - Issues: GitHub Issues
-- Email: support@kerneleye.cloud
+- Email: support@kerneleye.net

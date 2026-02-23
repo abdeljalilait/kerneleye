@@ -28,12 +28,12 @@ type Service struct {
 
 // MailtrapEmail represents the email payload for Mailtrap API
 type MailtrapEmail struct {
-	From      MailtrapAddress   `json:"from"`
-	To        []MailtrapAddress `json:"to"`
-	Subject   string            `json:"subject"`
-	HTML      string            `json:"html"`
-	Text      string            `json:"text,omitempty"`
-	Category  string            `json:"category,omitempty"`
+	From     MailtrapAddress   `json:"from"`
+	To       []MailtrapAddress `json:"to"`
+	Subject  string            `json:"subject"`
+	HTML     string            `json:"html"`
+	Text     string            `json:"text,omitempty"`
+	Category string            `json:"category,omitempty"`
 }
 
 // MailtrapAddress represents an email address
@@ -179,7 +179,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
             <li>Start monitoring in real-time</li>
         </ol>
         
-        <p>Need help? Reply to this email or contact us at support@kerneleye.cloud</p>
+        <p>Need help? Reply to this email or contact us at support@kerneleye.net</p>
         
         <p>Best regards,<br>The KernelEye Team</p>
     </div>
@@ -200,7 +200,7 @@ func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) err
 	if dashboardURL == "" {
 		dashboardURL = "https://app.kerneleye.cloud"
 	}
-	
+
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", dashboardURL, resetToken)
 	subject := "Password Reset Request - KernelEye"
 
@@ -257,7 +257,7 @@ func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) err
 	if dashboardURL == "" {
 		dashboardURL = "https://app.kerneleye.cloud"
 	}
-	
+
 	billingURL := fmt.Sprintf("%s/billing", dashboardURL)
 	subject := fmt.Sprintf("Your KernelEye Trial Ends in %d Days", daysLeft)
 
@@ -294,7 +294,7 @@ func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) err
             <a href="%s" class="button">Upgrade Now</a>
         </center>
         
-        <p><strong>Questions?</strong> Reply to this email or contact support@kerneleye.cloud</p>
+        <p><strong>Questions?</strong> Reply to this email or contact support@kerneleye.net</p>
         
         <p>Best regards,<br>The KernelEye Team</p>
     </div>

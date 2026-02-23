@@ -85,7 +85,7 @@ const CheckoutSuccess = () => {
               <Button
                 key="servers"
                 size="large"
-                onClick={() => router.navigate({ to: '/servers' })}
+                onClick={() => router.navigate({ to: '/dashboard/servers' })}
               >
                 Add Your First Server
               </Button>,

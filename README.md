@@ -243,7 +243,7 @@ kerneleye/
 
 - **Website**: https://kerneleye.cloud
 - **Email**: hello@kerneleye.cloud
-- **Support**: support@kerneleye.cloud
+- **Support**: support@kerneleye.net
 
 ## 📄 License
 
