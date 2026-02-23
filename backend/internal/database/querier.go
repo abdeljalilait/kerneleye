@@ -12,14 +12,11 @@ import (
 
 type Querier interface {
 	CleanupExpiredBlocks(ctx context.Context) error
+	ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (User, error)
 	CountActiveBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountBlocksToday(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountServersByUser(ctx context.Context, userID pgtype.UUID) (int32, error)
-	// ============================================
-	// Agent Configuration Queries
-	// ============================================
-	CreateAgentConfig(ctx context.Context, arg CreateAgentConfigParams) (AgentConfig, error)
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
 	// Blocks queries for the dashboard and API
 	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
@@ -28,10 +25,8 @@ type Querier interface {
 	CreateServerWithAPIKey(ctx context.Context, arg CreateServerWithAPIKeyParams) (Server, error)
 	CreateSubscriptionEvent(ctx context.Context, arg CreateSubscriptionEventParams) (SubscriptionEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteAgentConfig(ctx context.Context, serverID pgtype.UUID) error
 	DeleteServer(ctx context.Context, id pgtype.UUID) error
 	GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIPParams) (Block, error)
-	GetAgentConfigByServerID(ctx context.Context, serverID pgtype.UUID) (AgentConfig, error)
 	GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeBreakdownParams) ([]GetAttackTypeBreakdownRow, error)
 	GetBlockByID(ctx context.Context, arg GetBlockByIDParams) (GetBlockByIDRow, error)
 	GetBlockRemainingTime(ctx context.Context, arg GetBlockRemainingTimeParams) (int64, error)
@@ -67,6 +62,7 @@ type Querier interface {
 	// User Polar Integration Queries
 	// ============================================
 	GetUserByPolarCustomerID(ctx context.Context, polarCustomerID pgtype.Text) (User, error)
+	GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error)
 	GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error)
 	IsIPBlocked(ctx context.Context, arg IsIPBlockedParams) (bool, error)
 	ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error)
@@ -76,7 +72,6 @@ type Querier interface {
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
 	UnblockIP(ctx context.Context, arg UnblockIPParams) error
-	UpdateAgentConfig(ctx context.Context, arg UpdateAgentConfigParams) error
 	UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKeyParams) error
 	UpdateServerConfig(ctx context.Context, arg UpdateServerConfigParams) error
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)
@@ -84,6 +79,7 @@ type Querier interface {
 	UpdateServerMetadata(ctx context.Context, arg UpdateServerMetadataParams) error
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
 	UpdateUserPolarCustomerID(ctx context.Context, arg UpdateUserPolarCustomerIDParams) error
+	UpdateUserRefreshToken(ctx context.Context, arg UpdateUserRefreshTokenParams) (User, error)
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
 	UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error
 	UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error)

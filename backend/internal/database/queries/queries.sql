@@ -11,6 +11,24 @@ WHERE email = $1;
 SELECT * FROM users
 WHERE id = $1;
 
+-- name: GetUserByRefreshToken :one
+SELECT * FROM users
+WHERE refresh_token = $1;
+
+-- name: UpdateUserRefreshToken :one
+UPDATE users
+SET refresh_token = $2,
+    refresh_token_expires_at = $3
+WHERE id = $1
+RETURNING *;
+
+-- name: ClearUserRefreshToken :one
+UPDATE users
+SET refresh_token = NULL,
+    refresh_token_expires_at = NULL
+WHERE id = $1
+RETURNING *;
+
 -- name: CreateServer :one
 INSERT INTO servers (user_id, hostname, api_key, last_seen)
 VALUES ($1, $2, $3, NOW())
@@ -365,32 +383,6 @@ UPDATE servers
 SET api_key = $2,
     updated_at = NOW()
 WHERE id = $1;
-
--- ============================================
--- Agent Configuration Queries
--- ============================================
-
--- name: CreateAgentConfig :one
-INSERT INTO agent_configs (server_id, mode, features, threshold, duration)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING *;
-
--- name: GetAgentConfigByServerID :one
-SELECT * FROM agent_configs
-WHERE server_id = $1;
-
--- name: UpdateAgentConfig :exec
-UPDATE agent_configs
-SET mode = $2,
-    features = $3,
-    threshold = $4,
-    duration = $5,
-    updated_at = NOW()
-WHERE server_id = $1;
-
--- name: DeleteAgentConfig :exec
-DELETE FROM agent_configs
-WHERE server_id = $1;
 
 -- name: UpdateServerConfig :exec
 UPDATE servers

@@ -12,6 +12,39 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearUserRefreshToken = `-- name: ClearUserRefreshToken :one
+UPDATE users
+SET refresh_token = NULL,
+    refresh_token_expires_at = NULL
+WHERE id = $1
+RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at
+`
+
+func (q *Queries) ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, clearUserRefreshToken, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Plan,
+		&i.MaxServers,
+		&i.StripeCustomerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
+	)
+	return i, err
+}
+
 const countServersByUser = `-- name: CountServersByUser :one
 SELECT COUNT(*)::int FROM servers
 WHERE user_id = $1
@@ -22,46 +55,6 @@ func (q *Queries) CountServersByUser(ctx context.Context, userID pgtype.UUID) (i
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const createAgentConfig = `-- name: CreateAgentConfig :one
-
-INSERT INTO agent_configs (server_id, mode, features, threshold, duration)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, server_id, mode, features, threshold, duration, created_at, updated_at
-`
-
-type CreateAgentConfigParams struct {
-	ServerID  pgtype.UUID `json:"server_id"`
-	Mode      string      `json:"mode"`
-	Features  []byte      `json:"features"`
-	Threshold int32       `json:"threshold"`
-	Duration  string      `json:"duration"`
-}
-
-// ============================================
-// Agent Configuration Queries
-// ============================================
-func (q *Queries) CreateAgentConfig(ctx context.Context, arg CreateAgentConfigParams) (AgentConfig, error) {
-	row := q.db.QueryRow(ctx, createAgentConfig,
-		arg.ServerID,
-		arg.Mode,
-		arg.Features,
-		arg.Threshold,
-		arg.Duration,
-	)
-	var i AgentConfig
-	err := row.Scan(
-		&i.ID,
-		&i.ServerID,
-		&i.Mode,
-		&i.Features,
-		&i.Threshold,
-		&i.Duration,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
 
 const createAlert = `-- name: CreateAlert :one
@@ -254,7 +247,7 @@ func (q *Queries) CreateSubscriptionEvent(ctx context.Context, arg CreateSubscri
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, plan)
 VALUES ($1, $2, $3)
-RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at
+RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at
 `
 
 type CreateUserParams struct {
@@ -282,18 +275,10 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
 	)
 	return i, err
-}
-
-const deleteAgentConfig = `-- name: DeleteAgentConfig :exec
-DELETE FROM agent_configs
-WHERE server_id = $1
-`
-
-func (q *Queries) DeleteAgentConfig(ctx context.Context, serverID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteAgentConfig, serverID)
-	return err
 }
 
 const deleteServer = `-- name: DeleteServer :exec
@@ -304,27 +289,6 @@ WHERE id = $1
 func (q *Queries) DeleteServer(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteServer, id)
 	return err
-}
-
-const getAgentConfigByServerID = `-- name: GetAgentConfigByServerID :one
-SELECT id, server_id, mode, features, threshold, duration, created_at, updated_at FROM agent_configs
-WHERE server_id = $1
-`
-
-func (q *Queries) GetAgentConfigByServerID(ctx context.Context, serverID pgtype.UUID) (AgentConfig, error) {
-	row := q.db.QueryRow(ctx, getAgentConfigByServerID, serverID)
-	var i AgentConfig
-	err := row.Scan(
-		&i.ID,
-		&i.ServerID,
-		&i.Mode,
-		&i.Features,
-		&i.Threshold,
-		&i.Duration,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
 
 const getAttackTypeBreakdown = `-- name: GetAttackTypeBreakdown :many
@@ -1060,7 +1024,7 @@ func (q *Queries) GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at FROM users
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
 WHERE email = $1
 `
 
@@ -1083,12 +1047,14 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at FROM users
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
 WHERE id = $1
 `
 
@@ -1111,13 +1077,15 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
 	)
 	return i, err
 }
 
 const getUserByPolarCustomerID = `-- name: GetUserByPolarCustomerID :one
 
-SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at FROM users
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
 WHERE polar_customer_id = $1
 `
 
@@ -1143,6 +1111,38 @@ func (q *Queries) GetUserByPolarCustomerID(ctx context.Context, polarCustomerID 
 		&i.SubscriptionCurrentPeriodEnd,
 		&i.SubscriptionCancelAtPeriodEnd,
 		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
+	)
+	return i, err
+}
+
+const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
+SELECT id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at FROM users
+WHERE refresh_token = $1
+`
+
+func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByRefreshToken, refreshToken)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Plan,
+		&i.MaxServers,
+		&i.StripeCustomerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
 	)
 	return i, err
 }
@@ -1465,35 +1465,6 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 	return items, nil
 }
 
-const updateAgentConfig = `-- name: UpdateAgentConfig :exec
-UPDATE agent_configs
-SET mode = $2,
-    features = $3,
-    threshold = $4,
-    duration = $5,
-    updated_at = NOW()
-WHERE server_id = $1
-`
-
-type UpdateAgentConfigParams struct {
-	ServerID  pgtype.UUID `json:"server_id"`
-	Mode      string      `json:"mode"`
-	Features  []byte      `json:"features"`
-	Threshold int32       `json:"threshold"`
-	Duration  string      `json:"duration"`
-}
-
-func (q *Queries) UpdateAgentConfig(ctx context.Context, arg UpdateAgentConfigParams) error {
-	_, err := q.db.Exec(ctx, updateAgentConfig,
-		arg.ServerID,
-		arg.Mode,
-		arg.Features,
-		arg.Threshold,
-		arg.Duration,
-	)
-	return err
-}
-
 const updateServerAPIKey = `-- name: UpdateServerAPIKey :exec
 UPDATE servers
 SET api_key = $2,
@@ -1623,6 +1594,45 @@ type UpdateUserPolarCustomerIDParams struct {
 func (q *Queries) UpdateUserPolarCustomerID(ctx context.Context, arg UpdateUserPolarCustomerIDParams) error {
 	_, err := q.db.Exec(ctx, updateUserPolarCustomerID, arg.ID, arg.PolarCustomerID)
 	return err
+}
+
+const updateUserRefreshToken = `-- name: UpdateUserRefreshToken :one
+UPDATE users
+SET refresh_token = $2,
+    refresh_token_expires_at = $3
+WHERE id = $1
+RETURNING id, email, password_hash, plan, max_servers, stripe_customer_id, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, refresh_token, refresh_token_expires_at
+`
+
+type UpdateUserRefreshTokenParams struct {
+	ID                    pgtype.UUID        `json:"id"`
+	RefreshToken          pgtype.Text        `json:"refresh_token"`
+	RefreshTokenExpiresAt pgtype.Timestamptz `json:"refresh_token_expires_at"`
+}
+
+func (q *Queries) UpdateUserRefreshToken(ctx context.Context, arg UpdateUserRefreshTokenParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserRefreshToken, arg.ID, arg.RefreshToken, arg.RefreshTokenExpiresAt)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Plan,
+		&i.MaxServers,
+		&i.StripeCustomerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PolarCustomerID,
+		&i.PolarSubscriptionID,
+		&i.SubscriptionStatus,
+		&i.SubscriptionCurrentPeriodStart,
+		&i.SubscriptionCurrentPeriodEnd,
+		&i.SubscriptionCancelAtPeriodEnd,
+		&i.TrialEndsAt,
+		&i.RefreshToken,
+		&i.RefreshTokenExpiresAt,
+	)
+	return i, err
 }
 
 const updateUserSubscription = `-- name: UpdateUserSubscription :exec

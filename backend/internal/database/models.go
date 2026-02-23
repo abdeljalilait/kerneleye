@@ -10,17 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type AgentConfig struct {
-	ID        pgtype.UUID        `json:"id"`
-	ServerID  pgtype.UUID        `json:"server_id"`
-	Mode      string             `json:"mode"`
-	Features  []byte             `json:"features"`
-	Threshold int32              `json:"threshold"`
-	Duration  string             `json:"duration"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
 // Threat alerts triggered by scoring system
 type Alert struct {
 	ID             pgtype.UUID        `json:"id"`
@@ -235,6 +224,8 @@ type User struct {
 	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
 	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
 	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
+	RefreshToken                   pgtype.Text        `json:"refresh_token"`
+	RefreshTokenExpiresAt          pgtype.Timestamptz `json:"refresh_token_expires_at"`
 }
 
 // Convenience view of user subscription status
