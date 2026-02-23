@@ -18,6 +18,7 @@ export const publicApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 // Authenticated API client - adds auth headers to all requests
@@ -26,6 +27,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 // Add auth token to authenticated requests
@@ -47,8 +49,8 @@ export const authAPI = {
   // Protected endpoints (requires auth)
   getMe: () => api.get('/auth/me'),
   
-  // TODO: Implement when backend has refresh token endpoint
-  // refreshToken: (refreshToken: string) => axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken }),
+  // Refresh token - uses HttpOnly cookie, returns new access token
+  refreshToken: () => publicApi.post('/auth/refresh'),
 };
 
 export const serversAPI = {
@@ -115,20 +117,11 @@ export const analyticsAPI = {
 
 // ============ TOKEN REFRESH LOGIC ============
 
-// TODO: SECURITY - Current implementation has a flaw:
-// When a 401 occurs, we call authAPI.getMe() which uses the SAME expired token.
-// This will fail immediately with another 401.
-// 
-// PROPER SOLUTION:
-// 1. Backend must implement a /auth/refresh endpoint that accepts a refresh token
-//    (stored in HttpOnly cookie or separate localStorage key)
-// 2. This endpoint returns a new access token
-// 3. The refresh token should be rotated on each use for security
-//
-// ALTERNATIVE (Current workaround):
-// - Check if session is still valid (getMe succeeds)
-// - If not, redirect to login
-// - This is NOT true token refresh, just session validation
+// Token refresh is now handled via HttpOnly cookies:
+// 1. On login/OAuth, backend sets a refresh token in an HttpOnly cookie
+// 2. On 401, frontend calls /auth/refresh which uses the cookie
+// 3. Backend validates, rotates, and returns new access token
+// 4. Frontend stores new access token in localStorage
 
 let isRefreshing = false;
 let failedQueue: Array<{
@@ -179,33 +172,20 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // WORKAROUND: Check if session is still valid
-        // This is NOT proper token refresh - it just validates the current token
-        // If the backend session is still active (e.g., token expired but session not),
-        // this might succeed. Otherwise, it will fail and we redirect to login.
-        // 
-        // PROPER IMPLEMENTATION (when backend supports refresh tokens):
-        // const { data } = await authAPI.refreshToken(refreshToken);
-        // const newToken = data.token;
-        // localStorage.setItem('kerneleye_token', newToken);
+        // Use the refresh token endpoint (HttpOnly cookie handles the refresh token)
+        const { data } = await authAPI.refreshToken();
+        const newToken = data.token;
         
-        const { data } = await authAPI.getMe();
+        // Store the new access token
+        localStorage.setItem('kerneleye_token', newToken);
         
-        if (data) {
-          // Session is still valid, extend expiry
-          // NOTE: This doesn't actually refresh the token - just validates session
-          const newExpiry = new Date().getTime() + 24 * 60 * 60 * 1000;
-          localStorage.setItem('kerneleye_session_expiry', newExpiry.toString());
-          
-          const currentToken = localStorage.getItem('kerneleye_token');
-          processQueue(null, currentToken);
-          return api(originalRequest);
-        }
+        // Process queued requests with new token
+        processQueue(null, newToken);
+        return api(originalRequest);
       } catch (refreshError) {
-        // Session validation failed, clear session and notify app
+        // Refresh token invalid/expired, clear session and notify app
         processQueue(refreshError as AxiosError, null);
         localStorage.removeItem('kerneleye_token');
-        localStorage.removeItem('kerneleye_session_expiry');
         
         // Dispatch event for SPA router instead of hard reload
         dispatchAuthError();
