@@ -45,7 +45,7 @@ type Aggregator struct {
 // NewAggregator creates a new aggregator with gRPC connection
 func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
-	conn, err := grpc.NewClient("passthrough:///"+grpcTarget, buildGRPCOpts(grpcTarget)...)
+	conn, err := grpc.NewClient("dns:///"+grpcTarget, buildGRPCOpts(grpcTarget)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
@@ -101,26 +101,6 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 	go agg.monitorConnection()
 
 	return agg, nil
-	if serverID == "" {
-		log.Printf("⚠️  Could not extract server UUID from API key; server_id will be omitted in block reports")
-	}
-
-	return &Aggregator{
-		stats:          NewSafeStats(),
-		flushChan:      make(chan struct{}),
-		stopChan:       make(chan struct{}),
-		apiKey:         apiKey,
-		serverHost:     serverHost,
-		serverID:       serverID,
-		grpcConn:       conn,
-		grpcClient:     pb.NewIngestServiceClient(conn),
-		remediator:     rem,
-		analyzer:       ana,
-		buffer:         buffer,
-		cachedPublicIP: cachedPublicIP,
-		serverIPs:      serverIPs,
-		bootTime:       bootTime,
-	}, nil
 }
 
 // getServerIPs retrieves all local IP addresses for the server
@@ -338,7 +318,7 @@ func (a *Aggregator) attemptReconnect() {
 	}
 
 	// Create new connection
-	conn, err := grpc.NewClient("passthrough:///"+a.grpcURL, buildGRPCOpts(a.grpcURL)...)
+	conn, err := grpc.NewClient("dns:///"+a.grpcURL, buildGRPCOpts(a.grpcURL)...)
 	if err != nil {
 		log.Printf("❌ Failed to create new gRPC connection: %v", err)
 		return
