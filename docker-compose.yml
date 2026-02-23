@@ -1,10 +1,9 @@
 services:
   # PostgreSQL Database
-  postgres:
+  kerneleye-db:
     networks:
       - dokploy-network
     image: postgres:15-alpine
-    pull_policy: always
     environment:
       POSTGRES_DB: kerneleye
       POSTGRES_USER: kerneleye
@@ -24,11 +23,23 @@ services:
       - dokploy-network
     image: registry.hakiware.com/kerneleye/backend:latest
     pull_policy: always
+    volumes:
+      - ../files/geoip:/opt/kerneleye/geoip
+    expose:
+      - "8080"
+      - "9091"
+    # ports:
+    #   - "9091:9091"
     environment:
+      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD}@kerneleye-db:5432/kerneleye?sslmode=disable
       GEOIP_DIR: /opt/kerneleye/geoip
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY}
-      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD}@postgres:5432/kerneleye?sslmode=disable
+      INSTALL_DOMAIN: ${INSTALL_DOMAIN}
+      KERNELEYE_SERVER : ${KERNELEYE_SERVER}
+      KERNELEYE_GRPC_URL : ${KERNELEYE_GRPC_URL}
       PORT: 8080
+      POLAR_ENV: ${POLAR_ENV}
+      REDIS_URL: redis://redis:6379
       GRPC_PORT: 9091
       CORS_ORIGINS: ${CORS_ORIGINS}
       JWT_SECRET: ${JWT_SECRET}
@@ -45,9 +56,30 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       OAUTH_REDIRECT_URL: ${OAUTH_REDIRECT_URL}
     depends_on:
-      postgres:
+      kerneleye-db:
         condition: service_healthy
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+    
+      # HTTP API
+      - "traefik.http.routers.kernelapi.rule=Host(`api.kerneleye.net`)"
+      - "traefik.http.routers.kernelapi.entrypoints=websecure"
+      - "traefik.http.routers.kernelapi.tls=true"
+      - "traefik.http.routers.kernelapi.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.kernelapi.service=kernelapi"
+      - "traefik.http.services.kernelapi.loadbalancer.server.port=8080"
+      - "traefik.http.services.kernelapi.loadbalancer.server.scheme=http"
+
+    
+      # gRPC
+      - "traefik.http.routers.kernelgrpc.rule=PathPrefix(/kerneleye.v1)"
+      - "traefik.http.routers.kernelgrpc.entrypoints=websecure"
+      - "traefik.http.routers.kernelgrpc.tls=true"
+      - "traefik.http.routers.kernelgrpc.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.kernelgrpc.service=kernelgrpc"
+      - "traefik.http.services.kernelgrpc.loadbalancer.server.port=9091"
+      - "traefik.http.services.kernelgrpc.loadbalancer.server.scheme=h2"
 
   # Frontend (Landing + Dashboard)
   # Serves static files only - API calls go directly to backend
@@ -57,25 +89,21 @@ services:
     image: registry.hakiware.com/kerneleye/frontend:latest
     pull_policy: always
     environment:
+      # Backend API URL (for dashboard runtime config)
+      BACKEND_HOST: ${BACKEND_HOST}
+      BACKEND_PORT: ${BACKEND_PORT}
       # Domain names (for nginx server_name)
       LANDING_DOMAIN: ${LANDING_DOMAIN}
       DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN}
-      # Install domain for agent download URL (defaults to DASHBOARD_DOMAIN in entrypoint)
-      INSTALL_DOMAIN: ${INSTALL_DOMAIN:-}
     restart: unless-stopped
 
   # Redis (Optional - for caching in production)
   redis:
-    networks:
-      - dokploy-network
     image: redis:7-alpine
     pull_policy: always
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
-    profiles:
-      - production
-
 volumes:
   postgres_data:
   redis_data:

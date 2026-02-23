@@ -122,7 +122,7 @@ func main() {
 	}))
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 	if corsOrigins == "" {
-		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.net,https://kerneleye.hakiware.com,https://kerneleye-api.hakiware.com"
+		corsOrigins = "http://localhost:3000,http://localhost:5173,https://app.kerneleye.net"
 	}
 
 	app.Use(cors.New(cors.Config{
