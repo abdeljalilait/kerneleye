@@ -211,7 +211,7 @@ static __always_inline int is_expired(struct block_entry *entry) {
 #ifdef ENABLE_RATE_LIMITING
 // Check and update rate limit for an IP
 // Returns 1 if rate limit exceeded, 0 otherwise
-// Uses read-modify-write pattern for portability across toolchains/kernels
+// Uses BPF-compatible atomic operations
 static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
     __u32 cfg_key = 0;
     struct rate_limit_config *cfg = bpf_map_lookup_elem(&xdp_rate_config, &cfg_key);
@@ -226,52 +226,55 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
     struct rate_limit_state *state = bpf_map_lookup_elem(&xdp_rate_limit, &src_ip);
     
     if (state) {
-        // Copy to local struct for safe read-modify-write
-        // (avoids non-portable __sync_fetch_and_add on map values)
-        struct rate_limit_state local = *state;
+        // Read current window_start (best-effort for rate limiting)
+        __u64 window_start = state->window_start;
         
         // Check if we're in a new window
-        if (now - local.window_start >= RL_WINDOW_NS) {
-            // Reset window
-            local.window_start = now;
-            local.packet_count = 1;
-            local.byte_count = pkt_len;
-            bpf_map_update_elem(&xdp_rate_limit, &src_ip, &local, BPF_EXIST);
-            return 0;
-        }
-        
-        // Check PPS limit
-        if (cfg->max_pps > 0 && local.packet_count >= cfg->max_pps) {
-            // Optionally add to blocklist
-            if (cfg->block_time_ns > 0) {
-                // Overflow check: cap at max value to prevent wrap-around
-                __u64 expires = now + cfg->block_time_ns;
-                if (expires < now) expires = (__u64)-1;  // Cap at ULLONG_MAX
-                struct block_entry block = { .expires_ns = expires };
-                bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
+        if (now - window_start >= RL_WINDOW_NS) {
+            // Try to reset atomically
+            __u64 old = __sync_val_compare_and_swap(&state->window_start, window_start, now);
+            if (old == window_start) {
+                // We successfully reset
+                state->packet_count = 1;
+                state->byte_count = pkt_len;
+                return 0;
             }
-            return 1;  // Rate limit exceeded
+            // Another CPU reset - continue with new values
         }
         
-        // Check BPS limit (include current packet in the decision)
-        if (cfg->max_bps > 0) {
-            __u64 next_bytes = local.byte_count + pkt_len;
-            if (next_bytes < local.byte_count || next_bytes > cfg->max_bps) {
+        // Increment packet count atomically
+        if (cfg->max_pps > 0) {
+            __sync_fetch_and_add(&state->packet_count, 1);
+            // Read count after increment
+            __u32 pkt_count = state->packet_count;
+            // Check against limit
+            if (pkt_count >= cfg->max_pps) {
                 if (cfg->block_time_ns > 0) {
-                    // Overflow check: cap at max value to prevent wrap-around
                     __u64 expires = now + cfg->block_time_ns;
-                    if (expires < now) expires = (__u64)-1;  // Cap at ULLONG_MAX
+                    if (expires < now) expires = (__u64)-1;
                     struct block_entry block = { .expires_ns = expires };
                     bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
                 }
-                return 1;  // Rate limit exceeded
+                return 1;
             }
         }
         
-        // Update counters and write back
-        local.packet_count += 1;
-        local.byte_count += pkt_len;
-        bpf_map_update_elem(&xdp_rate_limit, &src_ip, &local, BPF_EXIST);
+        // Increment byte count atomically
+        if (cfg->max_bps > 0) {
+            __sync_fetch_and_add(&state->byte_count, pkt_len);
+            // Read count after increment
+            __u64 byte_count = state->byte_count;
+            // Check if exceeded
+            if (byte_count > cfg->max_bps) {
+                if (cfg->block_time_ns > 0) {
+                    __u64 expires = now + cfg->block_time_ns;
+                    if (expires < now) expires = (__u64)-1;
+                    struct block_entry block = { .expires_ns = expires };
+                    bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
+                }
+                return 1;
+            }
+        }
     } else {
         // New IP - create state
         struct rate_limit_state new_state = {
@@ -279,7 +282,11 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
             .packet_count = 1,
             .byte_count = pkt_len,
         };
-        bpf_map_update_elem(&xdp_rate_limit, &src_ip, &new_state, BPF_ANY);
+        // Use BPF_NOEXIST to avoid race - if another CPU created it, retry
+        long ret = bpf_map_update_elem(&xdp_rate_limit, &src_ip, &new_state, BPF_NOEXIST);
+        if (ret == -17) {  // EEXIST
+            bpf_map_update_elem(&xdp_rate_limit, &src_ip, &new_state, BPF_ANY);
+        }
     }
     
     return 0;
@@ -355,6 +362,8 @@ int xdp_firewall(struct xdp_md *ctx) {
             return XDP_PASS;
         }
         
+        // Validate IP header length (ihl is in 32-bit words, minimum 5 = 20 bytes)
+        // Also verify the packet is large enough to contain a valid IP header
         if (ip->version != 4 || ip->ihl < 5) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
@@ -363,6 +372,13 @@ int xdp_firewall(struct xdp_md *ctx) {
         // Validate full IP header length (including options when ihl > 5)
         void *ip_end = (void *)ip + (ip->ihl * 4);
         if (ip_end > data_end) {
+            update_stats(STATS_ERRORS, pkt_len);
+            return XDP_PASS;
+        }
+        
+        // Additional validation: ensure total length is at least as large as header claims
+        __u16 total_len = bpf_ntohs(ip->tot_len);
+        if (total_len < (ip->ihl * 4)) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
