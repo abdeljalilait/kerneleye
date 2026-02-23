@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -452,30 +451,19 @@ func HandleGetServerConfig(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusForbidden, "Access denied")
 		}
 
-		config, err := queries.GetAgentConfigByServerID(c.Context(), database.ToPgUUID(serverID))
-		if err != nil {
-			// Return default config if none exists
-			return c.JSON(AgentConfig{
-				Mode:      "block_hybrid",
-				Features:  map[string]bool{"auto_block": true, "geoip_enrich": true, "bandwidth_tracking": true},
-				Threshold: 80,
-				Duration:  "1h",
-			})
-		}
-
-		var features map[string]bool
-		json.Unmarshal(config.Features, &features)
-
+		// Return default config (agent_configs table was removed)
+		// Configuration is now handled via agent flags
 		return c.JSON(AgentConfig{
-			Mode:      config.Mode,
-			Features:  features,
-			Threshold: int(config.Threshold),
-			Duration:  config.Duration,
+			Mode:      "block_hybrid",
+			Features:  map[string]bool{"auto_block": true, "geoip_enrich": true, "bandwidth_tracking": true},
+			Threshold: 80,
+			Duration:  "1h",
 		})
 	}
 }
 
 // HandleUpdateServerConfig updates the configuration for a server
+// Note: Configuration is now managed via agent flags, not stored in database
 func HandleUpdateServerConfig(queries *database.Queries, hub *Hub) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		serverID := c.Params("id")
@@ -495,26 +483,17 @@ func HandleUpdateServerConfig(queries *database.Queries, hub *Hub) fiber.Handler
 			return fiber.NewError(fiber.StatusForbidden, "Access denied")
 		}
 
-		featuresJSON, _ := json.Marshal(req.Features)
-		err = queries.UpdateAgentConfig(c.Context(), database.UpdateAgentConfigParams{
-			ServerID:  database.ToPgUUID(serverID),
-			Mode:      req.Mode,
-			Features:  featuresJSON,
-			Threshold: int32(req.Threshold),
-			Duration:  req.Duration,
-		})
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to update configuration")
-		}
-
-		// Notify via WebSocket
+		// Configuration is now handled via agent flags
+		// Notify via WebSocket that config change was requested
 		hub.Broadcast(userID.(string), "config_updated", map[string]interface{}{
 			"server_id": serverID,
 			"config":    req,
+			"message":   "Configuration is managed via agent flags. Please restart the agent with new flags.",
 		})
 
 		return c.JSON(fiber.Map{
 			"success": true,
+			"message": "Configuration is managed via agent flags. Please restart the agent with new flags.",
 			"config":  req,
 		})
 	}
