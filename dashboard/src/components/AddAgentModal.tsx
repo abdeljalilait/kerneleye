@@ -70,7 +70,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   const grpcHost = (import.meta.env.VITE_GRPC_HOST as string) || ''
 
   const installCommand = result 
-    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"${grpcHost ? ` -grpc-url "${grpcHost}:9091"` : ''} -enable-remediation -daemon`
+    ? `sudo kerneleye-agent -server "${serverHost}" -apikey "${result.api_key}"${grpcHost ? ` -grpc-url "${grpcHost}:443"` : ''} -enable-remediation -daemon`
     : ''
 
   const fullInstallCommand = result

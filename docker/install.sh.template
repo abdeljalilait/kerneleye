@@ -23,7 +23,7 @@ API_KEY="${API_KEY:-}"
 # Default is monitor-only (no remediation flags)
 MODE="monitor"
 SERVER_HOST="__INSTALL_DOMAIN__:443"
-GRPC_URL="__INSTALL_DOMAIN__:9091"
+GRPC_URL="__INSTALL_DOMAIN__:443"
 DAEMON="false"
 
 # Colors
