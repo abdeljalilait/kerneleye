@@ -589,6 +589,35 @@ WHERE te.last_seen >= $1
 GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.city, te.isp, te.asn
 ORDER BY MAX(te.threat_score) DESC;
 
+-- name: GetActiveBlocksForServer :many
+-- Gets active blocks for a specific server (for state reconciliation)
+SELECT 
+    id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
+    reasons, target_port, service_name, protocol, country_code, country_name,
+    city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
+    blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
+    unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    created_at, updated_at
+FROM blocks
+WHERE server_id = $1
+  AND is_active = true
+  AND expires_at > NOW()
+ORDER BY blocked_at DESC;
+
+-- name: GetAllActiveBlocks :many
+-- Gets all active blocks across all servers (for BlockManager state recovery)
+SELECT 
+    id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
+    reasons, target_port, service_name, protocol, country_code, country_name,
+    city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
+    blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
+    unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    created_at, updated_at
+FROM blocks
+WHERE is_active = true
+  AND expires_at > NOW()
+ORDER BY blocked_at DESC;
+
 
 -- ============================================
 -- User Polar Integration Queries

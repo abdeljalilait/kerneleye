@@ -257,6 +257,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterIngestServiceServer(grpcServer, api.NewGrpcIngestHandler(queries, scorer, hub, geoIP))
+	pb.RegisterBlockServiceServer(grpcServer, api.NewBlockHandler(queries, hub, geoIP))
 
 	go func() {
 		log.Printf("📡 KernelEye gRPC Ingestion listening on port %s\n", grpcPort)

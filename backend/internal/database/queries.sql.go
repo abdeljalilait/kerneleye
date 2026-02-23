@@ -334,6 +334,147 @@ func (q *Queries) DeleteServer(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const getActiveBlocksForServer = `-- name: GetActiveBlocksForServer :many
+SELECT 
+    id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
+    reasons, target_port, service_name, protocol, country_code, country_name,
+    city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
+    blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
+    unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    created_at, updated_at
+FROM blocks
+WHERE server_id = $1
+  AND is_active = true
+  AND expires_at > NOW()
+ORDER BY blocked_at DESC
+`
+
+// Gets active blocks for a specific server (for state reconciliation)
+func (q *Queries) GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]Block, error) {
+	rows, err := q.db.Query(ctx, getActiveBlocksForServer, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Block{}
+	for rows.Next() {
+		var i Block
+		if err := rows.Scan(
+			&i.ID,
+			&i.ServerID,
+			&i.UserID,
+			&i.IpAddress,
+			&i.IpVersion,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.Reasons,
+			&i.TargetPort,
+			&i.ServiceName,
+			&i.Protocol,
+			&i.CountryCode,
+			&i.CountryName,
+			&i.City,
+			&i.Region,
+			&i.Latitude,
+			&i.Longitude,
+			&i.Asn,
+			&i.AsnOrg,
+			&i.IsVpn,
+			&i.IsTor,
+			&i.IsDatacenter,
+			&i.BlockedAt,
+			&i.ExpiresAt,
+			&i.DurationSeconds,
+			&i.IsActive,
+			&i.IsAutoBlocked,
+			&i.UnblockedAt,
+			&i.UnblockedBy,
+			&i.UnblockReason,
+			&i.AgentVersion,
+			&i.RawMetrics,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllActiveBlocks = `-- name: GetAllActiveBlocks :many
+SELECT 
+    id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
+    reasons, target_port, service_name, protocol, country_code, country_name,
+    city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
+    blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
+    unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    created_at, updated_at
+FROM blocks
+WHERE is_active = true
+  AND expires_at > NOW()
+ORDER BY blocked_at DESC
+`
+
+// Gets all active blocks across all servers (for BlockManager state recovery)
+func (q *Queries) GetAllActiveBlocks(ctx context.Context) ([]Block, error) {
+	rows, err := q.db.Query(ctx, getAllActiveBlocks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Block{}
+	for rows.Next() {
+		var i Block
+		if err := rows.Scan(
+			&i.ID,
+			&i.ServerID,
+			&i.UserID,
+			&i.IpAddress,
+			&i.IpVersion,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.Reasons,
+			&i.TargetPort,
+			&i.ServiceName,
+			&i.Protocol,
+			&i.CountryCode,
+			&i.CountryName,
+			&i.City,
+			&i.Region,
+			&i.Latitude,
+			&i.Longitude,
+			&i.Asn,
+			&i.AsnOrg,
+			&i.IsVpn,
+			&i.IsTor,
+			&i.IsDatacenter,
+			&i.BlockedAt,
+			&i.ExpiresAt,
+			&i.DurationSeconds,
+			&i.IsActive,
+			&i.IsAutoBlocked,
+			&i.UnblockedAt,
+			&i.UnblockedBy,
+			&i.UnblockReason,
+			&i.AgentVersion,
+			&i.RawMetrics,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAttackTypeBreakdown = `-- name: GetAttackTypeBreakdown :many
 SELECT 
     CASE 

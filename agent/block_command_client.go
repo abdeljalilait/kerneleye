@@ -136,6 +136,11 @@ func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
 
 	log.Printf("[BlockCommandClient] Connected to stream")
 
+	// Sync block list on reconnection for state reconciliation
+	if err := b.SyncBlockList(ctx); err != nil {
+		log.Printf("[BlockCommandClient] Warning: failed to sync block list: %v", err)
+	}
+
 	for {
 		select {
 		case <-b.stopChan:
@@ -201,4 +206,49 @@ func (b *BlockCommandClient) IsConnected() bool {
 
 	state := b.conn.GetState()
 	return state == connectivity.Ready
+}
+
+// SyncBlockList fetches current block list from backend and applies locally
+// Called on reconnection to reconcile state
+func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
+	b.mu.RLock()
+	client := b.client
+	b.mu.RUnlock()
+
+	if client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
+		ApiKey:      b.apiKey,
+		ClientToken: b.serverID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get block list: %w", err)
+	}
+
+	log.Printf("[BlockCommandClient] Synced %d blocks from backend", len(resp.Blocks))
+
+	// Apply each block locally
+	for _, block := range resp.Blocks {
+		if b.onBlock != nil {
+			duration := time.Duration(block.DurationSeconds) * time.Second
+			if duration == 0 {
+				duration = 1 * time.Hour
+			}
+			// Check if already expired
+			if block.ExpiresAt > 0 {
+				expiresAt := time.Unix(block.ExpiresAt, 0)
+				if time.Now().After(expiresAt) {
+					log.Printf("[BlockCommandClient] Skipping expired block: %s (expired %v ago)", block.IpAddress, time.Since(expiresAt))
+					continue
+				}
+			}
+			if err := b.onBlock(block.IpAddress, duration, block.Reason); err != nil {
+				log.Printf("[BlockCommandClient] Failed to apply block %s: %v", block.IpAddress, err)
+			}
+		}
+	}
+
+	return nil
 }

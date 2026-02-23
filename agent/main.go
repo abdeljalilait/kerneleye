@@ -205,6 +205,11 @@ func main() {
 		} else {
 			aggregator.blockCmdClient = blockCmdClient
 			log.Printf("📡 Block command client connected to backend")
+
+			// Sync block list from backend for state reconciliation
+			if err := blockCmdClient.SyncBlockList(context.Background()); err != nil {
+				log.Printf("⚠️  Failed to sync block list: %v", err)
+			}
 		}
 	}
 

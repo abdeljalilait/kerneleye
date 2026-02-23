@@ -32,6 +32,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteServer(ctx context.Context, id pgtype.UUID) error
 	GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIPParams) (Block, error)
+	// Gets active blocks for a specific server (for state reconciliation)
+	GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]Block, error)
+	// Gets all active blocks across all servers (for BlockManager state recovery)
+	GetAllActiveBlocks(ctx context.Context) ([]Block, error)
 	GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeBreakdownParams) ([]GetAttackTypeBreakdownRow, error)
 	GetBlockByID(ctx context.Context, arg GetBlockByIDParams) (GetBlockByIDRow, error)
 	GetBlockRemainingTime(ctx context.Context, arg GetBlockRemainingTimeParams) (int64, error)

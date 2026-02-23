@@ -3,6 +3,7 @@ package analysis
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,11 +68,47 @@ func (bm *BlockManager) Start(ctx context.Context) {
 		return
 	}
 
+	// Load active blocks from database for state recovery
+	bm.loadActiveBlocks(ctx)
+
 	bm.wg.Add(1)
 	go bm.runLoop(ctx)
 
 	log.Printf("[BlockManager] Started (threshold: %d, duration: %v)",
 		bm.config.BlockThreshold, bm.config.BaseBlockDuration)
+}
+
+func (bm *BlockManager) loadActiveBlocks(ctx context.Context) {
+	blocks, err := bm.queries.GetAllActiveBlocks(ctx)
+	if err != nil {
+		log.Printf("[BlockManager] Failed to load active blocks: %v", err)
+		return
+	}
+
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	for _, block := range blocks {
+		ipStr := block.IpAddress.String()
+		expiresAt, _ := block.ExpiresAt.Value()
+		var expires time.Time
+		if t, ok := expiresAt.(time.Time); ok {
+			expires = t
+		}
+
+		bm.activeBlocks[ipStr] = &ActiveBlock{
+			IP:        ipStr,
+			ServerID:  block.ServerID,
+			UserID:    block.UserID,
+			Score:     int(block.ThreatScore),
+			Reason:    strings.Join(block.Reasons, ", "),
+			Duration:  time.Duration(block.DurationSeconds) * time.Second,
+			BlockedAt: block.BlockedAt.Time,
+			ExpiresAt: expires,
+		}
+	}
+
+	log.Printf("[BlockManager] Loaded %d active blocks from database", len(blocks))
 }
 
 func (bm *BlockManager) Stop() {

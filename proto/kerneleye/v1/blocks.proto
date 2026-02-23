@@ -14,6 +14,9 @@ service BlockService {
   // GetBlockStatus - Agent checks if an IP should be blocked (sync with backend)
   rpc GetBlockStatus(BlockStatusRequest) returns (BlockStatusResponse);
   
+  // GetBlockList - Agent requests current block list for state reconciliation
+  rpc GetBlockList(GetBlockListRequest) returns (GetBlockListResponse);
+  
   // StreamBlockCommands - Backend streams block/unblock commands to agents
   rpc StreamBlockCommands(StreamBlockRequest) returns (stream BlockCommand);
 }
@@ -98,6 +101,26 @@ message BlockStatusResponse {
 message StreamBlockRequest {
   string api_key = 1;
   string client_token = 2;
+}
+
+// GetBlockListRequest - Agent requests current block list for state reconciliation
+message GetBlockListRequest {
+  string api_key = 1;
+  string client_token = 2;
+}
+
+message BlockListEntry {
+  string ip_address = 1;
+  int32 ip_version = 2;
+  int64 duration_seconds = 3;
+  string reason = 4;
+  string block_id = 5;
+  int64 expires_at = 6;  // Unix timestamp
+}
+
+message GetBlockListResponse {
+  repeated BlockListEntry blocks = 1;
+  int64 server_timestamp = 2;
 }
 
 // BlockCommand - Backend sends command to agent
