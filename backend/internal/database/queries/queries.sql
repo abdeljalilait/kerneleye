@@ -395,6 +395,199 @@ SET config = $2,
     updated_at = NOW()
 WHERE id = $1;
 
+-- name: ListAllActiveServers :many
+SELECT id, user_id, hostname, api_key, ip_address, status, agent_version, created_at, last_seen
+FROM servers
+WHERE status = 'active';
+
+-- name: UpdateTrafficScore :exec
+UPDATE traffic_events
+SET threat_score = $3,
+    threat_level = $4,
+    threat_type = $5,
+    updated_at = NOW()
+WHERE server_id = $1 AND source_ip = $2;
+
+-- ============================================
+-- Whitelist Queries
+-- ============================================
+
+-- name: AddToWhitelist :one
+INSERT INTO whitelist (user_id, ip_address, ip_version, reason, is_manual, created_by)
+VALUES ($1, $2, $3, $4, true, $1)
+ON CONFLICT (user_id, ip_address) DO UPDATE SET
+    reason = EXCLUDED.reason,
+    updated_at = NOW(),
+    is_manual = true
+RETURNING *;
+
+-- name: RemoveFromWhitelist :exec
+DELETE FROM whitelist
+WHERE user_id = $1 AND ip_address = $2;
+
+-- name: GetWhitelistByUser :many
+SELECT * FROM whitelist
+WHERE user_id = $1
+ORDER BY created_at DESC;
+
+-- name: IsIPWhitelisted :one
+SELECT EXISTS(
+    SELECT 1 FROM whitelist
+    WHERE user_id = $1 AND ip_address = $2
+) as is_whitelisted;
+
+-- name: IsIPAttackingUserServer :one
+-- Check if an IP has attacked any of the user's servers
+SELECT EXISTS(
+    SELECT 1 FROM traffic_events te
+    JOIN servers s ON te.server_id = s.id
+    WHERE s.user_id = $1 AND te.source_ip = $2
+    LIMIT 1
+) as is_attacking;
+
+-- name: GetWhitelistedIPs :many
+SELECT ip_address FROM whitelist
+WHERE user_id = $1;
+
+-- ============================================
+-- Traffic Aggregation Queries for Backend Scoring
+-- ============================================
+
+-- name: GetTrafficAggregationByIP :many
+-- Aggregates traffic by source_ip over a given time window for scoring
+SELECT 
+    te.source_ip,
+    SUM(te.syn_count)::bigint as syn_count,
+    SUM(te.ack_count)::bigint as ack_count,
+    SUM(te.failed_handshakes)::bigint as failed_handshakes,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    SUM(te.bytes_in)::bigint as bytes_in,
+    SUM(te.bytes_out)::bigint as bytes_out,
+    MAX(te.threat_score)::int as max_threat_score,
+    COUNT(*)::int as event_count,
+    MIN(te.first_seen) as window_start,
+    MAX(te.last_seen) as window_end,
+    te.server_id,
+    COUNT(DISTINCT te.destination_port) as port_count
+FROM traffic_events te
+WHERE te.server_id = $1
+  AND te.last_seen >= $2
+GROUP BY te.source_ip, te.server_id;
+
+-- name: GetHighScoreTraffic :many
+-- Gets IPs with scores above threshold for potential blocking
+SELECT 
+    te.source_ip,
+    MAX(te.threat_score)::int as threat_score,
+    MAX(te.threat_level)::text as threat_level,
+    MAX(te.threat_type)::text as threat_type,
+    COUNT(DISTINCT te.server_id)::int as server_count,
+    MAX(te.last_seen) as last_seen,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports
+FROM traffic_events te
+WHERE te.threat_score >= $1
+  AND te.last_seen >= $2
+GROUP BY te.source_ip
+ORDER BY te.threat_score DESC;
+
+-- name: GetIPTrafficHistory :many
+-- Gets historical traffic for a specific IP across all servers
+SELECT 
+    te.source_ip,
+    te.server_id,
+    s.hostname as server_name,
+    te.syn_count,
+    te.ack_count,
+    te.failed_handshakes,
+    te.unique_ports,
+    te.threat_score,
+    te.threat_level,
+    te.threat_type,
+    te.destination_port,
+    te.protocol,
+    te.direction,
+    te.first_seen,
+    te.last_seen,
+    te.country,
+    te.city,
+    te.isp
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE te.source_ip = $1
+  AND s.user_id = $2
+ORDER BY te.last_seen DESC
+LIMIT $3;
+
+-- name: GetUserHighScoreTraffic :many
+-- Gets high score traffic for all servers owned by user
+SELECT 
+    te.source_ip,
+    MAX(te.threat_score)::int as threat_score,
+    MAX(te.threat_level)::text as threat_level,
+    MAX(te.threat_type)::text as threat_type,
+    s.id as server_id,
+    s.hostname as server_name,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    MAX(te.last_seen) as last_seen,
+    te.country,
+    te.city,
+    te.isp
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.threat_score >= $2
+  AND te.last_seen >= $3
+GROUP BY te.source_ip, te.server_id, s.hostname, te.country, te.city, te.isp
+ORDER BY te.threat_score DESC
+LIMIT $4;
+
+-- name: GetRecentlyActiveIPs :many
+-- Gets IPs that have been active within the time window
+SELECT 
+    te.source_ip,
+    te.server_id,
+    MAX(te.last_seen) as last_seen,
+    COUNT(*)::int as event_count,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.ack_count)::bigint as total_ack,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports
+FROM traffic_events te
+WHERE te.server_id = $1
+  AND te.last_seen >= $2
+GROUP BY te.source_ip, te.server_id;
+
+-- name: GetBlockableIPs :many
+-- Gets IPs that exceed the scoring threshold for potential blocking
+SELECT 
+    te.source_ip,
+    te.server_id,
+    s.hostname as server_name,
+    s.user_id,
+    MAX(te.threat_score)::int as threat_score,
+    MAX(te.threat_level)::text as threat_level,
+    MAX(te.threat_type)::text as threat_type,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.ack_count)::bigint as total_ack,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    COUNT(DISTINCT te.server_id)::int as server_count,
+    MAX(te.last_seen) as last_seen,
+    te.country,
+    te.city,
+    te.isp,
+    te.asn
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE te.last_seen >= $1
+  AND te.threat_score >= $2
+GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.city, te.isp, te.asn
+ORDER BY te.threat_score DESC;
+
 
 -- ============================================
 -- User Polar Integration Queries

@@ -71,7 +71,12 @@ message HeartbeatResponse {
 message ConfigUpdate {
   optional uint32 flush_interval_seconds = 1;
   optional bool enable_udp_monitoring = 2;
-  optional bool enable_blocking = 3; // Phase 2
+  optional bool enable_blocking = 3;
+  
+  // Scoring configuration from agent
+  optional uint32 scoring_threshold_suspicious = 4;
+  optional uint32 scoring_threshold_malicious = 5;
+  optional uint32 scoring_auto_block_threshold = 6;
 }
 
 // ============================================

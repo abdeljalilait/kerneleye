@@ -246,3 +246,16 @@ type UserSubscription struct {
 	Features                       []byte             `json:"features"`
 	CurrentServerCount             int64              `json:"current_server_count"`
 }
+
+// Whitelisted IPs that should never be blocked
+type Whitelist struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	IpAddress netip.Addr         `json:"ip_address"`
+	IpVersion int32              `json:"ip_version"`
+	Reason    pgtype.Text        `json:"reason"`
+	IsManual  bool               `json:"is_manual"`
+	CreatedBy pgtype.UUID        `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}

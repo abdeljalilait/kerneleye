@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	"net"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/kerneleye/backend/internal/analysis"
 	"github.com/kerneleye/backend/internal/api"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/email"
@@ -224,6 +226,17 @@ func main() {
 	protected.Get("/analytics/top-asns", api.HandleGetTopASNs(queries))
 	protected.Get("/analytics/ip-timeline", api.HandleGetSourceIPTimeline(queries))
 
+	// Blocks endpoints
+	protected.Get("/blocks", api.HandleListBlocks(queries))
+	protected.Get("/blocks/stats", api.HandleGetBlockStats(queries))
+	protected.Post("/blocks/:ip/unblock", api.HandleUnblockIP(queries, hub))
+
+	// Whitelist endpoints
+	protected.Get("/whitelist", api.HandleListWhitelist(queries))
+	protected.Post("/whitelist", api.HandleAddToWhitelist(queries, hub))
+	protected.Delete("/whitelist/:ip", api.HandleRemoveFromWhitelist(queries, hub))
+	protected.Get("/whitelist/check", api.HandleCheckWhitelist(queries))
+
 	// Subscription endpoints (Polar)
 	protected.Get("/subscription/plans", api.HandleListPlans(queries))
 	protected.Get("/subscription/status", api.HandleGetSubscriptionStatus(queries))
@@ -251,6 +264,26 @@ func main() {
 			log.Printf("gRPC server error: %v", err)
 		}
 	}()
+
+	// Start scoring worker for accumulated traffic analysis
+	analysisWorker := analysis.NewWorker(analysis.WorkerConfig{
+		Interval:       30 * time.Second,
+		ScoreThreshold: 30,
+		BlockThreshold: 60,
+		TimeWindowMins: 5,
+		MinEvents:      3,
+	}, queries, hub)
+	go analysisWorker.Start(ctx)
+
+	// Start block manager for automatic blocking
+	blockManager := analysis.NewBlockManager(analysis.BlockManagerConfig{
+		AutoBlockEnabled:  true,
+		BlockThreshold:    60,
+		BaseBlockDuration: 1 * time.Hour,
+		MaxBlockDuration:  24 * time.Hour,
+		CheckInterval:     30 * time.Second,
+	}, queries, hub)
+	go blockManager.Start(ctx)
 
 	// Start HTTP server
 	port := os.Getenv("PORT")

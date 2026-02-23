@@ -37,7 +37,8 @@ import {
   DesktopOutlined,
   FlagOutlined,
   ApartmentOutlined,
-  WifiOutlined
+  WifiOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -146,6 +147,22 @@ export function BlockedIPs() {
   // Unblock mutation
   const unblockMutation = useMutation({
     mutationFn: (ip: string) => unblockIP(ip),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['blocks'] });
+    },
+  });
+
+  // Whitelist mutation
+  const whitelistMutation = useMutation({
+    mutationFn: ({ ip, reason }: { ip: string; reason: string }) => 
+      fetch('/api/whitelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip_address: ip, reason }),
+      }).then(res => {
+        if (!res.ok) throw new Error('Failed to whitelist');
+        return res.json();
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['blocks'] });
     },
@@ -581,7 +598,7 @@ export function BlockedIPs() {
             </Descriptions>
 
             {selectedBlock.is_active && (
-              <div className="mt-4">
+              <div className="mt-4 space-y-2">
                 <Popconfirm
                   title="Unblock this IP?"
                   onConfirm={() => {
@@ -597,6 +614,27 @@ export function BlockedIPs() {
                     icon={<UnlockOutlined />}
                   >
                     Unblock IP Address
+                  </Button>
+                </Popconfirm>
+                <Popconfirm
+                  title="Whitelist this IP?"
+                  description="This IP will be added to your whitelist and will never be blocked again. It will also be immediately unblocked."
+                  onConfirm={() => {
+                    whitelistMutation.mutate({ 
+                      ip: selectedBlock.ip_address, 
+                      reason: `False positive - ${selectedBlock.reasons.join(', ')}` 
+                    });
+                    setDrawerVisible(false);
+                  }}
+                >
+                  <Button 
+                    type="default"
+                    block 
+                    size="large"
+                    icon={<CheckCircleOutlined />}
+                    loading={whitelistMutation.isPending}
+                  >
+                    Whitelist & Unblock (False Positive)
                   </Button>
                 </Popconfirm>
               </div>

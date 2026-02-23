@@ -39,6 +39,8 @@ type Aggregator struct {
 	bootTime           time.Time      // System boot time for eBPF timestamp conversion
 	wg                 sync.WaitGroup // Tracks background goroutines for graceful shutdown
 
+	blockCmdClient *BlockCommandClient // Receives block commands from backend
+
 	// Reconnection state
 	reconnectMu       sync.Mutex
 	reconnectCount    int           // Number of reconnection attempts

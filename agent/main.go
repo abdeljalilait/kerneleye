@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -162,6 +163,49 @@ func main() {
 	// Wire the block callback to report blocked IPs via gRPC
 	if remediator != nil {
 		remediator.OnBlock = aggregator.ReportBlockedIP
+	}
+
+	// Initialize block command client to receive commands from backend
+	grpcTarget := buildGRPCTarget(cfg.ServerHost, cfg.GRPCURL)
+	blockCmdClient, err := NewBlockCommandClient(grpcTarget, cfg.APIKey, aggregator.serverID,
+		// OnBlock callback - use remediator directly
+		func(ip string, duration time.Duration, reason string) error {
+			if remediator == nil {
+				return nil
+			}
+			parsedIP := net.ParseIP(ip)
+			if parsedIP == nil {
+				return fmt.Errorf("invalid IP: %s", ip)
+			}
+			if err := remediator.Block(parsedIP, duration); err != nil {
+				return fmt.Errorf("block failed: %w", err)
+			}
+			// Report to backend
+			aggregator.ReportBlockedIP(parsedIP, remediation.ActionBlock, reason, duration)
+			return nil
+		},
+		// OnUnblock callback
+		func(ip string, reason string) error {
+			if remediator == nil {
+				return nil
+			}
+			parsedIP := net.ParseIP(ip)
+			if parsedIP == nil {
+				return fmt.Errorf("invalid IP: %s", ip)
+			}
+			return remediator.Unblock(parsedIP)
+		},
+	)
+	if err != nil {
+		log.Printf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
+	} else {
+		// Start receiving block commands from backend
+		if err := blockCmdClient.Start(context.Background()); err != nil {
+			log.Printf("⚠️  Failed to start block command client: %v", err)
+		} else {
+			aggregator.blockCmdClient = blockCmdClient
+			log.Printf("📡 Block command client connected to backend")
+		}
 	}
 
 	aggregator.StartFlushTimer(10 * time.Second)
