@@ -104,7 +104,9 @@ clean:
 .PHONY: docker-build-backend
 docker-build-backend:
 	@echo "Building backend Docker image..."
-	docker build -f Dockerfile.backend -t $(BACKEND_IMAGE):$(TAG) .
+	docker build -f Dockerfile.backend \
+		--build-arg VERSION=$(shell cat $(BACKEND_DIR)/VERSION 2>/dev/null || echo "0.0.0") \
+		-t $(BACKEND_IMAGE):$(TAG) .
 	@echo "Built: $(BACKEND_IMAGE):$(TAG)"
 
 # Build frontend Docker image
@@ -115,6 +117,9 @@ docker-build-frontend:
 		--build-arg VITE_API_URL=$(VITE_API_URL) \
 		--build-arg VITE_INSTALL_DOMAIN=$(VITE_INSTALL_DOMAIN) \
 		--build-arg VITE_GRPC_HOST=$(VITE_GRPC_HOST) \
+		--build-arg VERSION=$(shell cat $(AGENT_DIR)/VERSION 2>/dev/null || echo "0.0.0") \
+		--build-arg GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
+		--build-arg BUILD_DATE=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ") \
 		-t $(FRONTEND_IMAGE):$(TAG) .
 	@echo "Built: $(FRONTEND_IMAGE):$(TAG)"
 

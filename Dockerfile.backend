@@ -6,6 +6,9 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git
 
+# Version argument (can be overridden at build time)
+ARG VERSION=0.0.0
+
 # Copy proto module first (dependency of backend)
 COPY proto/gen/go /proto/gen/go
 
@@ -24,9 +27,8 @@ RUN go mod edit -replace github.com/kerneleye/proto=/proto/gen/go && \
 COPY backend/ .
 
 # Build the application with version info
-RUN VERSION=$$(cat /app/backend/VERSION 2>/dev/null || echo "0.0.0") && \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
-    -ldflags "-X 'main.AppVersion=$$VERSION'" \
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags "-X 'main.AppVersion=${VERSION}'" \
     -o kerneleye-api ./cmd/api
 
 # Runtime stage
