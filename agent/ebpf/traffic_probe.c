@@ -590,13 +590,18 @@ int tc_ingress(struct __sk_buff *skb) {
     if (ip_end > data_end)
         return TC_ACT_OK;
     
+    // Validate tot_len doesn't exceed actual packet data (prevents malformed packet attacks)
+    __u16 tot_len = bpf_ntohs(ip->tot_len);
+    if (tot_len < (ip->ihl * 4) || tot_len > (u32)(data_end - data))
+        return TC_ACT_OK;
+    
     // Get source IP (remote sender) - convert to HOST byte order
     // This matches connection event IPs, allowing userspace to correlate:
     //   ip_byte_counters[event.saddr] gives bandwidth for that connection's remote IP
     u32 src_ip = bpf_ntohl(ip->saddr);
     
-    // Use IP total length for accurate L3 byte count (excludes L2 headers)
-    u32 pkt_len = bpf_ntohs(ip->tot_len);
+    // Use validated tot_len for accurate L3 byte count (excludes L2 headers)
+    u32 pkt_len = tot_len;
     
     // Lookup or create counter for this IP
     // Race condition handling:
@@ -679,13 +684,18 @@ int tc_egress(struct __sk_buff *skb) {
     if (ip_end > data_end)
         return TC_ACT_OK;
     
+    // Validate tot_len doesn't exceed actual packet data (prevents malformed packet attacks)
+    __u16 tot_len = bpf_ntohs(ip->tot_len);
+    if (tot_len < (ip->ihl * 4) || tot_len > (u32)(data_end - data))
+        return TC_ACT_OK;
+    
     // Get destination IP (remote receiver) - convert to HOST byte order
     // This matches connection event IPs, allowing userspace to correlate:
     //   ip_byte_counters[event.saddr] gives bandwidth for that connection's remote IP
     u32 dst_ip = bpf_ntohl(ip->daddr);
     
-    // Use IP total length for accurate L3 byte count (excludes L2 headers)
-    u32 pkt_len = bpf_ntohs(ip->tot_len);
+    // Use validated tot_len for accurate L3 byte count (excludes L2 headers)
+    u32 pkt_len = tot_len;
     
     // Lookup or create counter for this IP
     // Race condition handling:
