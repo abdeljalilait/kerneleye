@@ -97,12 +97,17 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	ipStr := event.SourceIP.String()
 	now := event.Time
 
-	// 1. Get or Create State (Thread-safe LRU access)
-	state := a.getOrCreateState(ipStr)
+	// Acquire a.mu FIRST to ensure consistent lock ordering (a.mu before state.mu)
+	// This prevents deadlock with prune() which holds a.mu then acquires state.mu
+	a.mu.Lock()
 
-	// 2. Analyze
+	// Get or create state while holding a.mu
+	state := a.getOrCreateStateLocked(ipStr)
+
+	// Now acquire state.mu - we hold a.mu so lock ordering is consistent
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	defer a.mu.Unlock() // Release a.mu after state.mu is released
 
 	if state.blocked {
 		// IP already blocked, skip processing silently
@@ -161,9 +166,6 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	}
 
 	// Double-check threshold with clean map
-	// Note: previous logic had a bulk prune if size > 2*threshold,
-	// but per-event pruning keeps it clean automatically.
-	// We can remove the bulk prune block if we prune every time.
 
 	if uniquePorts > a.config.PortScanThreshold {
 		// RateLimit but don't hard block
@@ -187,10 +189,9 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 	return nil
 }
 
-func (a *Analyzer) getOrCreateState(ip string) *ipState {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
+// getOrCreateStateLocked assumes a.mu is already held by the caller.
+// This enables proper lock ordering when called from Evaluate.
+func (a *Analyzer) getOrCreateStateLocked(ip string) *ipState {
 	// Check exist
 	if elem, ok := a.states[ip]; ok {
 		a.lru.MoveToFront(elem)
