@@ -54,7 +54,8 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 
 	log.Printf("Connecting to gRPC server at %s...", grpcTarget)
 
-	conn, err := grpc.NewClient(grpcTarget, opts...)
+	// Use dns:/// scheme for proper name resolution
+	conn, err := grpc.NewClient("dns:///"+grpcTarget, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to gRPC server: %v", err)
 	}
