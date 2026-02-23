@@ -417,7 +417,7 @@ JOIN servers s ON te.server_id = s.id
 WHERE te.last_seen >= $1
   AND te.threat_score >= $2
 GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.city, te.isp, te.asn
-ORDER BY te.threat_score DESC
+ORDER BY MAX(te.threat_score) DESC
 `
 
 type GetBlockableIPsParams struct {
