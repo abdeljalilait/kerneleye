@@ -85,7 +85,7 @@ func main() {
 		log.Printf("Failed to load eBPF objects: %v", err)
 		log.Println("\n⚠️  eBPF loading failed. Possible causes:")
 		log.Println("  1. Not running as root (try: sudo)")
-		log.Println("  2. Missing kernel capabilities (need: CAP_BPF, CAP_NET_ADMIN)")
+		log.Println("  2. Missing kernel capabilities (need: CAP_BPF, CAP_PERFMON, CAP_NET_ADMIN, CAP_SYS_RESOURCE)")
 		log.Println("  3. eBPF disabled in kernel (check: /proc/sys/kernel/unprivileged_bpf_disabled)")
 		log.Println("\nTo check eBPF status:")
 		log.Println("  cat /proc/sys/kernel/unprivileged_bpf_disabled")

@@ -249,6 +249,29 @@ ls /sys/kernel/btf/vmlinux
 sudo ./kerneleye-agent
 ```
 
+If it works directly but fails under `systemd`, update unit capabilities:
+
+```bash
+sudo systemctl edit kerneleye-agent
+```
+
+Add:
+
+```ini
+[Service]
+LimitMEMLOCK=infinity
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
+```
+
+Then reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart kerneleye-agent
+sudo systemctl status kerneleye-agent
+```
+
 ### "Failed to attach XDP"
 
 ```bash
