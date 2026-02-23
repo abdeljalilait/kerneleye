@@ -170,6 +170,91 @@ stop_agent() {
     fi
 }
 
+setup_directories() {
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$LOG_DIR"
+    mkdir -p "$DATA_DIR"
+
+    # Save configuration
+    cat > "${CONFIG_DIR}/agent.env" <<ENVEOF
+# KernelEye Agent Configuration
+# Generated on $(date)
+
+KERNELEYE_API_KEY="${API_KEY}"
+KERNELEYE_SERVER="${SERVER_HOST}"
+KERNELEYE_GRPC_URL="${GRPC_URL}"
+KERNELEYE_MODE="${MODE}"
+ENVEOF
+    chmod 0600 "${CONFIG_DIR}/agent.env"
+    log_success "Config saved to ${CONFIG_DIR}/agent.env"
+}
+
+create_systemd_service() {
+    if [ "$DAEMON" != "true" ]; then
+        log_info "Foreground mode selected; skipping systemd service creation."
+        return
+    fi
+
+    if [ ! -d /etc/systemd/system ]; then
+        log_warn "systemd not detected. Skipping service creation."
+        return
+    fi
+
+    # Build agent flags based on mode
+    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL} -apikey ${API_KEY}"
+    
+    case "$MODE" in
+        block_ipset|block_hybrid)
+            agent_flags="$agent_flags -enable-remediation"
+            ;;
+    esac
+    
+    case "$MODE" in
+        block_xdp|block_hybrid)
+            agent_flags="$agent_flags -xdp"
+            ;;
+    esac
+
+    cat > /etc/systemd/system/kerneleye-agent.service <<SVCEOF
+[Unit]
+Description=KernelEye Agent - Real-time Linux Security Monitoring
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-${CONFIG_DIR}/agent.env
+ExecStart=${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:${LOG_DIR}/agent.log
+StandardError=append:${LOG_DIR}/agent.log
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=${LOG_DIR} ${DATA_DIR}
+
+# Increase memlock limit for eBPF
+LimitMEMLOCK=infinity
+
+# Required capabilities for eBPF:
+# - CAP_BPF + CAP_PERFMON for loading/attaching tracing programs (kprobe/kretprobe)
+# - CAP_NET_ADMIN for tc/XDP operations
+# - CAP_SYS_RESOURCE for rlimit/memlock adjustments
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RESOURCE
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+    systemctl daemon-reload
+    systemctl enable kerneleye-agent
+    log_success "Systemd service created"
+}
+
 start_agent() {
     if [ -z "$API_KEY" ]; then
         log_warn "No API_KEY provided. Agent not started automatically."
