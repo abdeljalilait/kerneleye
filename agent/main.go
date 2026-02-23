@@ -49,6 +49,9 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	cfg := parseConfig()
 
+	// Print banner immediately to show version on startup
+	printBanner(cfg)
+
 	// Logging setup (agent runs in foreground; systemd manages background lifecycle)
 	if cfg.LogFile != "" {
 		// Ensure log directory exists
