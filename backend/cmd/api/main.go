@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -23,6 +24,8 @@ import (
 	"github.com/kerneleye/backend/internal/payments/polar"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"github.com/kerneleye/shared/scoring"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 )
 
@@ -259,9 +262,13 @@ func main() {
 	pb.RegisterIngestServiceServer(grpcServer, api.NewGrpcIngestHandler(queries, scorer, hub, geoIP))
 	pb.RegisterBlockServiceServer(grpcServer, api.NewBlockHandler(queries, hub, geoIP))
 
+	// Wrap gRPC server with h2c handler for HTTP/2 cleartext support (Traefik compatibility)
+	h2s := &http2.Server{}
+	handler := h2c.NewHandler(grpcServer, h2s)
+
 	go func() {
-		log.Printf("📡 KernelEye gRPC Ingestion listening on port %s\n", grpcPort)
-		if err := grpcServer.Serve(lis); err != nil {
+		log.Printf("📡 KernelEye gRPC Ingestion listening on port %s (h2c enabled)\n", grpcPort)
+		if err := http.Serve(lis, handler); err != nil {
 			log.Printf("gRPC server error: %v", err)
 		}
 	}()

@@ -168,12 +168,25 @@ sudo systemctl enable --now kerneleye-agent
 
 ### Environment Variables
 
-| Variable                   | Default          | Description            |
-| -------------------------- | ---------------- | ---------------------- |
-| `KERNELEYE_API_KEY`        | `demo-key`       | API key from dashboard |
-| `KERNELEYE_SERVER`         | `localhost:8080` | Backend server address |
-| `KERNELEYE_FLUSH_INTERVAL` | `10s`            | Data send interval     |
-| `KERNELEYE_LOG_LEVEL`      | `info`           | Log verbosity          |
+| Variable                   | Default           | Description                              |
+| -------------------------- | ----------------- | ---------------------------------------- |
+| `KERNELEYE_API_KEY`        | `demo-key`        | API key from dashboard                   |
+| `KERNELEYE_SERVER`         | `localhost:8080`  | Backend server address                   |
+| `KERNELEYE_GRPC_URL`       | (derived)         | gRPC server URL (overrides server)       |
+| `KERNELEYE_FLUSH_INTERVAL` | `10s`             | Data send interval                       |
+| `KERNELEYE_LOG_LEVEL`      | `info`            | Log verbosity                            |
+
+**Production gRPC Configuration:**
+
+When connecting to the KernelEye SaaS, the agent uses a dedicated gRPC subdomain:
+
+```bash
+# The agent will automatically use grpc.kerneleye.net for gRPC connections
+export KERNELEYE_SERVER="api.kerneleye.net"
+
+# Or explicitly set the gRPC URL:
+export KERNELEYE_GRPC_URL="grpc.kerneleye.net:443"
+```
 
 ### Analyzer Config
 
