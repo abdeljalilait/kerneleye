@@ -57,8 +57,14 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 
 	confidence := ts.calculateConfidence(windowDuration)
 
-	if windowDuration < 1.0 {
-		windowDuration = 1.0
+	// Use effective window for rate calculations to prevent inflated scores
+	// from short observation windows (e.g., single event in <1 second)
+	effectiveWindow := windowDuration
+	if effectiveWindow < ts.MinWindowDuration.Seconds() {
+		effectiveWindow = ts.MinWindowDuration.Seconds()
+	}
+	if effectiveWindow < 1.0 {
+		effectiveWindow = 1.0
 	}
 
 	if metrics.PreviousScore > 100 {
@@ -67,9 +73,9 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 		metrics.PreviousScore = 0
 	}
 
-	synRate := float64(metrics.SYNCount) / windowDuration
-	failedRate := float64(metrics.FailedHandshakes) / windowDuration
-	connectionRate := float64(metrics.TotalConnections) / windowDuration
+	synRate := float64(metrics.SYNCount) / effectiveWindow
+	failedRate := float64(metrics.FailedHandshakes) / effectiveWindow
+	connectionRate := float64(metrics.TotalConnections) / effectiveWindow
 
 	synComponent := ts.calculateSYNScore(synRate, metrics)
 	portComponent := ts.calculatePortScore(metrics.UniquePorts, connectionRate, windowDuration)
@@ -107,6 +113,25 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 
 	if metrics.PreviousScore > 0 {
 		adjustedScore = (float64(metrics.PreviousScore) * 0.7) + (adjustedScore * 0.3)
+	}
+
+	// Cap score for low-confidence, low-volume events
+	// Single events or very short windows shouldn't trigger high scores
+	totalEvents := metrics.SYNCount + metrics.ACKCount + metrics.FailedHandshakes
+	if confidence < 0.5 && totalEvents < 5 {
+		// Maximum score of 40 for low-confidence, low-volume events
+		maxScore := 40.0
+		if adjustedScore > maxScore {
+			adjustedScore = maxScore
+		}
+	}
+
+	// Outbound connections with low volume should never be considered malicious
+	if metrics.Direction == DirectionOutbound && totalEvents <= 3 {
+		maxScore := 30.0
+		if adjustedScore > maxScore {
+			adjustedScore = maxScore
+		}
 	}
 
 	if adjustedScore > 100 {
@@ -195,7 +220,20 @@ func (ts *ThreatScorer) calculatePortScore(uniquePorts int, connectionRate float
 }
 
 func (ts *ThreatScorer) calculateFailedScore(failedRate float64, metrics IPMetrics) float64 {
-	if failedRate <= ts.FailedHandshakeRate {
+	// Require minimum failed handshakes before scoring (prevents single-event high scores)
+	if metrics.FailedHandshakes < 3 {
+		return 0
+	}
+
+	// Outbound connections are typically legitimate client connections
+	// Be less aggressive with failed handshake scoring for outbound traffic
+	isOutbound := metrics.Direction == DirectionOutbound
+	thresholdMultiplier := 1.0
+	if isOutbound {
+		thresholdMultiplier = 2.0 // Higher threshold for outbound
+	}
+
+	if failedRate <= ts.FailedHandshakeRate*thresholdMultiplier {
 		return 0
 	}
 
@@ -203,20 +241,32 @@ func (ts *ThreatScorer) calculateFailedScore(failedRate float64, metrics IPMetri
 	if totalAttempts > 0 {
 		failureRatio := float64(metrics.FailedHandshakes) / float64(totalAttempts)
 
+		// High success rate means likely legitimate traffic
 		if failureRatio < 0.5 && metrics.EstablishedConnections > 5 {
 			return 0
 		}
 
-		if failedRate > 5.0 && failureRatio > 0.6 {
-			return 5.0 + (failedRate - ts.FailedHandshakeRate)
+		// Only flag as malicious with high failure rate AND high rate
+		if failedRate > 5.0*thresholdMultiplier && failureRatio > 0.6 {
+			base := 3.0
+			if isOutbound {
+				base = 2.0 // Lower base for outbound
+			}
+			return base + (failedRate - ts.FailedHandshakeRate*thresholdMultiplier)
 		}
 
-		if failureRatio > 0.9 {
-			return 5.0 + (failedRate - ts.FailedHandshakeRate)
+		// Extreme failure ratio is suspicious regardless of direction
+		if failureRatio > 0.9 && metrics.FailedHandshakes >= 5 {
+			return 3.0 + (failedRate - ts.FailedHandshakeRate)
 		}
 	}
 
-	return (failedRate - ts.FailedHandshakeRate) * 2.0
+	// Default case: small penalty for moderate failures
+	penalty := (failedRate - ts.FailedHandshakeRate*thresholdMultiplier) * 1.5
+	if isOutbound {
+		penalty *= 0.5 // Halve penalty for outbound
+	}
+	return penalty
 }
 
 func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics) float64 {
