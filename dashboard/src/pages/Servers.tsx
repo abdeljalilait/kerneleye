@@ -88,7 +88,7 @@ export default function Servers() {
               <Button 
                 type="primary" 
                 icon={<Sparkles size={16} />}
-                onClick={() => navigate({ to: '/subscription' })}
+                onClick={() => navigate({ to: '/dashboard/subscription' })}
               >
                 Start Free Trial
               </Button>

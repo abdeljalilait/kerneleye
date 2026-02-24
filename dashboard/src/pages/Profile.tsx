@@ -20,7 +20,6 @@ import {
   Spin,
 } from 'antd';
 import {
-  ArrowLeft,
   User,
   Mail,
   Shield,
@@ -79,14 +78,6 @@ export default function Profile() {
     <div style={{ padding: '24px 48px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <Button
-          icon={<ArrowLeft size={16} />}
-          type="text"
-          onClick={() => navigate({ to: '/dashboard' })}
-          style={{ marginBottom: 16 }}
-        >
-          Back to Dashboard
-        </Button>
         <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
           Profile & Settings
         </Title>
@@ -154,7 +145,7 @@ export default function Profile() {
               <Button
                 block
                 icon={<CreditCard size={16} />}
-                onClick={() => navigate({ to: '/subscription' })}
+                onClick={() => navigate({ to: '/dashboard/subscription' })}
               >
                 Manage Subscription
               </Button>

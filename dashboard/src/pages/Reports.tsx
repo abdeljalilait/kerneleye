@@ -16,7 +16,6 @@ import {
   Spin,
 } from 'antd';
 import {
-  ArrowLeft,
   Calendar,
   Shield,
   AlertTriangle,
@@ -189,14 +188,6 @@ export default function Reports() {
     <div style={{ padding: '24px 48px', maxWidth: 1600, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <Button
-          icon={<ArrowLeft size={16} />}
-          type="text"
-          onClick={() => navigate({ to: '/dashboard' })}
-          style={{ marginBottom: 16 }}
-        >
-          Back to Dashboard
-        </Button>
         <Row justify="space-between" align="middle">
           <Col>
             <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>

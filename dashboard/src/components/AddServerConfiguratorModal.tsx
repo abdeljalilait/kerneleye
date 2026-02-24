@@ -66,7 +66,7 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
             type="primary"
             onClick={() => {
               onClose()
-              navigate({ to: '/subscription' })
+              navigate({ to: '/dashboard/subscription' })
             }}
           >
             View Plans

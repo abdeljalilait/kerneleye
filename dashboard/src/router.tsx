@@ -103,17 +103,15 @@ const alertsRoute = createRoute({
 })
 
 const subscriptionRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/subscription',
+  getParentRoute: () => dashboardRoute,
+  path: 'subscription',
   component: Subscription,
-  beforeLoad: authCheck,
 })
 
 const checkoutSuccessRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/subscription/success',
+  getParentRoute: () => dashboardRoute,
+  path: 'subscription/success',
   component: CheckoutSuccess,
-  beforeLoad: authCheck,
 })
 
 const oauthCallbackRoute = createRoute({
@@ -129,24 +127,21 @@ const forgotPasswordRoute = createRoute({
 })
 
 const profileRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/profile',
+  getParentRoute: () => dashboardRoute,
+  path: 'profile',
   component: Profile,
-  beforeLoad: authCheck,
 })
 
 const reportsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/reports',
+  getParentRoute: () => dashboardRoute,
+  path: 'reports',
   component: Reports,
-  beforeLoad: authCheck,
 })
 
 const visualizerRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/visualizer',
+  getParentRoute: () => dashboardRoute,
+  path: 'visualizer',
   component: Visualizer,
-  beforeLoad: authCheck,
 })
 
 // 3. Register the route tree
@@ -155,17 +150,17 @@ const routeTree = rootRoute.addChildren([
   registerRoute,
   forgotPasswordRoute,
   oauthCallbackRoute,
-  subscriptionRoute,
-  checkoutSuccessRoute,
-  profileRoute,
-  reportsRoute,
-  visualizerRoute,
   dashboardRoute.addChildren([
     overviewRoute,
     serversRoute,
     serverDetailRoute,
     threatsRoute,
     alertsRoute,
+    subscriptionRoute,
+    checkoutSuccessRoute,
+    profileRoute,
+    reportsRoute,
+    visualizerRoute,
   ]),
   indexRoute
 ])

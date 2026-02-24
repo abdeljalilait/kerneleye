@@ -4,7 +4,7 @@ import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography } from 'antd'
 import Header from '../components/Header'
 import { 
   Shield, 
-  Activity, 
+  LayoutDashboard,
   Server, 
   AlertTriangle, 
   LogOut, 
@@ -12,7 +12,7 @@ import {
   ChevronRight,
   User,
   CreditCard,
-  FileBarChart,
+  FileText,
   BarChart3
 } from 'lucide-react'
 import type { MenuProps } from 'antd'
@@ -22,10 +22,10 @@ import { useWebSocket } from '../context/WebSocketContext'
 const { Sider, Content } = Layout
 const { Text } = Typography
 
-const menuItems = [
+const mainMenuItems = [
   {
     key: '/dashboard',
-    icon: <Activity size={18} />,
+    icon: <LayoutDashboard size={18} />,
     label: 'Overview',
   },
   {
@@ -43,13 +43,16 @@ const menuItems = [
     icon: <AlertTriangle size={18} />,
     label: 'Alerts',
   },
+]
+
+const analyticsMenuItems = [
   {
-    key: '/reports',
-    icon: <FileBarChart size={18} />,
+    key: '/dashboard/reports',
+    icon: <FileText size={18} />,
     label: 'Reports',
   },
   {
-    key: '/visualizer',
+    key: '/dashboard/visualizer',
     icon: <BarChart3 size={18} />,
     label: 'Visualizer',
   },
@@ -84,7 +87,8 @@ export default function Dashboard() {
 
   const getSelectedKey = () => {
     const pathname = location.pathname
-    const matched = menuItems.find(item => 
+    const allItems = [...mainMenuItems, ...analyticsMenuItems]
+    const matched = allItems.find(item => 
       pathname === item.key || 
       (item.key !== '/dashboard' && pathname.startsWith(item.key))
     )
@@ -101,13 +105,13 @@ export default function Dashboard() {
       key: 'profile',
       label: 'Profile & Settings',
       icon: <User size={14} />,
-      onClick: () => navigate({ to: '/profile' }),
+      onClick: () => navigate({ to: '/dashboard/profile' }),
     },
     {
       key: 'subscription',
       label: 'Subscription',
       icon: <CreditCard size={14} />,
-      onClick: () => navigate({ to: '/subscription' }),
+      onClick: () => navigate({ to: '/dashboard/subscription' }),
     },
     {
       type: 'divider',
@@ -181,7 +185,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Navigation */}
+        {/* Main Navigation */}
         <div style={{ padding: '16px 12px' }}>
           <Text 
             style={{ 
@@ -194,7 +198,7 @@ export default function Dashboard() {
               fontWeight: 600,
             }}
           >
-            NAVIGATION
+            MAIN
           </Text>
           <Menu
             mode="inline"
@@ -204,7 +208,38 @@ export default function Dashboard() {
               background: 'transparent',
               border: 'none',
             }}
-            items={menuItems.map(item => ({
+            items={mainMenuItems.map(item => ({
+              key: item.key,
+              icon: item.icon,
+              label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
+            }))}
+          />
+        </div>
+
+        {/* Analytics Navigation */}
+        <div style={{ padding: '0 12px' }}>
+          <Text 
+            style={{ 
+              fontSize: 11, 
+              color: 'var(--text-tertiary)', 
+              letterSpacing: '0.1em',
+              marginLeft: collapsed ? 0 : 12,
+              marginBottom: 8,
+              display: collapsed ? 'none' : 'block',
+              fontWeight: 600,
+            }}
+          >
+            ANALYTICS
+          </Text>
+          <Menu
+            mode="inline"
+            selectedKeys={[getSelectedKey()]}
+            inlineCollapsed={collapsed}
+            style={{
+              background: 'transparent',
+              border: 'none',
+            }}
+            items={analyticsMenuItems.map(item => ({
               key: item.key,
               icon: item.icon,
               label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
@@ -298,7 +333,7 @@ export default function Dashboard() {
         }}
       >
         {/* Header */}
-        <Header menuItems={menuItems} />
+        <Header menuItems={[...mainMenuItems, ...analyticsMenuItems]} />
 
         {/* Main Content */}
         <Content

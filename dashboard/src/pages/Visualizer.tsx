@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
   Card,
@@ -17,7 +17,6 @@ import {
   Spin,
 } from 'antd';
 import {
-  ArrowLeft,
   Globe,
   Server,
   Shield,
@@ -44,6 +43,71 @@ import {
   useTopSourceIPs,
   useTopASNs,
 } from '../hooks/useQueries';
+// Import commonly used flags - add more as needed
+import US from 'country-flag-icons/react/3x2/US';
+import GB from 'country-flag-icons/react/3x2/GB';
+import CA from 'country-flag-icons/react/3x2/CA';
+import AU from 'country-flag-icons/react/3x2/AU';
+import DE from 'country-flag-icons/react/3x2/DE';
+import FR from 'country-flag-icons/react/3x2/FR';
+import IT from 'country-flag-icons/react/3x2/IT';
+import ES from 'country-flag-icons/react/3x2/ES';
+import NL from 'country-flag-icons/react/3x2/NL';
+import RU from 'country-flag-icons/react/3x2/RU';
+import CN from 'country-flag-icons/react/3x2/CN';
+import JP from 'country-flag-icons/react/3x2/JP';
+import KR from 'country-flag-icons/react/3x2/KR';
+import IN from 'country-flag-icons/react/3x2/IN';
+import BR from 'country-flag-icons/react/3x2/BR';
+import MX from 'country-flag-icons/react/3x2/MX';
+import SG from 'country-flag-icons/react/3x2/SG';
+import HK from 'country-flag-icons/react/3x2/HK';
+import TW from 'country-flag-icons/react/3x2/TW';
+import CH from 'country-flag-icons/react/3x2/CH';
+import SE from 'country-flag-icons/react/3x2/SE';
+import NO from 'country-flag-icons/react/3x2/NO';
+import DK from 'country-flag-icons/react/3x2/DK';
+import FI from 'country-flag-icons/react/3x2/FI';
+import PL from 'country-flag-icons/react/3x2/PL';
+import CZ from 'country-flag-icons/react/3x2/CZ';
+import AT from 'country-flag-icons/react/3x2/AT';
+import BE from 'country-flag-icons/react/3x2/BE';
+import IE from 'country-flag-icons/react/3x2/IE';
+import PT from 'country-flag-icons/react/3x2/PT';
+import GR from 'country-flag-icons/react/3x2/GR';
+import TR from 'country-flag-icons/react/3x2/TR';
+import UA from 'country-flag-icons/react/3x2/UA';
+import RO from 'country-flag-icons/react/3x2/RO';
+import HU from 'country-flag-icons/react/3x2/HU';
+import IL from 'country-flag-icons/react/3x2/IL';
+import AE from 'country-flag-icons/react/3x2/AE';
+import SA from 'country-flag-icons/react/3x2/SA';
+import ZA from 'country-flag-icons/react/3x2/ZA';
+import NG from 'country-flag-icons/react/3x2/NG';
+import EG from 'country-flag-icons/react/3x2/EG';
+import PK from 'country-flag-icons/react/3x2/PK';
+import BD from 'country-flag-icons/react/3x2/BD';
+import ID from 'country-flag-icons/react/3x2/ID';
+import TH from 'country-flag-icons/react/3x2/TH';
+import VN from 'country-flag-icons/react/3x2/VN';
+import MY from 'country-flag-icons/react/3x2/MY';
+import PH from 'country-flag-icons/react/3x2/PH';
+import NZ from 'country-flag-icons/react/3x2/NZ';
+import CL from 'country-flag-icons/react/3x2/CL';
+import CO from 'country-flag-icons/react/3x2/CO';
+import AR from 'country-flag-icons/react/3x2/AR';
+import PE from 'country-flag-icons/react/3x2/PE';
+import VE from 'country-flag-icons/react/3x2/VE';
+import EC from 'country-flag-icons/react/3x2/EC';
+import UY from 'country-flag-icons/react/3x2/UY';
+import PY from 'country-flag-icons/react/3x2/PY';
+import BO from 'country-flag-icons/react/3x2/BO';
+
+const flagComponents: Record<string, React.FC<{ style?: React.CSSProperties }>> = {
+  US, GB, CA, AU, DE, FR, IT, ES, NL, RU, CN, JP, KR, IN, BR, MX, SG, HK, TW,
+  CH, SE, NO, DK, FI, PL, CZ, AT, BE, IE, PT, GR, TR, UA, RO, HU, IL, AE, SA,
+  ZA, NG, EG, PK, BD, ID, TH, VN, MY, PH, NZ, CL, CO, AR, PE, VE, EC, UY, PY, BO,
+};
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -141,16 +205,15 @@ const normalizeCountryCode = (country: string) => {
   return regionNameToCode.get(value.toLowerCase()) || '';
 };
 
-// Country flag emoji
-const getFlagEmoji = (country: string) => {
-  const countryCode = normalizeCountryCode(country);
-  if (!countryCode) return '🌐';
-
-  const codePoints = countryCode
-    .toUpperCase()
-    .split('')
-    .map((char) => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
+// Country flag component using country-flag-icons
+const CountryFlag = ({ countryCode, size = 16 }: { countryCode: string; size?: number }) => {
+  const code = normalizeCountryCode(countryCode);
+  if (!code) return <span style={{ fontSize: size }}>🌐</span>;
+  
+  const FlagComponent = flagComponents[code];
+  if (!FlagComponent) return <span style={{ fontSize: size }}>🌐</span>;
+  
+  return <FlagComponent style={{ width: size * 1.5, height: size, borderRadius: 2 }} />;
 };
 
 export default function Visualizer() {
@@ -237,14 +300,6 @@ export default function Visualizer() {
     <div style={{ padding: '24px 48px', maxWidth: 1600, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <Button
-          icon={<ArrowLeft size={16} />}
-          type="text"
-          onClick={() => navigate({ to: '/dashboard' })}
-          style={{ marginBottom: 16 }}
-        >
-          Back to Dashboard
-        </Button>
         <Row justify="space-between" align="middle">
           <Col>
             <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
@@ -541,7 +596,7 @@ export default function Visualizer() {
                               {ip.ip}
                             </Text>
                             <Tag color="default" style={{ fontSize: 11 }}>
-                              {getFlagEmoji(ip.countryCode)} {ip.country}
+                              <CountryFlag countryCode={ip.countryCode} size={14} /> {ip.country}
                             </Tag>
                           </Space>
                         </Col>
@@ -775,7 +830,7 @@ export default function Visualizer() {
                       </Col>
                       <Col span={3}>
                         <Tag color="default" style={{ fontSize: 11 }}>
-                        {getFlagEmoji(as.countryCode)} {as.country}
+                        <CountryFlag countryCode={as.countryCode} size={14} /> {as.country}
                         </Tag>
                       </Col>
                       <Col span={6}>

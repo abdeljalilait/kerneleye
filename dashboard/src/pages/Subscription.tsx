@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearch } from '@tanstack/react-router';
 import { Card, Button, Typography, Tag, Spin, Alert, Divider, Row, Col, Statistic, Grid, Space } from 'antd';
-import { Check, ArrowLeft, CreditCard, ExternalLink, Crown, Server, Database, Sparkles } from 'lucide-react';
+import { Check, CreditCard, ExternalLink, Crown, Server, Database, Sparkles } from 'lucide-react';
 import { useSubscriptionPlans, useSubscriptionStatus, useCreateCheckout, useCreateCustomerPortal } from '../hooks/useQueries';
 
 // Polar embedded checkout - loaded via CDN
@@ -85,7 +85,7 @@ const Subscription = () => {
   const handleCheckoutSuccess = useCallback(() => {
     setIsCheckoutOpen(false);
     // Navigate to success page
-    router.navigate({ to: '/subscription/success' });
+    router.navigate({ to: '/dashboard/subscription/success' });
   }, [router]);
 
   const handleCheckoutClose = useCallback(() => {
@@ -178,14 +178,6 @@ const Subscription = () => {
     <div style={{ padding: '24px 48px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <Button 
-          icon={<ArrowLeft size={16} />} 
-          type="text" 
-          onClick={() => router.navigate({ to: '/dashboard' })}
-          style={{ marginBottom: 16 }}
-        >
-          Back to Dashboard
-        </Button>
         <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
           {status?.plan === 'none' ? 'Choose Your Plan' : 'Subscription & Billing'}
         </Title>

@@ -86,7 +86,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentMo
   }
 
   const handleSubscribe = (planName: string) => {
-    navigate({ to: '/subscription', search: { plan: planName } })
+    navigate({ to: '/dashboard/subscription', search: { plan: planName } })
     onClose()
   }
 

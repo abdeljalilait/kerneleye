@@ -203,7 +203,7 @@ export default function Overview() {
               height: '100%',
             }}
             bodyStyle={{ padding: 20, height: '100%' }}
-            onClick={noSubscription ? () => navigate({ to: '/subscription' }) : undefined}
+            onClick={noSubscription ? () => navigate({ to: '/dashboard/subscription' }) : undefined}
           >
             <Space size={16}>
               <div 
