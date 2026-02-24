@@ -188,6 +188,28 @@ struct {
 #endif
 
 // ============================================
+// Ring Buffer for logging blocked attempts
+// ============================================
+
+// Event structure for blocked packet logging
+struct block_event {
+    __u32 src_ip;           // Source IPv4 (0 for IPv6)
+    __u8 src_ip6[16];       // Source IPv6 (filled if IPv6)
+    __u8 ip_version;        // 4 or 6
+    __u16 dest_port;        // Destination port
+    __u8 protocol;         // TCP=6, UDP=17, ICMP=1
+    __u8 reason;           // 1=blocklist, 2=cidr, 3=ratelimit
+    __u64 timestamp_ns;    // Timestamp in nanoseconds
+};
+
+// Ring buffer for blocked packet events
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 4096);  // 4K events buffer
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} xdp_block_events SEC(".maps");
+
+// ============================================
 // Helper Functions
 // ============================================
 
@@ -197,6 +219,27 @@ static __always_inline void update_stats(__u32 idx, __u32 bytes) {
         __sync_fetch_and_add(&stats->packets, 1);
         __sync_fetch_and_add(&stats->bytes, bytes);
     }
+}
+
+// Log blocked packet to ring buffer
+static __always_inline void log_blocked_packet(__u32 src_ip, __u8 *src_ip6, __u8 ip_version, 
+                                              __u16 dest_port, __u8 protocol, __u8 reason) {
+    struct block_event *event = bpf_ringbuf_reserve(&xdp_block_events, sizeof(struct block_event), 0);
+    if (!event) {
+        return;
+    }
+    
+    event->src_ip = src_ip;
+    if (ip_version == 6 && src_ip6) {
+        __builtin_memcpy(event->src_ip6, src_ip6, 16);
+    }
+    event->ip_version = ip_version;
+    event->dest_port = dest_port;
+    event->protocol = protocol;
+    event->reason = reason;
+    event->timestamp_ns = bpf_ktime_get_ns();
+    
+    bpf_ringbuf_submit(event, 0);
 }
 
 // Check if block entry is expired
@@ -384,11 +427,26 @@ int xdp_firewall(struct xdp_md *ctx) {
         }
         
         __u32 src_ip = ip->saddr;
+        __u8 protocol = ip->protocol;
+        __u16 dest_port = 0;
+        
+        // Try to get destination port from TCP/UDP header
+        void *l4_start = (void *)ip + (ip->ihl * 4);
+        if (l4_start + 4 <= data_end) {
+            if (protocol == 6) { // TCP
+                struct tcphdr *tcp = l4_start;
+                dest_port = bpf_ntohs(tcp->dest);
+            } else if (protocol == 17) { // UDP
+                struct udphdr *udp = l4_start;
+                dest_port = bpf_ntohs(udp->dest);
+            }
+        }
         
         // Check 1: IP blocklist (exact match)
         struct block_entry *entry = bpf_map_lookup_elem(&xdp_blocklist, &src_ip);
         if (entry && !is_expired(entry)) {
             update_stats(STATS_DROPPED, pkt_len);
+            log_blocked_packet(src_ip, NULL, 4, dest_port, protocol, 1); // reason 1 = blocklist
             return XDP_DROP;
         }
         
@@ -396,6 +454,7 @@ int xdp_firewall(struct xdp_md *ctx) {
         // Check 2: CIDR range blocklist
         if (check_cidr_block(src_ip)) {
             update_stats(STATS_DROPPED, pkt_len);
+            log_blocked_packet(src_ip, NULL, 4, dest_port, protocol, 2); // reason 2 = cidr
             return XDP_DROP;
         }
 #endif
@@ -404,6 +463,7 @@ int xdp_firewall(struct xdp_md *ctx) {
         // Check 3: Rate limiting
         if (check_rate_limit(src_ip, pkt_len)) {
             update_stats(STATS_RATELIMIT, pkt_len);
+            log_blocked_packet(src_ip, NULL, 4, dest_port, protocol, 3); // reason 3 = ratelimit
             return XDP_DROP;
         }
 #endif

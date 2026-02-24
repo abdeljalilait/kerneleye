@@ -71,6 +71,7 @@ type xdpObjects struct {
 	XdpCidrBlocklist *ebpf.Map     `ebpf:"xdp_cidr_blocklist"`
 	XdpRateLimit     *ebpf.Map     `ebpf:"xdp_rate_limit"`
 	XdpRateConfig    *ebpf.Map     `ebpf:"xdp_rate_config"`
+	XdpBlockEvents   *ebpf.Map     `ebpf:"xdp_block_events"`
 }
 
 // XDPConfig options for XDP remediator
