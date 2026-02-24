@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/geoip"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
@@ -515,4 +516,104 @@ func getServiceFromPort(port int) string {
 	default:
 		return "TCP"
 	}
+}
+
+func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.BlockedIPEvent) (*pb.BlockedIPResponse, error) {
+	// Validate API key
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
+	if err != nil {
+		log.Printf("[gRPC ReportBlockedIP] API key validation failed: %v", err)
+		return nil, status.Errorf(codes.Unauthenticated, "Invalid API Key")
+	}
+
+	log.Printf("[gRPC ReportBlockedIP] Received block event from server_id=%s ip=%s action=%v duration=%ds reason=%s",
+		server.ID.String(), req.IpAddress, req.Action, req.DurationSeconds, req.Reason)
+
+	// Parse IP address
+	ipAddr, err := netip.ParseAddr(req.IpAddress)
+	if err != nil {
+		log.Printf("[gRPC ReportBlockedIP] Invalid IP address: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid IP address")
+	}
+
+	// Determine if this is an auto-block
+	isAutoBlocked := true
+	if req.Action == pb.BlockAction_BLOCK_ACTION_ALLOW {
+		isAutoBlocked = false
+	}
+
+	// Calculate expiry time
+	var expiresAt pgtype.Timestamptz
+	if req.DurationSeconds > 0 {
+		expiresAt = pgtype.Timestamptz{
+			Time:  time.Now().Add(time.Duration(req.DurationSeconds) * time.Second),
+			Valid: true,
+		}
+	}
+
+	// Get GeoIP info if available
+	var country, countryCodeISO, city, isp string
+	var asn int32
+	var isVPN, isTor, isDatacenter bool
+	if h.geoIP != nil {
+		country, countryCodeISO, city, isp, _ = h.geoIP.Lookup(req.IpAddress)
+	}
+
+	// Map IP version
+	ipVersion := int32(4)
+	if ipAddr.Is6() {
+		ipVersion = 6
+	}
+
+	// Create block record in database
+	block, err := h.queries.CreateBlock(ctx, database.CreateBlockParams{
+		ServerID:        server.ID,
+		UserID:          server.UserID,
+		IpAddress:       ipAddr,
+		IpVersion:       pgtype.Int4{Int32: ipVersion, Valid: true},
+		ThreatScore:     100, // High score for auto-blocked
+		ThreatLevel:     "malicious",
+		Reasons:         []string{req.Reason},
+		TargetPort:      pgtype.Int4{Valid: false},
+		ServiceName:     pgtype.Text{Valid: false},
+		Protocol:        pgtype.Text{String: "TCP", Valid: true},
+		CountryCode:     pgtype.Text{String: countryCodeISO, Valid: countryCodeISO != ""},
+		CountryName:     pgtype.Text{String: country, Valid: country != ""},
+		City:            pgtype.Text{String: city, Valid: city != ""},
+		Region:          pgtype.Text{Valid: false},
+		Latitude:        pgtype.Float8{Valid: false},
+		Longitude:       pgtype.Float8{Valid: false},
+		Asn:             pgtype.Int4{Int32: asn, Valid: asn > 0},
+		AsnOrg:          pgtype.Text{String: isp, Valid: isp != ""},
+		IsVpn:           pgtype.Bool{Bool: isVPN, Valid: true},
+		IsTor:           pgtype.Bool{Bool: isTor, Valid: true},
+		IsDatacenter:    pgtype.Bool{Bool: isDatacenter, Valid: true},
+		BlockedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		ExpiresAt:       expiresAt,
+		DurationSeconds: int32(req.DurationSeconds),
+		IsAutoBlocked:   pgtype.Bool{Bool: isAutoBlocked, Valid: true},
+		AgentVersion:    database.ToPgText(""),
+		RawMetrics:      nil,
+	})
+
+	if err != nil {
+		log.Printf("[gRPC ReportBlockedIP] Failed to create block record: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to record blocked IP")
+	}
+
+	log.Printf("[gRPC ReportBlockedIP] Created block record id=%s for server_id=%s ip=%s",
+		block.ID.String(), server.ID.String(), req.IpAddress)
+
+	// Broadcast to connected clients
+	h.hub.Broadcast(server.UserID.String(), "new_block", map[string]any{
+		"server_id":       server.ID.String(),
+		"ip_address":      req.IpAddress,
+		"reason":          req.Reason,
+		"duration":        req.DurationSeconds,
+		"is_auto_blocked": isAutoBlocked,
+	})
+
+	return &pb.BlockedIPResponse{
+		Success: true,
+	}, nil
 }
