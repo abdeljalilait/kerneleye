@@ -8,6 +8,13 @@ import { useEffect, useState, useMemo } from 'react'
 
 const { Title, Text } = Typography
 
+const formatDate = (date: string | null | undefined): string => {
+  if (!date) return '-'
+  const d = new Date(date)
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000 || d.getFullYear() > 2100) return '-'
+  return d.toLocaleString()
+}
+
 interface TrafficEvent {
   id: string
   source_ip: string
@@ -270,7 +277,7 @@ export default function ServerDetail() {
       title: 'Last Seen',
       dataIndex: 'last_seen',
       key: 'time',
-      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{new Date(date).toLocaleString()}</Text>,
+      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{formatDate(date)}</Text>,
       width: 170,
       sorter: (a, b) => new Date(a.last_seen).getTime() - new Date(b.last_seen).getTime(),
       defaultSortOrder: 'descend',
@@ -366,7 +373,7 @@ export default function ServerDetail() {
       dataIndex: 'last_seen',
       key: 'last_seen',
       width: 160,
-      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{new Date(date).toLocaleString()}</Text>,
+      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{formatDate(date)}</Text>,
     },
   ]
 

@@ -13,6 +13,7 @@ type EBPFResources struct {
 	KpClose       link.Link
 	KpSetState    link.Link
 	KpUdpRecv     link.Link
+	KpConnRequest link.Link // TCP connection request (incoming SYN)
 	IngressFilter *netlink.BpfFilter
 	EgressFilter  *netlink.BpfFilter
 }
@@ -40,6 +41,9 @@ func (r *EBPFResources) Close() {
 	if r.KpAccept != nil {
 		r.KpAccept.Close()
 	}
+	if r.KpConnRequest != nil {
+		r.KpConnRequest.Close()
+	}
 	if r.Objects != nil {
 		r.Objects.Close()
 	}
@@ -58,6 +62,13 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 	if err != nil {
 		res.Close()
 		return nil, err
+	}
+
+	// TCP Connection Request (incoming SYN - detects inbound attacks like brute force)
+	res.KpConnRequest, err = link.Kprobe("tcp_v4_conn_request", res.Objects.DetectTcpConnRequest, nil)
+	if err != nil {
+		Logger.Warnf("⚠️  tcp_v4_conn_request probe not available (non-critical): %v", err)
+		// Non-fatal: accept-based detection still works
 	}
 
 	// TCP Connect (outgoing connections - SYN sent)

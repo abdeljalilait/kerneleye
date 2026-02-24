@@ -189,12 +189,24 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 			sourceIP = stats.LocalIP // Our server
 			destIP = ip              // Remote server we connected to
 		}
+		// Validate timestamps - use current time if invalid (not within reasonable range)
+		firstSeen := stats.FirstSeen
+		lastSeen := stats.LastSeen
+		now := time.Now()
+		oneYearAgo := now.AddDate(-1, 0, 0)
+		oneYearFromNow := now.AddDate(1, 0, 0)
+		if firstSeen.Before(oneYearAgo) || firstSeen.After(oneYearFromNow) {
+			firstSeen = now
+		}
+		if lastSeen.Before(oneYearAgo) || lastSeen.After(oneYearFromNow) {
+			lastSeen = now
+		}
 		pbEvents = append(pbEvents, &pb.ConnectionEvent{
 			SourceIp: sourceIP, DestinationIp: destIP, DestinationPort: uint32(primaryPort),
 			Protocol: getProtocolFromNumber(stats.Protocol), SynCount: uint32(stats.SYNCount),
 			AckCount: uint32(stats.ACKCount), FailedHandshakes: uint32(stats.FailedHandshakes),
 			BytesIn: stats.BytesIn, BytesOut: stats.BytesOut,
-			FirstSeen: timestamppb.New(stats.FirstSeen), LastSeen: timestamppb.New(stats.LastSeen),
+			FirstSeen: timestamppb.New(firstSeen), LastSeen: timestamppb.New(lastSeen),
 			UniquePortsCount: uint32(len(stats.UniquePorts)), PortsAccessed: portsAccessed,
 			Direction: pb.Direction(stats.Direction + 1),
 		})
