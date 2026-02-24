@@ -404,8 +404,7 @@ WHERE status = 'active';
 UPDATE traffic_events
 SET threat_score = $3,
     threat_level = $4,
-    threat_type = $5,
-    updated_at = NOW()
+    threat_type = $5
 WHERE server_id = $1 AND source_ip = $2;
 
 -- ============================================
@@ -632,5 +631,4 @@ UPDATE users
 SET polar_customer_id = $2,
     updated_at = NOW()
 WHERE id = $1;
-
 

@@ -2418,8 +2418,7 @@ const updateTrafficScore = `-- name: UpdateTrafficScore :exec
 UPDATE traffic_events
 SET threat_score = $3,
     threat_level = $4,
-    threat_type = $5,
-    updated_at = NOW()
+    threat_type = $5
 WHERE server_id = $1 AND source_ip = $2
 `
 

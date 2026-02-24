@@ -147,52 +147,50 @@ func main() {
 		remediator.OnBlock = aggregator.ReportBlockedIP
 	}
 
-	// Initialize block command client to receive commands from backend
-	// Pass the shared gRPC connection from aggregator
-	blockCmdClient, err := NewBlockCommandClient(aggregator.GetGRPCConn(), cfg.APIKey, aggregator.ServerID(),
-		// OnBlock callback - use remediator directly
-		func(ip string, duration time.Duration, reason string) error {
-			if remediator == nil {
+	if remediator != nil {
+		// Initialize block command client to receive commands from backend.
+		// Only enable this stream when remediation is active.
+		blockCmdClient, err := NewBlockCommandClient(aggregator.GetGRPCConn(), cfg.APIKey, aggregator.ServerID(),
+			// OnBlock callback - use remediator directly
+			func(ip string, duration time.Duration, reason string) error {
+				parsedIP := net.ParseIP(ip)
+				if parsedIP == nil {
+					return fmt.Errorf("invalid IP: %s", ip)
+				}
+				if err := remediator.Block(parsedIP, duration); err != nil {
+					return fmt.Errorf("block failed: %w", err)
+				}
+				// Report to backend
+				aggregator.ReportBlockedIP(parsedIP, remediation.ActionBlock, reason, duration)
 				return nil
-			}
-			parsedIP := net.ParseIP(ip)
-			if parsedIP == nil {
-				return fmt.Errorf("invalid IP: %s", ip)
-			}
-			if err := remediator.Block(parsedIP, duration); err != nil {
-				return fmt.Errorf("block failed: %w", err)
-			}
-			// Report to backend
-			aggregator.ReportBlockedIP(parsedIP, remediation.ActionBlock, reason, duration)
-			return nil
-		},
-		// OnUnblock callback
-		func(ip string, reason string) error {
-			if remediator == nil {
-				return nil
-			}
-			parsedIP := net.ParseIP(ip)
-			if parsedIP == nil {
-				return fmt.Errorf("invalid IP: %s", ip)
-			}
-			return remediator.Unblock(parsedIP)
-		},
-	)
-	if err != nil {
-		Logger.Warnf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
-	} else {
-		// Start receiving block commands from backend
-		if err := blockCmdClient.Start(context.Background()); err != nil {
-			Logger.Warnf("⚠️  Failed to start block command client: %v", err)
+			},
+			// OnUnblock callback
+			func(ip string, reason string) error {
+				parsedIP := net.ParseIP(ip)
+				if parsedIP == nil {
+					return fmt.Errorf("invalid IP: %s", ip)
+				}
+				return remediator.Unblock(parsedIP)
+			},
+		)
+		if err != nil {
+			Logger.Warnf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
 		} else {
-			aggregator.SetBlockCommandClient(blockCmdClient)
-			Logger.Info("📡 Block command client connected to backend")
+			// Start receiving block commands from backend
+			if err := blockCmdClient.Start(context.Background()); err != nil {
+				Logger.Warnf("⚠️  Failed to start block command client: %v", err)
+			} else {
+				aggregator.SetBlockCommandClient(blockCmdClient)
+				Logger.Info("📡 Block command client connected to backend")
 
-			// Sync block list from backend for state reconciliation
-			if err := blockCmdClient.SyncBlockList(context.Background()); err != nil {
-				Logger.Warnf("⚠️  Failed to sync block list: %v", err)
+				// Sync block list from backend for state reconciliation
+				if err := blockCmdClient.SyncBlockList(context.Background()); err != nil {
+					Logger.Warnf("⚠️  Failed to sync block list: %v", err)
+				}
 			}
 		}
+	} else {
+		Logger.Info("ℹ️  Block command stream disabled because remediation is not enabled")
 	}
 
 	aggregator.StartFlushTimer(10 * time.Second)
