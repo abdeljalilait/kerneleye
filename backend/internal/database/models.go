@@ -199,7 +199,6 @@ type TrafficEvent struct {
 	LastSeen         pgtype.Timestamptz `json:"last_seen"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	Country          pgtype.Text        `json:"country"`
-	CountryCode      pgtype.Text        `json:"country_code"`
 	City             pgtype.Text        `json:"city"`
 	Isp              pgtype.Text        `json:"isp"`
 	HitCount         int32              `json:"hit_count"`
@@ -207,6 +206,7 @@ type TrafficEvent struct {
 	DestinationIp    *netip.Addr        `json:"destination_ip"`
 	Asn              pgtype.Text        `json:"asn"`
 	ThreatType       pgtype.Text        `json:"threat_type"`
+	CountryCode      pgtype.Text        `json:"country_code"`
 }
 
 // KernelEye customer accounts

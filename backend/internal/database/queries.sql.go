@@ -2171,7 +2171,7 @@ func (q *Queries) ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]
 }
 
 const listThreats = `-- name: ListThreats :many
-SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type FROM traffic_events te
+SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type, te.country_code FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1 
   AND te.threat_level IN ('suspicious', 'malicious')
@@ -2218,6 +2218,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 			&i.DestinationIp,
 			&i.Asn,
 			&i.ThreatType,
+			&i.CountryCode,
 		); err != nil {
 			return nil, err
 		}
@@ -2230,7 +2231,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 }
 
 const listTrafficEventsByServer = `-- name: ListTrafficEventsByServer :many
-SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type FROM traffic_events
+SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code FROM traffic_events
 WHERE server_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -2275,6 +2276,7 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 			&i.DestinationIp,
 			&i.Asn,
 			&i.ThreatType,
+			&i.CountryCode,
 		); err != nil {
 			return nil, err
 		}
@@ -2570,7 +2572,7 @@ INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
     syn_count, ack_count, failed_handshakes, unique_ports,
     bytes_in, bytes_out, threat_score, threat_level, threat_type,
-    first_seen, last_seen, country, city, isp, asn, hit_count
+    first_seen, last_seen, country, country_code, city, isp, asn, hit_count
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
@@ -2590,7 +2592,7 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     END,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
-RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, country_code, city, isp, hit_count, direction, destination_ip, asn, threat_type
+RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code
 `
 
 type UpsertTrafficEventParams struct {
@@ -2662,7 +2664,6 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.LastSeen,
 		&i.CreatedAt,
 		&i.Country,
-		&i.CountryCode,
 		&i.City,
 		&i.Isp,
 		&i.HitCount,
@@ -2670,6 +2671,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.DestinationIp,
 		&i.Asn,
 		&i.ThreatType,
+		&i.CountryCode,
 	)
 	return i, err
 }

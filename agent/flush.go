@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +15,19 @@ import (
 type scoredMetrics struct {
 	Score   scoring.ThreatScore
 	Metrics scoring.IPMetrics
+}
+
+func isFullyAccepted(resp *pb.TrafficResponse, submitted int) (bool, string) {
+	if resp == nil {
+		return false, "empty response"
+	}
+	if !resp.Success {
+		return false, resp.Message
+	}
+	if resp.EventsProcessed != uint64(submitted) {
+		return false, fmt.Sprintf("partial processing: processed=%d submitted=%d message=%q", resp.EventsProcessed, submitted, resp.Message)
+	}
+	return true, ""
 }
 
 // FlushToAPI sends aggregated stats to the backend with fault tolerance
@@ -111,7 +125,7 @@ func (a *Aggregator) FlushToAPI() {
 		return
 	}
 
-	if resp.Success {
+	if ok, reason := isFullyAccepted(resp, len(pbEvents)); ok {
 		totalSyn := 0
 		totalAck := 0
 		totalFailed := 0
@@ -124,7 +138,7 @@ func (a *Aggregator) FlushToAPI() {
 			len(pbEvents), len(pbEvents), totalSyn, totalAck, totalFailed)
 		a.stats.Clear() // Thread-safe clear
 	} else {
-		Logger.Error("❌ gRPC API returned failure: %s", resp.Message)
+		Logger.Errorf("❌ gRPC API did not fully accept batch, buffering %d events: %s", len(pbEvents), reason)
 		a.bufferEvents(pbEvents)
 	}
 }
@@ -178,9 +192,12 @@ func (a *Aggregator) retryPendingBatches() {
 			return // Stop on first failure - backend still down
 		}
 
-		if resp.Success {
+		if ok, reason := isFullyAccepted(resp, len(p.Batch.Events)); ok {
 			sentIDs = append(sentIDs, p.ID)
 			Logger.Infof("✅ Sent pending batch %d (%d events)", p.ID, len(p.Batch.Events))
+		} else {
+			Logger.Errorf("❌ Pending batch %d was not fully accepted, keeping buffered: %s", p.ID, reason)
+			return
 		}
 	}
 

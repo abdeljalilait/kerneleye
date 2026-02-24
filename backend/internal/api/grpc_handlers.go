@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/netip"
 	"time"
@@ -331,9 +332,16 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 	log.Printf("[gRPC Traffic] Processed batch for server_id=%s processed=%d dropped=%d",
 		server.ID.String(), eventsProcessed, uint64(len(req.Events))-eventsProcessed)
 
+	dropped := uint64(len(req.Events)) - eventsProcessed
+	success := dropped == 0
+	message := "Traffic data processed"
+	if !success {
+		message = fmt.Sprintf("Traffic batch partially processed: processed=%d dropped=%d", eventsProcessed, dropped)
+	}
+
 	return &pb.TrafficResponse{
-		Success:         true,
-		Message:         "Traffic data processed",
+		Success:         success,
+		Message:         message,
 		EventsProcessed: eventsProcessed,
 	}, nil
 }
