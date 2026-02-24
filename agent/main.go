@@ -46,15 +46,15 @@ func main() {
 
 	cfg := parseConfig()
 
-	// Print banner immediately to show version on startup
-	printBanner(cfg)
-
-	// Initialize zap logger
+	// Initialize zap logger BEFORE any logging
 	debug := os.Getenv("KERNELEYE_DEBUG") == "true"
 	if err := initLogger(debug); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  Failed to initialize logger: %v\n", err)
 	}
 	defer SyncLogger()
+
+	// Print banner immediately to show version on startup
+	printBanner(cfg)
 
 	if cfg.APIKey == "" {
 		Logger.Fatal("KERNELEYE_API_KEY is required.")
