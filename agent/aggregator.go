@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -87,7 +86,7 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 	// Cache public IP once at startup, fall back to local IP
 	cachedPublicIP := getPublicIP()
 	if cachedPublicIP == "" {
-		log.Printf("⚠️  Could not detect public IP, falling back to local IP")
+		Logger.Warn("⚠️  Could not detect public IP, falling back to local IP")
 		for ip := range serverIPs {
 			cachedPublicIP = ip
 			break
@@ -98,7 +97,7 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 	bootTime := getBootTime()
 	serverID := extractServerIDFromAPIKey(apiKey)
 	if serverID == "" {
-		log.Printf("⚠️  Could not extract server UUID from API key; server_id will be omitted in block reports")
+		Logger.Warn("⚠️  Could not extract server UUID from API key; server_id will be omitted in block reports")
 	}
 
 	agg := &Aggregator{
@@ -227,11 +226,11 @@ func (a *Aggregator) ProcessEvent(event Event) {
 			switch decision.Action {
 			case remediation.ActionBlock:
 				if err := a.remediator.Block(decision.IP, decision.Duration); err != nil {
-					log.Printf("❌ Failed to block IP %s: %v", decision.IP, err)
+					Logger.Errorf("❌ Failed to block IP %s: %v", decision.IP, err)
 				}
 			case remediation.ActionRateLimit:
 				if err := a.remediator.RateLimit(decision.IP, decision.Duration); err != nil {
-					log.Printf("❌ Failed to rate-limit IP %s: %v", decision.IP, err)
+					Logger.Errorf("❌ Failed to rate-limit IP %s: %v", decision.IP, err)
 				}
 			}
 		}
@@ -267,7 +266,7 @@ func (a *Aggregator) SendHeartbeat() {
 	client := a.grpcClient
 	if client == nil {
 		a.grpcMu.RUnlock()
-		log.Printf("⚠️  gRPC client not initialized, skipping heartbeat")
+		Logger.Warn("⚠️  gRPC client not initialized, skipping heartbeat")
 		a.scheduleReconnect()
 		return
 	}
@@ -276,12 +275,12 @@ func (a *Aggregator) SendHeartbeat() {
 	})
 	a.grpcMu.RUnlock()
 	if err != nil {
-		log.Printf("❌ gRPC heartbeat error: %v", err)
+		Logger.Errorf("❌ gRPC heartbeat error: %v", err)
 		a.scheduleReconnect()
 		return
 	}
 	if !resp.Success {
-		log.Printf("⚠️  Server status: %s - Agent will exit", resp.Message)
+		Logger.Warnf("⚠️  Server status: %s - Agent will exit", resp.Message)
 		a.Stop()
 	}
 }
@@ -314,7 +313,7 @@ func (a *Aggregator) checkConnection() {
 	state := conn.GetState()
 	a.grpcMu.RUnlock()
 	if state == connectivity.TransientFailure || state == connectivity.Shutdown {
-		log.Printf("🔄 gRPC connection state: %v - attempting reconnect", state)
+		Logger.Infof("🔄 gRPC connection state: %v - attempting reconnect", state)
 		a.scheduleReconnect()
 	}
 }
@@ -339,7 +338,7 @@ func (a *Aggregator) scheduleReconnect() {
 	a.reconnecting = true
 	a.reconnectMu.Unlock()
 
-	log.Printf("⏳ Scheduling reconnection attempt %d in %v", attempt, delay)
+	Logger.Infof("⏳ Scheduling reconnection attempt %d in %v", attempt, delay)
 
 	go func() {
 		select {
@@ -356,12 +355,12 @@ func (a *Aggregator) scheduleReconnect() {
 
 // attemptReconnect tries to reconnect to the gRPC server
 func (a *Aggregator) attemptReconnect(attempt int) {
-	log.Printf("🔄 Attempting to reconnect to gRPC server %s (attempt %d)...", a.grpcURL, attempt)
+	Logger.Infof("🔄 Attempting to reconnect to gRPC server %s (attempt %d)...", a.grpcURL, attempt)
 
 	// Create new connection
 	conn, err := grpc.NewClient(grpcDialTargetPrefix+a.grpcURL, buildGRPCOpts(a.grpcURL)...)
 	if err != nil {
-		log.Printf("❌ Failed to create new gRPC connection: %v", err)
+		Logger.Errorf("❌ Failed to create new gRPC connection: %v", err)
 		a.reconnectMu.Lock()
 		a.reconnecting = false
 		a.reconnectMu.Unlock()
@@ -379,7 +378,7 @@ func (a *Aggregator) attemptReconnect(attempt int) {
 	})
 
 	if err != nil {
-		log.Printf("❌ Reconnection test failed: %v", err)
+		Logger.Errorf("❌ Reconnection test failed: %v", err)
 		conn.Close()
 		a.reconnectMu.Lock()
 		a.reconnecting = false
@@ -408,7 +407,7 @@ func (a *Aggregator) attemptReconnect(attempt int) {
 	a.reconnecting = false
 	a.reconnectMu.Unlock()
 
-	log.Printf("✅ Successfully reconnected to gRPC server")
+	Logger.Info("✅ Successfully reconnected to gRPC server")
 }
 
 // Stop signals the aggregator to stop
@@ -444,7 +443,7 @@ func (a *Aggregator) Close() error {
 	a.grpcMu.Lock()
 	if a.grpcConn != nil {
 		if err := a.grpcConn.Close(); err != nil {
-			log.Printf("⚠️  Error closing gRPC connection: %v", err)
+			Logger.Warnf("⚠️  Error closing gRPC connection: %v", err)
 		}
 		a.grpcConn = nil
 		a.grpcClient = nil
@@ -454,7 +453,7 @@ func (a *Aggregator) Close() error {
 	// Close buffer database
 	if a.buffer != nil {
 		if err := a.buffer.Close(); err != nil {
-			log.Printf("⚠️  Error closing buffer DB: %v", err)
+			Logger.Warnf("⚠️  Error closing buffer DB: %v", err)
 		}
 	}
 
@@ -494,7 +493,7 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 		client := a.grpcClient
 		if client == nil {
 			a.grpcMu.RUnlock()
-			log.Printf("⚠️  gRPC client not initialized, cannot report blocked IP")
+			Logger.Warn("⚠️  gRPC client not initialized, cannot report blocked IP")
 			a.scheduleReconnect()
 			return
 		}
@@ -504,14 +503,14 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 		a.grpcMu.RUnlock()
 		cancel()
 		if err == nil {
-			log.Printf("📡 Reported blocked IP %s (%s) to backend", ip, action)
+			Logger.Infof("📡 Reported blocked IP %s (%s) to backend", ip, action)
 			return
 		}
-		log.Printf("⚠️  Attempt %d/3 failed to report blocked IP %s: %v", attempt+1, ip, err)
+		Logger.Warnf("⚠️  Attempt %d/3 failed to report blocked IP %s: %v", attempt+1, ip, err)
 		if attempt < 2 {
 			time.Sleep(time.Duration(1<<attempt) * time.Second) // 1s, 2s backoff
 		}
 	}
 	a.scheduleReconnect()
-	log.Printf("❌ Failed to report blocked IP %s after 3 attempts: %v", ip, err)
+	Logger.Errorf("❌ Failed to report blocked IP %s after 3 attempts: %v", ip, err)
 }

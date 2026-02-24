@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -77,7 +76,7 @@ func (r *IPSetRemediator) Setup() error {
 
 	// Create persistence directory
 	if err := os.MkdirAll(persistDir, 0755); err != nil {
-		log.Printf("⚠️  Cannot create persist dir %s: %v", persistDir, err)
+		logger.Warnf("⚠️  Cannot create persist dir %s: %v", persistDir, err)
 	}
 
 	// Create ipsets with optimized settings
@@ -94,10 +93,10 @@ func (r *IPSetRemediator) Setup() error {
 
 	// Restore previous state if exists
 	if err := r.Restore(); err != nil {
-		log.Printf("⚠️  Failed to restore ipset state: %v", err)
+		logger.Warnf("⚠️  Failed to restore ipset state: %v", err)
 	}
 
-	log.Printf("✅ IPSet remediator ready (blocklist: %s)", blockSet)
+	logger.Infof("✅ IPSet remediator ready (blocklist: %s)", blockSet)
 	return nil
 }
 
@@ -111,7 +110,7 @@ func (r *IPSetRemediator) checkDependencies() error {
 
 	// Check for ip6tables (optional)
 	if _, err := exec.LookPath("ip6tables"); err != nil {
-		log.Printf("⚠️  ip6tables not found, IPv6 blocking disabled")
+		logger.Info("⚠️  ip6tables not found, IPv6 blocking disabled")
 	}
 
 	return nil
@@ -183,16 +182,16 @@ func (r *IPSetRemediator) setupIPTables() error {
 	// Also hook into FORWARD chain for container/bridge traffic
 	if !r.ruleExists("FORWARD", "-j", chainName) {
 		if err := r.Runner("iptables", "-I", "FORWARD", "1", "-j", chainName); err != nil {
-			log.Printf("⚠️  Cannot add FORWARD rule: %v", err)
+			logger.Warnf("⚠️  Cannot add FORWARD rule: %v", err)
 		}
 	}
 
 	// Docker support: hook into DOCKER-USER if exists
 	if r.chainExists(dockerChain) && !r.ruleExists(dockerChain, "-j", chainName) {
 		if err := r.Runner("iptables", "-I", dockerChain, "1", "-j", chainName); err != nil {
-			log.Printf("⚠️  Cannot add DOCKER-USER rule: %v", err)
+			logger.Info("⚠️  Cannot add DOCKER-USER rule: %v", err)
 		} else {
-			log.Printf("✅ Docker integration enabled")
+			logger.Info("✅ Docker integration enabled")
 		}
 	}
 
@@ -232,7 +231,7 @@ func (r *IPSetRemediator) Block(ip net.IP, duration time.Duration) error {
 		return err
 	}
 	if !isExternalIP(ip) {
-		log.Printf("⚠️  Skipping block for non-external IP: %s", ip)
+		logger.Warnf("⚠️  Skipping block for non-external IP: %s", ip)
 		return nil
 	}
 
@@ -262,7 +261,7 @@ func (r *IPSetRemediator) Block(ip net.IP, duration time.Duration) error {
 		r.onBlock(ip, ActionBlock, "IPSET_BLOCK", duration)
 	}
 
-	log.Printf("🚫 Blocked %s for %v", ip, duration)
+	logger.Infof("🚫 Blocked %s for %v", ip, duration)
 	return nil
 }
 
@@ -285,7 +284,7 @@ func (r *IPSetRemediator) Unblock(ip net.IP) error {
 	delete(r.blockedIPs, ip.String())
 	r.mu.Unlock()
 
-	log.Printf("✅ Unblocked %s", ip)
+	logger.Info("✅ Unblocked %s", ip)
 	return nil
 }
 
@@ -337,7 +336,7 @@ func (r *IPSetRemediator) BlockCIDR(cidr string, duration time.Duration) error {
 		return err
 	}
 
-	log.Printf("🚫 Blocked CIDR %s for %v", cidr, duration)
+	logger.Infof("🚫 Blocked CIDR %s for %v", cidr, duration)
 	return nil
 }
 
@@ -369,7 +368,7 @@ func (r *IPSetRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 		r.onBlock(ip, ActionRateLimit, "IPSET_RATE_LIMIT", duration)
 	}
 
-	log.Printf("⚠️  Rate-limited %s for %v", ip, duration)
+	logger.Warnf("⚠️  Rate-limited %s for %v", ip, duration)
 	return nil
 }
 
@@ -485,7 +484,7 @@ func (r *IPSetRemediator) Restore() error {
 		return fmt.Errorf("ipset restore failed: %v, output: %s", err, out)
 	}
 
-	log.Printf("✅ Restored blocklist from %s", r.persistPath)
+	logger.Infof("✅ Restored blocklist from %s", r.persistPath)
 	return nil
 }
 
@@ -520,7 +519,7 @@ func (r *IPSetRemediator) Teardown() error {
 		"kerneleye_block_cidr", "kerneleye_block_cidr_v6"}
 	for _, set := range sets {
 		if err := r.Runner("ipset", "destroy", set); err != nil {
-			log.Printf("⚠️  Failed to destroy ipset %s: %v", set, err)
+			logger.Warnf("⚠️  Failed to destroy ipset %s: %v", set, err)
 		}
 	}
 

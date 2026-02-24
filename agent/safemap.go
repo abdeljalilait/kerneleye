@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"sync"
 	"time"
 )
@@ -77,7 +76,7 @@ func (s *SafeStats) GetOrCreate(ip string, creator func() *IPStats) *IPStats {
 		}
 		if oldestIP != "" {
 			delete(s.items, oldestIP)
-			log.Printf("🗑️  SafeStats: Evicted oldest IP %s (at capacity: %d)", oldestIP, s.maxItems)
+			Logger.Infof("🗑️  SafeStats: Evicted oldest IP %s (at capacity: %d)", oldestIP, s.maxItems)
 		}
 	}
 

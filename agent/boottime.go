@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -16,7 +15,7 @@ import (
 func getBootTime() time.Time {
 	f, err := os.Open("/proc/stat")
 	if err != nil {
-		log.Printf("⚠️  Cannot read /proc/stat for boot time: %v (timestamps will be approximate)", err)
+		Logger.Warnf("⚠️  Cannot read /proc/stat for boot time: %v (timestamps will be approximate)", err)
 		return time.Now()
 	}
 	defer f.Close()
@@ -35,6 +34,6 @@ func getBootTime() time.Time {
 		}
 	}
 
-	log.Printf("⚠️  Could not find btime in /proc/stat (timestamps will be approximate)")
+	Logger.Warn("⚠️  Could not find btime in /proc/stat (timestamps will be approximate)")
 	return time.Now()
 }

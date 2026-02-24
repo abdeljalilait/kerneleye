@@ -3,7 +3,6 @@ package remediation
 import (
 	"container/list"
 	"context"
-	"log"
 	"sync"
 	"time"
 )
@@ -139,7 +138,7 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 
 		if count > a.config.SynFloodThreshold {
 			state.blocked = true
-			log.Printf("🚨 Analyzer: SYN Flood detected from %s (%d SYNs in %v window) - BLOCKING",
+			logger.Infof("🚨 Analyzer: SYN Flood detected from %s (%d SYNs in %v window) - BLOCKING",
 				ipStr, count, a.config.SynFloodWindow)
 			return &Decision{
 				IP:       event.SourceIP,
@@ -173,7 +172,7 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 		if !state.rateLimited {
 			state.rateLimited = true
 			state.lastLimited = now
-			log.Printf("⚠️  Analyzer: Port scan detected from %s (%d unique ports in %v window) - RATE LIMITING",
+			logger.Warnf("⚠️  Analyzer: Port scan detected from %s (%d unique ports in %v window) - RATE LIMITING",
 				ipStr, uniquePorts, a.config.PortScanWindow)
 			return &Decision{
 				IP:       event.SourceIP,
@@ -207,7 +206,7 @@ func (a *Analyzer) getOrCreateStateLocked(ip string) *ipState {
 			a.lru.Remove(ent)
 			victim := ent.Value.(*ipState)
 			delete(a.states, victim.ip)
-			log.Printf("🗑️  Analyzer: Evicted LRU state for IP %s (capacity: %d)", victim.ip, a.config.MaxStates)
+			logger.Infof("🗑️  Analyzer: Evicted LRU state for IP %s (capacity: %d)", victim.ip, a.config.MaxStates)
 		}
 	}
 
@@ -232,7 +231,7 @@ func (a *Analyzer) CleanupRoutine(ctx context.Context, interval time.Duration) {
 			case <-ticker.C:
 				a.prune()
 			case <-ctx.Done():
-				log.Println("Analyzer: cleanup routine stopped")
+				logger.Info("Analyzer: cleanup routine stopped")
 				return
 			}
 		}
@@ -281,7 +280,7 @@ func (a *Analyzer) prune() {
 		if shouldEvict {
 			a.lru.Remove(elem)
 			delete(a.states, state.ip)
-			log.Printf("🗑️  Analyzer: Pruned stale state for IP %s (inactive for %v)",
+			logger.Infof("🗑️  Analyzer: Pruned stale state for IP %s (inactive for %v)",
 				state.ip, now.Sub(lastActivity))
 		}
 		// Note: we do NOT break early here. Blocked/rate-limited entries

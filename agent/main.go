@@ -6,12 +6,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -47,63 +44,48 @@ func main() {
 		}
 	}
 
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	cfg := parseConfig()
 
 	// Print banner immediately to show version on startup
 	printBanner(cfg)
 
-	// Logging setup (agent runs in foreground; systemd manages background lifecycle)
-	if cfg.LogFile != "" {
-		// Ensure log directory exists
-		logDir := filepath.Dir(cfg.LogFile)
-		if logDir != "" && logDir != "." {
-			if err := os.MkdirAll(logDir, 0755); err != nil {
-				log.Printf("⚠️  Failed to create log directory %s: %v", logDir, err)
-			}
-		}
-
-		logFile, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Printf("⚠️  Failed to open log file %s: %v. Using stdout.", cfg.LogFile, err)
-		} else {
-			// Write to both stdout and file
-			log.SetOutput(io.MultiWriter(os.Stdout, logFile))
-		}
-	} else {
-		log.SetOutput(os.Stdout)
+	// Initialize zap logger
+	debug := os.Getenv("KERNELEYE_DEBUG") == "true"
+	if err := initLogger(debug); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Failed to initialize logger: %v\n", err)
 	}
+	defer SyncLogger()
 
 	if cfg.APIKey == "" {
-		log.Fatal("KERNELEYE_API_KEY is required.")
+		Logger.Fatal("KERNELEYE_API_KEY is required.")
 	}
-	log.Println("Registering agent with server...")
+	Logger.Info("Registering agent with server...")
 	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL); err != nil {
-		log.Fatalf("Registration failed: %v", err)
+		Logger.Fatalf("Registration failed: %v", err)
 	}
-	log.Println("✅ Agent approved! Starting monitoring...")
+	Logger.Info("✅ Agent approved! Starting monitoring...")
 	if err := rlimit.RemoveMemlock(); err != nil {
-		log.Printf("⚠️  Failed to remove memlock: %v", err)
+		Logger.Warnf("⚠️  Failed to remove memlock: %v", err)
 	}
 	ebpfRes, err := LoadAndAttacheBPF()
 	if err != nil {
-		log.Printf("Failed to load eBPF objects: %v", err)
-		log.Println("\n⚠️  eBPF loading failed. Possible causes:")
-		log.Println("  1. Not running as root (try: sudo)")
-		log.Println("  2. Missing kernel capabilities (need: CAP_BPF, CAP_PERFMON, CAP_NET_ADMIN, CAP_SYS_RESOURCE)")
-		log.Println("  3. eBPF disabled in kernel (check: /proc/sys/kernel/unprivileged_bpf_disabled)")
-		log.Println("\nTo check eBPF status:")
-		log.Println("  cat /proc/sys/kernel/unprivileged_bpf_disabled")
-		log.Println("\nTo enable eBPF (as root):")
-		log.Println("  echo 0 | sudo tee /proc/sys/kernel/unprivileged_bpf_disabled")
-		log.Fatal("\nAgent cannot run without eBPF support.")
+		Logger.Errorf("Failed to load eBPF objects: %v", err)
+		Logger.Info("\n⚠️  eBPF loading failed. Possible causes:")
+		Logger.Info("  1. Not running as root (try: sudo)")
+		Logger.Info("  2. Missing kernel capabilities (need: CAP_BPF, CAP_PERFMON, CAP_NET_ADMIN, CAP_SYS_RESOURCE)")
+		Logger.Info("  3. eBPF disabled in kernel (check: /proc/sys/kernel/unprivileged_bpf_disabled)")
+		Logger.Info("\nTo check eBPF status:")
+		Logger.Info("  cat /proc/sys/kernel/unprivileged_bpf_disabled")
+		Logger.Info("\nTo enable eBPF (as root):")
+		Logger.Info("  echo 0 | sudo tee /proc/sys/kernel/unprivileged_bpf_disabled")
+		Logger.Fatal("\nAgent cannot run without eBPF support.")
 	}
 	defer ebpfRes.Close()
 	SetupBandwidthTracking(ebpfRes)
 	printBanner(cfg)
 	rd, err := ringbuf.NewReader(ebpfRes.Objects.Events)
 	if err != nil {
-		log.Fatalf("Failed to open ringbuf: %v", err)
+		Logger.Fatalf("Failed to open ringbuf: %v", err)
 	}
 	defer rd.Close()
 
@@ -115,22 +97,22 @@ func main() {
 			InterfaceName: cfg.InterfaceName,
 		})
 		if err := remediator.Setup(); err != nil {
-			log.Printf("❌ Remediation setup failed: %v", err)
-			log.Println("\nTo install required dependencies:")
-			log.Println("  Debian/Ubuntu: sudo apt-get install ipset iptables")
-			log.Println("  RHEL/CentOS:   sudo yum install ipset iptables")
-			log.Println("\nOr run without remediation:")
-			log.Printf("  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
+			Logger.Errorf("❌ Remediation setup failed: %v", err)
+			Logger.Info("\nTo install required dependencies:")
+			Logger.Info("  Debian/Ubuntu: sudo apt-get install ipset iptables")
+			Logger.Info("  RHEL/CentOS:   sudo yum install ipset iptables")
+			Logger.Info("\nOr run without remediation:")
+			Logger.Infof("  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
 			os.Exit(1)
 		}
 		defer remediator.Teardown()
 		if remediator.IsXDPEnabled() {
-			log.Printf("🛡️  Remediation enabled: XDP (%s) + iptables", remediator.XDPMode())
+			Logger.Infof("🛡️  Remediation enabled: XDP (%s) + iptables", remediator.XDPMode())
 		} else {
-			log.Println("🛡️  Remediation enabled: iptables only")
+			Logger.Info("🛡️  Remediation enabled: iptables only")
 		}
 	} else {
-		log.Println("ℹ️  Remediation disabled (use -enable-remediation to enable)")
+		Logger.Info("ℹ️  Remediation disabled (use -enable-remediation to enable)")
 	}
 
 	// Initialize scoring engine
@@ -142,10 +124,10 @@ func main() {
 		var err error
 		autoBlocker, err = remediation.NewAutoBlocker(cfg.AutoBlockConfig, scorer, remediator.GetIPSetRemediator())
 		if err != nil {
-			log.Printf("❌ Auto-blocker setup failed: %v", err)
+			Logger.Errorf("❌ Auto-blocker setup failed: %v", err)
 			os.Exit(1)
 		}
-		log.Printf("🎯 Auto-blocker enabled (threshold: %d)", cfg.AutoBlockConfig.BlockThreshold)
+		Logger.Infof("🎯 Auto-blocker enabled (threshold: %d)", cfg.AutoBlockConfig.BlockThreshold)
 	}
 
 	analyzer := remediation.NewAnalyzer(remediation.DefaultAnalyzerConfig())
@@ -156,7 +138,7 @@ func main() {
 
 	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, remediator, analyzer, autoBlocker, scorer)
 	if err != nil {
-		log.Fatalf("Failed to create aggregator: %v", err)
+		Logger.Fatalf("Failed to create aggregator: %v", err)
 	}
 	defer aggregator.Close()
 
@@ -197,18 +179,18 @@ func main() {
 		},
 	)
 	if err != nil {
-		log.Printf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
+		Logger.Warnf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
 	} else {
 		// Start receiving block commands from backend
 		if err := blockCmdClient.Start(context.Background()); err != nil {
-			log.Printf("⚠️  Failed to start block command client: %v", err)
+			Logger.Warnf("⚠️  Failed to start block command client: %v", err)
 		} else {
 			aggregator.SetBlockCommandClient(blockCmdClient)
-			log.Printf("📡 Block command client connected to backend")
+			Logger.Info("📡 Block command client connected to backend")
 
 			// Sync block list from backend for state reconciliation
 			if err := blockCmdClient.SyncBlockList(context.Background()); err != nil {
-				log.Printf("⚠️  Failed to sync block list: %v", err)
+				Logger.Warnf("⚠️  Failed to sync block list: %v", err)
 			}
 		}
 	}
@@ -223,9 +205,9 @@ func main() {
 func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem *remediation.HybridRemediator, cancelAnalyzer context.CancelFunc) {
 	select {
 	case <-sig:
-		log.Println("\nShutdown signal, flushing...")
+		Logger.Info("\nShutdown signal, flushing...")
 	case <-agg.stopChan:
-		log.Println("\nServer deleted, shutting down...")
+		Logger.Info("\nServer deleted, shutting down...")
 	}
 	cancelAnalyzer() // Stop the analyzer cleanup goroutine
 	agg.Close()      // This will flush and cleanup

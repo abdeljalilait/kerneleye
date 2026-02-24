@@ -1,8 +1,6 @@
 package main
 
 import (
-	"log"
-
 	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
 )
@@ -72,7 +70,7 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 	// TCP State Change (clean SYN tracker on ESTABLISHED)
 	res.KpSetState, err = link.Kprobe("tcp_set_state", res.Objects.DetectTcpStateChange, nil)
 	if err != nil {
-		log.Printf("⚠️  tcp_set_state probe not available (non-critical): %v", err)
+		Logger.Warnf("⚠️  tcp_set_state probe not available (non-critical): %v", err)
 		// Non-fatal: tcp_close will still clean up, just less efficiently
 	}
 
@@ -86,7 +84,7 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 	// UDP Receive
 	res.KpUdpRecv, err = link.Kprobe("udp_recvmsg", res.Objects.DetectUdpRecv, nil)
 	if err != nil {
-		log.Printf("⚠️  udp_recvmsg probe not available (non-critical): %v", err)
+		Logger.Warnf("⚠️  udp_recvmsg probe not available (non-critical): %v", err)
 		// Non-fatal: UDP monitoring optional
 	}
 
@@ -97,12 +95,12 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 func SetupBandwidthTracking(res *EBPFResources) {
 	ifaceName, err := getDefaultInterface()
 	if err != nil {
-		log.Printf("⚠️  Could not detect network interface: %v", err)
+		Logger.Warnf("⚠️  Could not detect network interface: %v", err)
 		return
 	}
-	log.Printf("🔗 Attaching TC programs to interface: %s", ifaceName)
+	Logger.Infof("🔗 Attaching TC programs to interface: %s", ifaceName)
 	if err := AttachTCPrograms(res, ifaceName); err != nil {
-		log.Printf("⚠️  Failed to attach TC programs: %v", err)
+		Logger.Warnf("⚠️  Failed to attach TC programs: %v", err)
 		return
 	}
 	byteCounterMap = res.Objects.IpByteCounters

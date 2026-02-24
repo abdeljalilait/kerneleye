@@ -2,7 +2,6 @@ package remediation
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"time"
 )
@@ -42,19 +41,19 @@ func (h *HybridRemediator) Setup() error {
 	if err := h.iptables.Setup(); err != nil {
 		return fmt.Errorf("iptables setup failed: %w", err)
 	}
-	log.Printf("✅ iptables/ipset remediation ready")
+	logger.Info("✅ iptables/ipset remediation ready")
 
 	// Try XDP if configured
 	if h.xdp != nil {
 		if err := h.xdp.Setup(); err != nil {
-			log.Printf("⚠️  XDP setup failed, using iptables only: %v", err)
+			logger.Warnf("⚠️  XDP setup failed, using iptables only: %v", err)
 			h.xdp = nil
 		} else {
 			h.xdpEnabled = true
-			log.Printf("✅ Hybrid mode: XDP (%s) + iptables", h.xdp.Mode())
+			logger.Infof("✅ Hybrid mode: XDP (%s) + iptables", h.xdp.Mode())
 		}
 	} else {
-		log.Printf("ℹ️  XDP disabled, using iptables only")
+		logger.Info("ℹ️  XDP disabled, using iptables only")
 	}
 
 	return nil
@@ -72,7 +71,7 @@ func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 			// XDP succeeded - also add to iptables for redundancy
 			// This ensures the block persists even if XDP is detached
 			if err := h.iptables.Block(ip, duration); err != nil {
-				log.Printf("⚠️  XDP succeeded but iptables redundancy failed: %v", err)
+				logger.Warnf("⚠️  XDP succeeded but iptables redundancy failed: %v", err)
 				// Don't fail - XDP block is active
 			}
 			reason = "XDP_BLOCK"
@@ -81,7 +80,7 @@ func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 			}
 			return nil
 		}
-		log.Printf("⚠️  XDP block failed, using iptables: %v", xdpErr)
+		logger.Warnf("⚠️  XDP block failed, using iptables: %v", xdpErr)
 	}
 
 	// Fallback to iptables
@@ -164,11 +163,11 @@ func (h *HybridRemediator) BlockCIDR(cidr string, duration time.Duration) error 
 		if xdpErr == nil {
 			// XDP succeeded - also add to iptables for redundancy
 			if err := h.iptables.BlockCIDR(cidr, duration); err != nil {
-				log.Printf("⚠️  XDP CIDR succeeded but iptables redundancy failed: %v", err)
+				logger.Warnf("⚠️  XDP CIDR succeeded but iptables redundancy failed: %v", err)
 			}
 			return nil
 		}
-		log.Printf("⚠️  XDP CIDR block failed, using iptables: %v", xdpErr)
+		logger.Warnf("⚠️  XDP CIDR block failed, using iptables: %v", xdpErr)
 	}
 
 	// Fallback to iptables

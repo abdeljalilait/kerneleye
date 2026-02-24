@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -20,7 +19,7 @@ func (a *Aggregator) FlushToAPI() {
 	if a.stats.Len() == 0 {
 		return
 	}
-	log.Printf("Flushing %d IPs to API...", a.stats.Len())
+	Logger.Infof("Flushing %d IPs to API...", a.stats.Len())
 
 	// Fetch byte counters using thread-safe iteration
 	if byteCounterMap != nil {
@@ -48,13 +47,13 @@ func (a *Aggregator) FlushToAPI() {
 
 			// Log high-score events for debugging
 			if score.Score >= 30 {
-				log.Printf("⚠️  IP %s: score=%d level=%s type=%s reasons=%v",
+				Logger.Warnf("⚠️  IP %s: score=%d level=%s type=%s reasons=%v",
 					ip, score.Score, score.Level, score.Type, score.Reasons)
 			}
 
 			// Process score for auto-blocking
 			if err := a.autoBlocker.ProcessScore(ip, score); err != nil {
-				log.Printf("❌ AutoBlocker error for %s: %v", ip, err)
+				Logger.Errorf("❌ AutoBlocker error for %s: %v", ip, err)
 			}
 		}
 	}
@@ -63,7 +62,7 @@ func (a *Aggregator) FlushToAPI() {
 	client := a.grpcClient
 	if client == nil {
 		a.grpcMu.RUnlock()
-		log.Printf("❌ gRPC client not initialized, buffering events")
+		Logger.Error("❌ gRPC client not initialized, buffering events")
 		a.bufferEvents(pbEvents)
 		a.scheduleReconnect()
 		return
@@ -77,22 +76,22 @@ func (a *Aggregator) FlushToAPI() {
 	})
 	a.grpcMu.RUnlock()
 	if err != nil {
-		log.Printf("❌ gRPC error, buffering %d events: %v", len(pbEvents), err)
+		Logger.Errorf("❌ gRPC error, buffering %d events: %v", len(pbEvents), err)
 		a.bufferEvents(pbEvents)
 		a.scheduleReconnect()
 		if strings.Contains(err.Error(), "Server not active") ||
 			strings.Contains(err.Error(), "PermissionDenied") {
-			log.Printf("🚫 Server deleted or inactive. Agent terminating...")
+			Logger.Fatal("🚫 Server deleted or inactive. Agent terminating...")
 			os.Exit(0)
 		}
 		return
 	}
 
 	if resp.Success {
-		log.Printf("✅ Successfully sent %d events to gRPC API", len(pbEvents))
+		Logger.Info("✅ Successfully sent %d events to gRPC API", len(pbEvents))
 		a.stats.Clear() // Thread-safe clear
 	} else {
-		log.Printf("❌ gRPC API returned failure: %s", resp.Message)
+		Logger.Error("❌ gRPC API returned failure: %s", resp.Message)
 		a.bufferEvents(pbEvents)
 	}
 }
@@ -100,11 +99,11 @@ func (a *Aggregator) FlushToAPI() {
 // bufferEvents saves events to SQLite buffer
 func (a *Aggregator) bufferEvents(events []*pb.ConnectionEvent) {
 	if a.buffer == nil {
-		log.Printf("⚠️  Buffer not initialized, events will be lost")
+		Logger.Warn("⚠️  Buffer not initialized, events will be lost")
 		return
 	}
 	if err := a.buffer.Save(a.apiKey, events); err != nil {
-		log.Printf("❌ Failed to buffer events: %v", err)
+		Logger.Error("❌ Failed to buffer events: %v", err)
 		return
 	}
 	// Clear stats only after successful persistence.
@@ -122,7 +121,7 @@ func (a *Aggregator) retryPendingBatches() {
 		return
 	}
 
-	log.Printf("📤 Retrying %d pending batches...", len(pending))
+	Logger.Info("📤 Retrying %d pending batches...", len(pending))
 
 	var sentIDs []int64
 	for _, p := range pending {
@@ -141,22 +140,22 @@ func (a *Aggregator) retryPendingBatches() {
 		cancel()
 
 		if err != nil {
-			log.Printf("❌ Retry failed for batch %d: %v", p.ID, err)
+			Logger.Errorf("❌ Retry failed for batch %d: %v", p.ID, err)
 			a.scheduleReconnect()
 			return // Stop on first failure - backend still down
 		}
 
 		if resp.Success {
 			sentIDs = append(sentIDs, p.ID)
-			log.Printf("✅ Sent pending batch %d (%d events)", p.ID, len(p.Batch.Events))
+			Logger.Infof("✅ Sent pending batch %d (%d events)", p.ID, len(p.Batch.Events))
 		}
 	}
 
 	if len(sentIDs) > 0 {
 		if err := a.buffer.Delete(sentIDs); err != nil {
-			log.Printf("⚠️  Failed to delete sent batches: %v", err)
+			Logger.Warnf("⚠️  Failed to delete sent batches: %v", err)
 		}
-		log.Printf("🗑️  Cleared %d sent batches from buffer", len(sentIDs))
+		Logger.Infof("🗑️  Cleared %d sent batches from buffer", len(sentIDs))
 	}
 }
 

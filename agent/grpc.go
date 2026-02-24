@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -88,7 +87,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 	ipAddress := getPublicIP()
 
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
-	log.Printf("Connecting to gRPC server at %s...", grpcTarget)
+	Logger.Infof("Connecting to gRPC server at %s...", grpcTarget)
 
 	var regResp *pb.RegisterResponse
 	var lastErr error
@@ -97,7 +96,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {
 			backoff := time.Duration(1<<(attempt-2)) * time.Second
-			log.Printf("Retrying registration in %v (attempt %d/%d)...", backoff, attempt, maxAttempts)
+			Logger.Infof("Retrying registration in %v (attempt %d/%d)...", backoff, attempt, maxAttempts)
 			time.Sleep(backoff)
 		}
 
@@ -127,7 +126,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 			return fmt.Errorf("gRPC registration failed: %v", err)
 		}
 
-		log.Printf("Registration attempt %d/%d failed with transient transport error: %v", attempt, maxAttempts, err)
+		Logger.Warnf("Registration attempt %d/%d failed with transient transport error: %v", attempt, maxAttempts, err)
 	}
 
 	if lastErr != nil {
@@ -135,11 +134,11 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 	}
 
 	if regResp.Status == "active" {
-		log.Println("Agent already approved!")
+		Logger.Info("Agent already approved!")
 		return nil
 	}
 
-	log.Printf("Agent registered (pending). Waiting for approval...")
+	Logger.Info("Agent registered (pending). Waiting for approval...")
 
 	pollConn, err := grpc.NewClient(grpcDialTargetPrefix+grpcTarget, buildGRPCOpts(grpcTarget)...)
 	if err != nil {
@@ -159,7 +158,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 		cancel()
 
 		if err != nil {
-			log.Printf("Poll failed: %v", err)
+			Logger.Warnf("Poll failed: %v", err)
 			continue
 		}
 

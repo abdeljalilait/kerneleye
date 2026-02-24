@@ -1,8 +1,6 @@
 package main
 
 import (
-	"log"
-
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -17,18 +15,18 @@ func AttachTCPrograms(res *EBPFResources, ifaceName string) error {
 	res.IngressFilter = createTCFilter(iface, netlink.HANDLE_MIN_INGRESS,
 		res.Objects.TcIngress.FD(), "kerneleye_ingress")
 	if err := netlink.FilterAdd(res.IngressFilter); err != nil {
-		log.Printf("⚠️  Failed to attach TC ingress: %v", err)
+		Logger.Warnf("⚠️  Failed to attach TC ingress: %v", err)
 		res.IngressFilter = nil
 	} else {
-		log.Println("✅ TC ingress attached")
+		Logger.Info("✅ TC ingress attached")
 	}
 	res.EgressFilter = createTCFilter(iface, netlink.HANDLE_MIN_EGRESS,
 		res.Objects.TcEgress.FD(), "kerneleye_egress")
 	if err := netlink.FilterAdd(res.EgressFilter); err != nil {
-		log.Printf("⚠️  Failed to attach TC egress: %v", err)
+		Logger.Warnf("⚠️  Failed to attach TC egress: %v", err)
 		res.EgressFilter = nil
 	} else {
-		log.Println("✅ TC egress attached")
+		Logger.Info("✅ TC egress attached")
 	}
 	return nil
 }

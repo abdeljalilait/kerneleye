@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -72,7 +71,7 @@ func (b *BlockCommandClient) Start(ctx context.Context) error {
 	b.wg.Add(1)
 	go b.receiveLoop(ctx)
 
-	log.Printf("[BlockCommandClient] Started streaming block commands")
+	Logger.Info("[BlockCommandClient] Started streaming block commands")
 	return nil
 }
 
@@ -89,7 +88,7 @@ func (b *BlockCommandClient) Stop() {
 	close(b.stopChan)
 	b.wg.Wait()
 
-	log.Printf("[BlockCommandClient] Stopped")
+	Logger.Info("[BlockCommandClient] Stopped")
 }
 
 // receiveLoop continuously receives and processes block commands
@@ -104,7 +103,7 @@ func (b *BlockCommandClient) receiveLoop(ctx context.Context) {
 			return
 		default:
 			if err := b.connectAndStream(ctx); err != nil {
-				log.Printf("[BlockCommandClient] Stream error: %v", err)
+				Logger.Warnf("[BlockCommandClient] Stream error: %v", err)
 				delay := b.getReconnectDelay()
 				select {
 				case <-b.stopChan:
@@ -156,11 +155,11 @@ func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
 		return fmt.Errorf("failed to start stream: %w", err)
 	}
 
-	log.Printf("[BlockCommandClient] Connected to stream")
+	Logger.Info("[BlockCommandClient] Connected to stream")
 
 	// Sync block list on reconnection for state reconciliation
 	if err := b.SyncBlockList(ctx); err != nil {
-		log.Printf("[BlockCommandClient] Warning: failed to sync block list: %v", err)
+		Logger.Warnf("[BlockCommandClient] Warning: failed to sync block list: %v", err)
 	}
 
 	for {
@@ -187,12 +186,12 @@ func (b *BlockCommandClient) UpdateClient(conn *grpc.ClientConn) {
 	b.conn = conn
 	b.client = pb.NewBlockServiceClient(conn)
 	b.mu.Unlock()
-	log.Printf("[BlockCommandClient] Client updated with new connection")
+	Logger.Info("[BlockCommandClient] Client updated with new connection")
 }
 
 // processCommand handles a single block command
 func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
-	log.Printf("[BlockCommandClient] Received command: action=%s ip=%s duration=%ds reason=%s",
+	Logger.Infof("[BlockCommandClient] Received command: action=%s ip=%s duration=%ds reason=%s",
 		cmd.Action.String(), cmd.IpAddress, cmd.DurationSeconds, cmd.Reason)
 
 	switch cmd.Action {
@@ -207,9 +206,9 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 			onBlock := b.onBlock
 			go func() {
 				if err := onBlock(ip, duration, reason); err != nil {
-					log.Printf("[BlockCommandClient] Failed to block %s: %v", ip, err)
+					Logger.Errorf("[BlockCommandClient] Failed to block %s: %v", ip, err)
 				} else {
-					log.Printf("[BlockCommandClient] Blocked %s for %v", ip, duration)
+					Logger.Infof("[BlockCommandClient] Blocked %s for %v", ip, duration)
 				}
 			}()
 		}
@@ -221,18 +220,18 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 			onUnblock := b.onUnblock
 			go func() {
 				if err := onUnblock(ip, reason); err != nil {
-					log.Printf("[BlockCommandClient] Failed to unblock %s: %v", ip, err)
+					Logger.Errorf("[BlockCommandClient] Failed to unblock %s: %v", ip, err)
 				} else {
-					log.Printf("[BlockCommandClient] Unblocked %s", ip)
+					Logger.Infof("[BlockCommandClient] Unblocked %s", ip)
 				}
 			}()
 		}
 
 	case pb.BlockCommand_RATE_LIMIT:
-		log.Printf("[BlockCommandClient] Rate limit command not yet implemented for %s", cmd.IpAddress)
+		Logger.Warnf("[BlockCommandClient] Rate limit command not yet implemented for %s", cmd.IpAddress)
 
 	default:
-		log.Printf("[BlockCommandClient] Unknown command action: %v", cmd.Action)
+		Logger.Warnf("[BlockCommandClient] Unknown command action: %v", cmd.Action)
 	}
 }
 
@@ -268,7 +267,7 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 		return fmt.Errorf("failed to get block list: %w", err)
 	}
 
-	log.Printf("[BlockCommandClient] Synced %d blocks from backend", len(resp.Blocks))
+	Logger.Infof("[BlockCommandClient] Synced %d blocks from backend", len(resp.Blocks))
 
 	// Apply each block locally
 	for _, block := range resp.Blocks {
@@ -281,12 +280,12 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 			if block.ExpiresAt > 0 {
 				expiresAt := time.Unix(block.ExpiresAt, 0)
 				if time.Now().After(expiresAt) {
-					log.Printf("[BlockCommandClient] Skipping expired block: %s (expired %v ago)", block.IpAddress, time.Since(expiresAt))
+					Logger.Warnf("[BlockCommandClient] Skipping expired block: %s (expired %v ago)", block.IpAddress, time.Since(expiresAt))
 					continue
 				}
 			}
 			if err := b.onBlock(block.IpAddress, duration, block.Reason); err != nil {
-				log.Printf("[BlockCommandClient] Failed to apply block %s: %v", block.IpAddress, err)
+				Logger.Errorf("[BlockCommandClient] Failed to apply block %s: %v", block.IpAddress, err)
 			}
 		}
 	}

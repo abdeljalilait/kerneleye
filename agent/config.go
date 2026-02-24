@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -29,7 +28,7 @@ func parseConfig() AgentConfig {
 	// This allows flags to override env file settings
 	if _, err := os.Stat(DefaultEnvFile); err == nil {
 		if err := godotenv.Load(DefaultEnvFile); err != nil {
-			log.Printf("⚠️  Failed to load %s: %v", DefaultEnvFile, err)
+			Logger.Warnf("Failed to load %s: %v", DefaultEnvFile, err)
 		}
 	}
 
@@ -67,7 +66,7 @@ func parseConfig() AgentConfig {
 		cfg.GRPCURL = *grpcURLFlag
 	}
 	if cfg.ServerHost == "" {
-		log.Fatal("KERNELEYE_SERVER is required. Set via -server flag or KERNELEYE_SERVER environment variable.")
+		Logger.Fatal("KERNELEYE_SERVER is required. Set via -server flag or KERNELEYE_SERVER environment variable.")
 	}
 
 	// XDP requires an interface
@@ -91,22 +90,22 @@ func detectDefaultInterface() string {
 }
 
 func printBanner(cfg AgentConfig) {
-	log.Println("╔════════════════════════════════════════╗")
-	log.Printf("║   KernelEye Agent v%-19s ║\n", Version)
-	log.Println("╚════════════════════════════════════════╝")
-	log.Printf("API Key: %s...%s\n", cfg.APIKey[:4], cfg.APIKey[len(cfg.APIKey)-4:])
-	log.Printf("Server: %s\n", cfg.ServerHost)
+	Logger.Info("╔════════════════════════════════════════╗")
+	Logger.Infof("║   KernelEye Agent v%-19s ║", Version)
+	Logger.Info("╚════════════════════════════════════════╝")
+	Logger.Infof("API Key: %s...%s", cfg.APIKey[:4], cfg.APIKey[len(cfg.APIKey)-4:])
+	Logger.Infof("Server: %s", cfg.ServerHost)
 	if cfg.GRPCURL != "" {
-		log.Printf("gRPC URL: %s\n", cfg.GRPCURL)
+		Logger.Infof("gRPC URL: %s", cfg.GRPCURL)
 	}
-	log.Println("Monitoring: TCP connections (IPv4)")
+	Logger.Info("Monitoring: TCP connections (IPv4)")
 	if byteCounterMap != nil {
-		log.Println("Monitoring: Bandwidth tracking (IPv4)")
+		Logger.Info("Monitoring: Bandwidth tracking (IPv4)")
 	}
 	if cfg.EnableXDP {
-		log.Printf("XDP: Enabled on %s\n", cfg.InterfaceName)
+		Logger.Infof("XDP: Enabled on %s", cfg.InterfaceName)
 	}
 	if cfg.EnableRemediation {
-		log.Printf("Auto-Block: Enabled (threshold: %d)\n", cfg.AutoBlockConfig.BlockThreshold)
+		Logger.Infof("Auto-Block: Enabled (threshold: %d)", cfg.AutoBlockConfig.BlockThreshold)
 	}
 }

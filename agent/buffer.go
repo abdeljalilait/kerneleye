@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -37,12 +36,12 @@ func NewBufferDB(dbPath string) (*BufferDB, error) {
 		buf, err := openBufferDB(path)
 		if err == nil {
 			if i > 0 {
-				log.Printf("⚠️  Using fallback buffer DB path %s (default %s unavailable)", path, defaultDBPath)
+				Logger.Warnf("⚠️  Using fallback buffer DB path %s (default %s unavailable)", path, defaultDBPath)
 			}
 			return buf, nil
 		}
 		lastErr = err
-		log.Printf("⚠️  Buffer DB path %s unavailable: %v", path, err)
+		Logger.Warnf("⚠️  Buffer DB path %s unavailable: %v", path, err)
 	}
 
 	return nil, fmt.Errorf("all buffer DB paths failed: %w", lastErr)
@@ -114,7 +113,7 @@ func (b *BufferDB) Save(apiKey string, events []*pb.ConnectionEvent) error {
 		return err
 	}
 
-	log.Printf("📦 Buffered %d events to SQLite", len(events))
+	Logger.Infof("📦 Buffered %d events to SQLite", len(events))
 	return nil
 }
 

@@ -3,7 +3,6 @@ package remediation
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -99,7 +98,7 @@ func (r *XDPRemediator) Setup() error {
 		Program: r.objs.XdpFirewall, Interface: iface.Index, Flags: link.XDPDriverMode,
 	})
 	if err != nil {
-		log.Printf("⚠️  XDP DRV failed: %v, trying SKB", err)
+		logger.Warnf("⚠️  XDP DRV failed: %v, trying SKB", err)
 		r.mode = XDPModeSKB
 		r.xdpLink, err = link.AttachXDP(link.XDPOptions{
 			Program: r.objs.XdpFirewall, Interface: iface.Index, Flags: link.XDPGenericMode,
@@ -113,7 +112,7 @@ func (r *XDPRemediator) Setup() error {
 	}
 
 	r.attached = true
-	log.Printf("✅ XDP attached to %s (%s)", r.interfaceName, r.mode)
+	logger.Infof("✅ XDP attached to %s (%s)", r.interfaceName, r.mode)
 	return nil
 }
 
@@ -171,7 +170,7 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 		return err
 	}
 	if !isExternalIP(ip) {
-		log.Printf("⚠️  XDP: Skipping non-external IP: %s", ip)
+		logger.Warnf("⚠️  XDP: Skipping non-external IP: %s", ip)
 		return nil
 	}
 
@@ -190,7 +189,7 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 			return fmt.Errorf("block IPv6: %w", err)
 		}
 	}
-	log.Printf("🚫 XDP blocked %s for %v", ip, duration)
+	logger.Infof("🚫 XDP blocked %s for %v", ip, duration)
 	if r.OnBlock != nil {
 		r.OnBlock(ip, ActionBlock, "XDP_BLOCK", duration)
 	}
@@ -222,7 +221,7 @@ func (r *XDPRemediator) BlockCIDR(cidr string, duration time.Duration) error {
 	if err := r.objs.XdpCidrBlocklist.Put(key, blockEntry{ExpiresNs: expiresNs}); err != nil {
 		return fmt.Errorf("block CIDR: %w", err)
 	}
-	log.Printf("🚫 XDP blocked CIDR %s for %v", cidr, duration)
+	logger.Infof("🚫 XDP blocked CIDR %s for %v", cidr, duration)
 	return nil
 }
 
@@ -254,7 +253,7 @@ func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.D
 	if r.objs.XdpRateLimit != nil {
 		r.clearRateLimitState()
 	}
-	log.Printf("⚡ XDP rate limit: %d PPS, %d BPS", maxPPS, maxBPS)
+	logger.Infof("⚡ XDP rate limit: %d PPS, %d BPS", maxPPS, maxBPS)
 	return nil
 }
 
@@ -276,7 +275,7 @@ func (r *XDPRemediator) clearRateLimitState() {
 
 // RateLimit per-IP - not supported, use iptables
 func (r *XDPRemediator) RateLimit(ip net.IP, duration time.Duration) error {
-	log.Printf("⚠️  XDP: Per-IP rate limiting not supported for %s", ip)
+	logger.Warnf("⚠️  XDP: Per-IP rate limiting not supported for %s", ip)
 	// Return error instead of silently succeeding
 	return fmt.Errorf("%w: XDP does not support per-IP rate limiting, use IPSetRemediator", errRLDisabled)
 }
@@ -295,9 +294,9 @@ func (r *XDPRemediator) Teardown() error {
 	}
 
 	if wasAttached {
-		log.Printf("✅ XDP detached from %s", r.interfaceName)
+		logger.Infof("✅ XDP detached from %s", r.interfaceName)
 	} else {
-		log.Printf("ℹ️  XDP was not attached to %s", r.interfaceName)
+		logger.Info("ℹ️  XDP was not attached to %s", r.interfaceName)
 	}
 
 	if len(errs) > 0 {
@@ -356,7 +355,7 @@ func (r *XDPRemediator) Unblock(ip net.IP) error {
 			return err
 		}
 	}
-	log.Printf("✅ XDP unblocked %s", ip)
+	logger.Infof("✅ XDP unblocked %s", ip)
 	return nil
 }
 
@@ -378,7 +377,7 @@ func (r *XDPRemediator) UnblockCIDR(cidr string) error {
 	if err := r.objs.XdpCidrBlocklist.Delete(key); err != nil && !isNotExist(err) {
 		return err
 	}
-	log.Printf("✅ XDP unblocked CIDR %s", cidr)
+	logger.Infof("✅ XDP unblocked CIDR %s", cidr)
 	return nil
 }
 

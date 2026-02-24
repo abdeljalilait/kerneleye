@@ -5,7 +5,6 @@ package remediation
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"net"
 	"runtime"
 	"strings"
@@ -118,7 +117,7 @@ func aggregateStats(statsMap *ebpf.Map) XDPStats {
 func monotonicNs() int64 {
 	var ts unix.Timespec
 	if err := unix.ClockGettime(unix.CLOCK_BOOTTIME, &ts); err != nil {
-		log.Printf("⚠️  Failed to get boot time: %v", err)
+		logger.Warnf("⚠️  Failed to get boot time: %v", err)
 		return time.Now().UnixNano()
 	}
 	return ts.Nano()

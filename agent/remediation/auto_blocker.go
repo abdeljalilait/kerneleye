@@ -4,7 +4,6 @@ package remediation
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -127,7 +126,7 @@ func (ab *AutoBlocker) ProcessScore(ip string, score scoring.ThreatScore) error 
 
 	// Check confidence (don't block on low confidence)
 	if score.Confidence < 0.8 {
-		log.Printf("🤔 IP %s has high score (%d) but low confidence (%.2f), not blocking",
+		logger.Infof("🤔 IP %s has high score (%d) but low confidence (%.2f), not blocking",
 			ip, score.Score, score.Confidence)
 		return nil
 	}
@@ -139,7 +138,7 @@ func (ab *AutoBlocker) ProcessScore(ip string, score scoring.ThreatScore) error 
 
 	// Check safelist
 	if ab.isSafeListed(parsedIP) {
-		log.Printf("🛡️  IP %s is safelisted, not blocking", ip)
+		logger.Infof("🛡️  IP %s is safelisted, not blocking", ip)
 		return nil
 	}
 
@@ -150,7 +149,7 @@ func (ab *AutoBlocker) ProcessScore(ip string, score scoring.ThreatScore) error 
 
 	// Check rate limit (blocks per minute)
 	if !ab.checkRateLimit() {
-		log.Printf("⏱️  Block rate limit hit, queuing %s for later", ip)
+		logger.Infof("⏱️  Block rate limit hit, queuing %s for later", ip)
 		return nil
 	}
 
@@ -170,7 +169,7 @@ func (ab *AutoBlocker) ProcessScore(ip string, score scoring.ThreatScore) error 
 		ab.onBlock(ip, duration, score.Score, score.Reasons)
 	}
 
-	log.Printf("🚫 Auto-blocked %s for %v (score: %d, reasons: %v)",
+	logger.Infof("🚫 Auto-blocked %s for %v (score: %d, reasons: %v)",
 		ip, duration, score.Score, score.Reasons)
 
 	return nil
@@ -304,7 +303,7 @@ func (ab *AutoBlocker) Unblock(ip string) error {
 	delete(ab.history, ip)
 	ab.historyMu.Unlock()
 
-	log.Printf("✅ Manually unblocked %s", ip)
+	logger.Info("✅ Manually unblocked %s", ip)
 	return nil
 }
 
