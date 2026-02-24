@@ -75,6 +75,23 @@ export const threatsAPI = {
   list: () => api.get('/threats'),
 };
 
+export const blocksAPI = {
+  list: (params?: { page?: number; page_size?: number; server?: string; status?: string }) => 
+    api.get('/blocks', { params }),
+  unblock: (ip: string, reason?: string) => 
+    api.post(`/blocks/${encodeURIComponent(ip)}/unblock`, { reason }),
+};
+
+export const whitelistAPI = {
+  list: () => api.get('/whitelist'),
+  add: (ip: string, reason?: string) => 
+    api.post('/whitelist', { ip_address: ip, reason }),
+  remove: (ip: string) => 
+    api.delete(`/whitelist/${encodeURIComponent(ip)}`),
+  check: (ip: string) => 
+    api.get(`/whitelist/check?ip=${encodeURIComponent(ip)}`),
+};
+
 export const alertsAPI = {
   list: () => api.get('/alerts'),
 };

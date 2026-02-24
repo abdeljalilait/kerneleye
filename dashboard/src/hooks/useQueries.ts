@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI, agentConfigAPI } from '../api/client';
+import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI, agentConfigAPI, blocksAPI, whitelistAPI } from '../api/client';
 import { Server, Threat, Alert, StatsOverview } from '../types';
 
 export const useServers = () => {
@@ -18,6 +18,56 @@ export const useThreats = () => {
     queryFn: async () => {
       const { data } = await threatsAPI.list();
       return data as Threat[];
+    },
+  });
+};
+
+export const useBlocks = (params?: { page?: number; page_size?: number; server?: string; status?: string }) => {
+  return useQuery({
+    queryKey: ['blocks', params],
+    queryFn: async () => {
+      const { data } = await blocksAPI.list(params);
+      return data;
+    },
+  });
+};
+
+export const useUnblockIP = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ip, reason }: { ip: string; reason?: string }) => blocksAPI.unblock(ip, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['blocks'] });
+    },
+  });
+};
+
+export const useWhitelist = () => {
+  return useQuery({
+    queryKey: ['whitelist'],
+    queryFn: async () => {
+      const { data } = await whitelistAPI.list();
+      return data.data || [];
+    },
+  });
+};
+
+export const useAddToWhitelist = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ip, reason }: { ip: string; reason?: string }) => whitelistAPI.add(ip, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whitelist'] });
+    },
+  });
+};
+
+export const useRemoveFromWhitelist = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ip: string) => whitelistAPI.remove(ip),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whitelist'] });
     },
   });
 };

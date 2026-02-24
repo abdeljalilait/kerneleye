@@ -157,6 +157,10 @@ func main() {
 				if parsedIP == nil {
 					return fmt.Errorf("invalid IP: %s", ip)
 				}
+				// Check if already blocked to avoid duplicate reporting
+				if remediator.IsBlocked(parsedIP) {
+					return nil
+				}
 				if err := remediator.Block(parsedIP, duration); err != nil {
 					return fmt.Errorf("block failed: %w", err)
 				}

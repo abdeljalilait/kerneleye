@@ -96,6 +96,15 @@ func (h *HybridRemediator) Block(ip net.IP, duration time.Duration) error {
 	return nil
 }
 
+// IsBlocked checks if an IP is already blocked
+func (h *HybridRemediator) IsBlocked(ip net.IP) bool {
+	// Check iptables (most reliable and always available)
+	if h.iptables != nil {
+		return h.iptables.IsBlocked(ip)
+	}
+	return false
+}
+
 // RateLimit adds an IP to the rate-limit list (iptables only)
 func (h *HybridRemediator) RateLimit(ip net.IP, duration time.Duration) error {
 	// XDP doesn't support rate limiting - always use iptables
