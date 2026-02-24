@@ -166,8 +166,8 @@ func main() {
 	}
 
 	// Initialize block command client to receive commands from backend
-	grpcTarget := buildGRPCTarget(cfg.ServerHost, cfg.GRPCURL)
-	blockCmdClient, err := NewBlockCommandClient(grpcTarget, cfg.APIKey, aggregator.serverID,
+	// Pass the shared gRPC connection from aggregator
+	blockCmdClient, err := NewBlockCommandClient(aggregator.GetGRPCConn(), cfg.APIKey, aggregator.ServerID(),
 		// OnBlock callback - use remediator directly
 		func(ip string, duration time.Duration, reason string) error {
 			if remediator == nil {
@@ -203,7 +203,7 @@ func main() {
 		if err := blockCmdClient.Start(context.Background()); err != nil {
 			log.Printf("⚠️  Failed to start block command client: %v", err)
 		} else {
-			aggregator.blockCmdClient = blockCmdClient
+			aggregator.SetBlockCommandClient(blockCmdClient)
 			log.Printf("📡 Block command client connected to backend")
 
 			// Sync block list from backend for state reconciliation

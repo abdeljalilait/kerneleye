@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -25,31 +24,16 @@ const grpcDialTargetPrefix = "passthrough:///"
 func buildGRPCTarget(serverHost, grpcURL string) string {
 	// If explicit gRPC URL is provided, use it directly
 	if grpcURL != "" {
-		return normalizeGRPCTarget(grpcURL)
+		return grpcURL
 	}
 	// Otherwise derive from server host
-	grpcTarget := normalizeGRPCTarget(serverHost)
+	grpcTarget := serverHost
 	if !strings.Contains(grpcTarget, ":") {
 		grpcTarget = grpcTarget + ":9091"
 	} else {
 		grpcTarget = strings.Replace(grpcTarget, ":8080", ":9091", 1)
 	}
 	return grpcTarget
-}
-
-func normalizeGRPCTarget(target string) string {
-	target = strings.TrimSpace(target)
-	target = strings.TrimPrefix(target, "dns:///")
-	target = strings.TrimPrefix(target, "passthrough:///")
-	target = strings.TrimPrefix(target, "http://")
-	target = strings.TrimPrefix(target, "https://")
-
-	// Support passing full URLs like https://api.example.com:443/api/v1
-	if parsed, err := url.Parse("https://" + target); err == nil && parsed.Host != "" {
-		return parsed.Host
-	}
-
-	return target
 }
 
 func buildGRPCOpts(target string) []grpc.DialOption {

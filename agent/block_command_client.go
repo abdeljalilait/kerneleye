@@ -25,32 +25,37 @@ type BlockCommandClient struct {
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 
-	// Callback for executing commands
 	onBlock   func(ip string, duration time.Duration, reason string) error
 	onUnblock func(ip string, reason string) error
+
+	reconnectMu       sync.Mutex
+	reconnectCount    int
+	maxReconnectDelay time.Duration
+	reconnecting      bool
 }
 
 // NewBlockCommandClient creates a new block command client
-func NewBlockCommandClient(grpcTarget, apiKey, serverID string, onBlock func(ip string, duration time.Duration, reason string) error, onUnblock func(ip string, reason string) error) (*BlockCommandClient, error) {
-	conn, err := grpc.NewClient(grpcDialTargetPrefix+grpcTarget, buildGRPCOpts(grpcTarget)...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
+// If conn is provided, it will use that connection instead of creating a new one
+func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlock func(ip string, duration time.Duration, reason string) error, onUnblock func(ip string, reason string) error) (*BlockCommandClient, error) {
+	var client pb.BlockServiceClient
+	if conn != nil {
+		client = pb.NewBlockServiceClient(conn)
+	} else {
+		return nil, fmt.Errorf("connection is required")
 	}
-
-	client := pb.NewBlockServiceClient(conn)
 	if client == nil {
-		conn.Close()
 		return nil, fmt.Errorf("failed to create block service client")
 	}
 
 	return &BlockCommandClient{
-		conn:      conn,
-		client:    client,
-		apiKey:    apiKey,
-		serverID:  serverID,
-		stopChan:  make(chan struct{}),
-		onBlock:   onBlock,
-		onUnblock: onUnblock,
+		conn:              conn,
+		client:            client,
+		apiKey:            apiKey,
+		serverID:          serverID,
+		stopChan:          make(chan struct{}),
+		onBlock:           onBlock,
+		onUnblock:         onUnblock,
+		maxReconnectDelay: 5 * time.Minute,
 	}, nil
 }
 
@@ -84,10 +89,6 @@ func (b *BlockCommandClient) Stop() {
 	close(b.stopChan)
 	b.wg.Wait()
 
-	if b.conn != nil {
-		b.conn.Close()
-	}
-
 	log.Printf("[BlockCommandClient] Stopped")
 }
 
@@ -104,10 +105,11 @@ func (b *BlockCommandClient) receiveLoop(ctx context.Context) {
 		default:
 			if err := b.connectAndStream(ctx); err != nil {
 				log.Printf("[BlockCommandClient] Stream error: %v", err)
+				delay := b.getReconnectDelay()
 				select {
 				case <-b.stopChan:
 					return
-				case <-time.After(5 * time.Second):
+				case <-time.After(delay):
 					// Retry after delay
 				}
 			}
@@ -115,16 +117,36 @@ func (b *BlockCommandClient) receiveLoop(ctx context.Context) {
 	}
 }
 
+func (b *BlockCommandClient) getReconnectDelay() time.Duration {
+	b.reconnectMu.Lock()
+	defer b.reconnectMu.Unlock()
+
+	delay := time.Duration(1<<uint(b.reconnectCount)) * time.Second
+	if delay > b.maxReconnectDelay {
+		delay = b.maxReconnectDelay
+	}
+	b.reconnectCount++
+	return delay
+}
+
+func (b *BlockCommandClient) resetReconnectDelay() {
+	b.reconnectMu.Lock()
+	b.reconnectCount = 0
+	b.reconnectMu.Unlock()
+}
+
 // connectAndStream connects to the backend and streams block commands
 func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
-	// Re-create client if connection was closed
 	b.mu.RLock()
 	client := b.client
+	conn := b.conn
 	b.mu.RUnlock()
 
-	if client == nil {
+	if client == nil || conn == nil {
 		return fmt.Errorf("client not initialized")
 	}
+
+	b.resetReconnectDelay()
 
 	stream, err := client.StreamBlockCommands(ctx, &pb.StreamBlockRequest{
 		ApiKey:      b.apiKey,
@@ -159,6 +181,15 @@ func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
 	}
 }
 
+// UpdateClient updates the gRPC client (called when Aggregator reconnects)
+func (b *BlockCommandClient) UpdateClient(conn *grpc.ClientConn) {
+	b.mu.Lock()
+	b.conn = conn
+	b.client = pb.NewBlockServiceClient(conn)
+	b.mu.Unlock()
+	log.Printf("[BlockCommandClient] Client updated with new connection")
+}
+
 // processCommand handles a single block command
 func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 	log.Printf("[BlockCommandClient] Received command: action=%s ip=%s duration=%ds reason=%s",
@@ -171,20 +202,30 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 			if duration == 0 {
 				duration = 1 * time.Hour // Default to 1 hour
 			}
-			if err := b.onBlock(cmd.IpAddress, duration, cmd.Reason); err != nil {
-				log.Printf("[BlockCommandClient] Failed to block %s: %v", cmd.IpAddress, err)
-			} else {
-				log.Printf("[BlockCommandClient] Blocked %s for %v", cmd.IpAddress, duration)
-			}
+			ip := cmd.IpAddress
+			reason := cmd.Reason
+			onBlock := b.onBlock
+			go func() {
+				if err := onBlock(ip, duration, reason); err != nil {
+					log.Printf("[BlockCommandClient] Failed to block %s: %v", ip, err)
+				} else {
+					log.Printf("[BlockCommandClient] Blocked %s for %v", ip, duration)
+				}
+			}()
 		}
 
 	case pb.BlockCommand_UNBLOCK:
 		if b.onUnblock != nil {
-			if err := b.onUnblock(cmd.IpAddress, cmd.Reason); err != nil {
-				log.Printf("[BlockCommandClient] Failed to unblock %s: %v", cmd.IpAddress, err)
-			} else {
-				log.Printf("[BlockCommandClient] Unblocked %s", cmd.IpAddress)
-			}
+			ip := cmd.IpAddress
+			reason := cmd.Reason
+			onUnblock := b.onUnblock
+			go func() {
+				if err := onUnblock(ip, reason); err != nil {
+					log.Printf("[BlockCommandClient] Failed to unblock %s: %v", ip, err)
+				} else {
+					log.Printf("[BlockCommandClient] Unblocked %s", ip)
+				}
+			}()
 		}
 
 	case pb.BlockCommand_RATE_LIMIT:

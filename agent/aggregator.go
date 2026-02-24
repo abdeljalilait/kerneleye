@@ -49,6 +49,23 @@ type Aggregator struct {
 	reconnecting      bool
 }
 
+// SetBlockCommandClient sets the block command client for connection sharing
+func (a *Aggregator) SetBlockCommandClient(client *BlockCommandClient) {
+	a.blockCmdClient = client
+}
+
+// GetGRPCConn returns the gRPC connection (for sharing with other clients)
+func (a *Aggregator) GetGRPCConn() *grpc.ClientConn {
+	a.grpcMu.RLock()
+	defer a.grpcMu.RUnlock()
+	return a.grpcConn
+}
+
+// ServerID returns the server ID
+func (a *Aggregator) ServerID() string {
+	return a.serverID
+}
+
 // NewAggregator creates a new aggregator with gRPC connection
 func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
@@ -226,9 +243,7 @@ func (a *Aggregator) StartFlushTimer(interval time.Duration) {
 	a.flushTicker = time.NewTicker(interval)
 	a.heartbeatTicker = time.NewTicker(30 * time.Second)
 
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
+	a.wg.Go(func() {
 		for {
 			select {
 			case <-a.flushTicker.C:
@@ -239,7 +254,7 @@ func (a *Aggregator) StartFlushTimer(interval time.Duration) {
 				return
 			}
 		}
-	}()
+	})
 }
 
 // SendHeartbeat sends a heartbeat to the backend
@@ -382,6 +397,11 @@ func (a *Aggregator) attemptReconnect(attempt int) {
 		_ = oldConn.Close()
 	}
 	a.grpcMu.Unlock()
+
+	// Update block command client if set
+	if a.blockCmdClient != nil {
+		a.blockCmdClient.UpdateClient(conn)
+	}
 
 	a.reconnectMu.Lock()
 	a.reconnectCount = 0 // Reset counter on success
