@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -19,14 +20,15 @@ import (
 const grpcDialTargetPrefix = "passthrough:///"
 
 // buildGRPCTarget converts server host to gRPC target address
-// If grpcURL is provided, it takes precedence over serverHost
+// If grpcURL is provided, it takes precedence over serverHost.
+// The returned value may include an explicit scheme.
 func buildGRPCTarget(serverHost, grpcURL string) string {
 	// If explicit gRPC URL is provided, use it directly
 	if grpcURL != "" {
-		return grpcURL
+		return strings.TrimSpace(grpcURL)
 	}
 	// Otherwise derive from server host
-	grpcTarget := serverHost
+	grpcTarget := strings.TrimSpace(serverHost)
 	if !strings.Contains(grpcTarget, ":") {
 		grpcTarget = grpcTarget + ":9091"
 	} else {
@@ -35,22 +37,70 @@ func buildGRPCTarget(serverHost, grpcURL string) string {
 	return grpcTarget
 }
 
-func buildGRPCOpts(target string) []grpc.DialOption {
-	// For known proxy domains with TLS, use secure credentials
-	// Traefik handles TLS termination, so we need to use TLS to communicate with it
-	tlsDomains := []string{"grpc.kerneleye.net", "grpc."}
-	for _, domain := range tlsDomains {
-		if strings.HasPrefix(target, domain) {
-			// Use TLS credentials for Traefik with HTTP/2 + TLS
-			return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}))}
+// buildGRPCDialTarget returns the target format expected by grpc.NewClient.
+// It strips URL schemes and normalizes default ports where possible.
+func buildGRPCDialTarget(target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return target
+	}
+
+	if !strings.Contains(target, "://") {
+		return target
+	}
+
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Host == "" {
+		return target
+	}
+
+	host := parsed.Host
+	if !strings.Contains(host, ":") {
+		switch strings.ToLower(parsed.Scheme) {
+		case "https", "grpcs":
+			host += ":443"
+		case "http", "grpc", "h2c":
+			host += ":80"
 		}
 	}
-	// For targets explicitly using port 9091, use TLS
-	if strings.HasSuffix(target, ":9091") {
-		return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(nil))}
+
+	return host
+}
+
+func grpcTransportForTarget(target string) bool {
+	target = strings.TrimSpace(target)
+
+	if strings.Contains(target, "://") {
+		if parsed, err := url.Parse(target); err == nil {
+			switch strings.ToLower(parsed.Scheme) {
+			case "https", "grpcs":
+				return true
+			case "http", "grpc", "h2c":
+				return false
+			}
+			target = parsed.Host
+		}
 	}
-	// Default: use insecure credentials for local development
-	return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+
+	hostPort := target
+	if idx := strings.LastIndex(hostPort, ":"); idx > 0 {
+		if hostPort[idx+1:] == "443" {
+			// Conventional TLS endpoint when no explicit scheme is provided.
+			return true
+		}
+	}
+
+	// Default to plaintext for local and self-hosted direct gRPC listeners.
+	return false
+}
+
+func buildGRPCOpts(target string) []grpc.DialOption {
+	useTLS := grpcTransportForTarget(target)
+	if !useTLS {
+		return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	}
+
+	return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))}
 }
 
 func isRetriableRegisterError(err error) bool {
@@ -87,6 +137,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 	ipAddress := getPublicIP()
 
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
+	grpcDialTarget := buildGRPCDialTarget(grpcTarget)
 	Logger.Infof("Connecting to gRPC server at %s...", grpcTarget)
 
 	var regResp *pb.RegisterResponse
@@ -100,7 +151,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 			time.Sleep(backoff)
 		}
 
-		conn, err := grpc.NewClient(grpcDialTargetPrefix+grpcTarget, buildGRPCOpts(grpcTarget)...)
+		conn, err := grpc.NewClient(grpcDialTargetPrefix+grpcDialTarget, buildGRPCOpts(grpcTarget)...)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to create gRPC client: %w", err)
 			continue
@@ -140,7 +191,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 
 	Logger.Info("Agent registered (pending). Waiting for approval...")
 
-	pollConn, err := grpc.NewClient(grpcDialTargetPrefix+grpcTarget, buildGRPCOpts(grpcTarget)...)
+	pollConn, err := grpc.NewClient(grpcDialTargetPrefix+grpcDialTarget, buildGRPCOpts(grpcTarget)...)
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC client for status polling: %w", err)
 	}
