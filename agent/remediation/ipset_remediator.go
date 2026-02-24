@@ -514,10 +514,17 @@ func (r *IPSetRemediator) Teardown() error {
 	r.Runner("iptables", "-F", chainName)
 	r.Runner("iptables", "-X", chainName)
 
-	// Destroy ipsets
+	// Destroy ipsets - check existence first and handle gracefully
 	sets := []string{blockSet, blockSetV6, rateLimitSet, rateLimitSetV6,
 		"kerneleye_block_cidr", "kerneleye_block_cidr_v6"}
 	for _, set := range sets {
+		// Check if ipset exists
+		if out, err := exec.Command("ipset", "list", set).Output(); err != nil || len(out) == 0 {
+			continue // Skip non-existent ipsets
+		}
+		// Flush the ipset first (removes all entries)
+		r.Runner("ipset", "flush", set)
+		// Then destroy
 		if err := r.Runner("ipset", "destroy", set); err != nil {
 			logger.Warnf("⚠️  Failed to destroy ipset %s: %v", set, err)
 		}
