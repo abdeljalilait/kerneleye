@@ -1,5 +1,5 @@
 import { Layout, Menu, Button, Tag } from 'antd'
-import { Activity, Server, AlertTriangle, LogOut, CreditCard, Shield } from 'lucide-react'
+import { Activity, Server, AlertTriangle, LogOut, CreditCard, Shield, Ban, CheckCircle } from 'lucide-react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useAuth } from '../context/AuthContext'
 import { versionAPI } from '../api/client'
@@ -17,6 +17,8 @@ const navItems = [
   { key: '/dashboard', label: 'Overview', icon: <Activity size={16} /> },
   { key: '/dashboard/servers', label: 'Servers', icon: <Server size={16} /> },
   { key: '/dashboard/threats', label: 'Threats', icon: <Shield size={16} /> },
+  { key: '/dashboard/blocked-ips', label: 'Blocked IPs', icon: <Ban size={16} /> },
+  { key: '/dashboard/whitelist', label: 'Whitelist', icon: <CheckCircle size={16} /> },
   { key: '/dashboard/alerts', label: 'Alerts', icon: <AlertTriangle size={16} /> },
   { key: '/subscription', label: 'Subscription', icon: <CreditCard size={16} /> },
 ]

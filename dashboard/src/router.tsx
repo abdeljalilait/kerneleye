@@ -14,6 +14,8 @@ import ForgotPassword from './pages/ForgotPassword'
 import Profile from './pages/Profile'
 import Reports from './pages/Reports'
 import Visualizer from './pages/Visualizer'
+import BlockedIPs from './pages/BlockedIPs'
+import Whitelist from './pages/Whitelist'
 import CheckoutSuccess from './pages/CheckoutSuccess'
 import { WebSocketProvider } from './context/WebSocketContext'
 
@@ -102,6 +104,18 @@ const alertsRoute = createRoute({
   component: Alerts,
 })
 
+const blockedIPsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/blocked-ips',
+  component: BlockedIPs,
+})
+
+const whitelistRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/whitelist',
+  component: Whitelist,
+})
+
 const subscriptionRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: 'subscription',
@@ -156,6 +170,8 @@ const routeTree = rootRoute.addChildren([
     serverDetailRoute,
     threatsRoute,
     alertsRoute,
+    blockedIPsRoute,
+    whitelistRoute,
     subscriptionRoute,
     checkoutSuccessRoute,
     profileRoute,

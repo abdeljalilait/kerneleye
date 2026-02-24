@@ -686,3 +686,5 @@ async function fetchBlockStats(): Promise<BlockStats> {
 async function unblockIP(ip: string): Promise<void> {
   await fetch(`/api/blocks/${ip}/unblock`, { method: 'POST' });
 }
+
+export default BlockedIPs;
