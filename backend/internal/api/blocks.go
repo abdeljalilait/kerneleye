@@ -269,7 +269,16 @@ func HandleUnblockIP(queries *database.Queries, hub *Hub) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to unblock")
 		}
 
-		// Send unblock command to agent via WebSocket
+		// Send unblock command to agent via agent channel
+		serverIDStr := block.ServerID.String()
+		hub.SendCommandToAgent(serverIDStr, map[string]interface{}{
+			"action":   "unblock",
+			"ip":       ip,
+			"reason":   req.Reason,
+			"block_id": block.ID.String(),
+		})
+
+		// Also send to dashboard via WebSocket for UI update
 		hub.BroadcastToUser(userID, "unblock_ip", map[string]interface{}{
 			"ip":     ip,
 			"reason": req.Reason,
