@@ -159,6 +159,14 @@ WHERE b.user_id = $1
 ORDER BY b.blocked_at DESC
 LIMIT $2;
 
+-- name: UpdateBlockExpiry :exec
+UPDATE blocks SET
+    expires_at = $2,
+    blocked_at = COALESCE($3, blocked_at),
+    duration_seconds = COALESCE($4, duration_seconds),
+    updated_at = NOW()
+WHERE id = $1;
+
 -- name: CleanupExpiredBlocks :exec
 UPDATE blocks SET
     is_active = false

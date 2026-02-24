@@ -103,6 +103,7 @@ type Querier interface {
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
 	RemoveFromWhitelist(ctx context.Context, arg RemoveFromWhitelistParams) error
 	UnblockIP(ctx context.Context, arg UnblockIPParams) error
+	UpdateBlockExpiry(ctx context.Context, arg UpdateBlockExpiryParams) error
 	UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKeyParams) error
 	UpdateServerConfig(ctx context.Context, arg UpdateServerConfigParams) error
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)

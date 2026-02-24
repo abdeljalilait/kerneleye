@@ -565,7 +565,42 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		ipVersion = 6
 	}
 
-	// Create block record in database
+	// Check if IP is already blocked - update instead of creating duplicate
+	existingBlock, err := h.queries.GetActiveBlockByIP(ctx, database.GetActiveBlockByIPParams{
+		UserID:    server.UserID,
+		IpAddress: ipAddr,
+	})
+	if err == nil {
+		// IP already blocked - extend expiry and update reason
+		log.Printf("[gRPC ReportBlockedIP] IP %s already blocked (id=%s), extending expiry",
+			req.IpAddress, existingBlock.ID.String())
+
+		// Calculate new expiry (extend from now or keep existing, whichever is longer)
+		var newExpiresAt pgtype.Timestamptz
+		if req.DurationSeconds > 0 {
+			newExpiry := time.Now().Add(time.Duration(req.DurationSeconds) * time.Second)
+			if existingBlock.ExpiresAt.Valid && existingBlock.ExpiresAt.Time.After(newExpiry) {
+				newExpiresAt = existingBlock.ExpiresAt
+			} else {
+				newExpiresAt = pgtype.Timestamptz{Time: newExpiry, Valid: true}
+			}
+		}
+
+		// Update existing block
+		err = h.queries.UpdateBlockExpiry(ctx, database.UpdateBlockExpiryParams{
+			ID:              existingBlock.ID,
+			ExpiresAt:       newExpiresAt,
+			BlockedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			DurationSeconds: int32(req.DurationSeconds),
+		})
+		if err != nil {
+			log.Printf("[gRPC ReportBlockedIP] Failed to update block: %v", err)
+		}
+
+		return &pb.BlockedIPResponse{Success: true}, nil
+	}
+
+	// Create new block record in database
 	block, err := h.queries.CreateBlock(ctx, database.CreateBlockParams{
 		ServerID:        server.ID,
 		UserID:          server.UserID,

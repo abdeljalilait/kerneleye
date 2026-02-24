@@ -810,6 +810,32 @@ func (q *Queries) UnblockIP(ctx context.Context, arg UnblockIPParams) error {
 	return err
 }
 
+const updateBlockExpiry = `-- name: UpdateBlockExpiry :exec
+UPDATE blocks SET
+    expires_at = $2,
+    blocked_at = COALESCE($3, blocked_at),
+    duration_seconds = COALESCE($4, duration_seconds),
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateBlockExpiryParams struct {
+	ID              pgtype.UUID        `json:"id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	BlockedAt       pgtype.Timestamptz `json:"blocked_at"`
+	DurationSeconds int32              `json:"duration_seconds"`
+}
+
+func (q *Queries) UpdateBlockExpiry(ctx context.Context, arg UpdateBlockExpiryParams) error {
+	_, err := q.db.Exec(ctx, updateBlockExpiry,
+		arg.ID,
+		arg.ExpiresAt,
+		arg.BlockedAt,
+		arg.DurationSeconds,
+	)
+	return err
+}
+
 const updateServerMetadata = `-- name: UpdateServerMetadata :exec
 UPDATE servers SET
     metadata = $2,
