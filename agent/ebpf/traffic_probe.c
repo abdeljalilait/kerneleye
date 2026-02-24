@@ -30,6 +30,7 @@ char __license[] SEC("license") = "GPL";
 #define TCP_CLOSE_WAIT  8
 #define TCP_LAST_ACK    9
 #define TCP_LISTEN      10
+#define TCP_NEW_SYN_RECV 12
 
 // Event flags
 #define FLAG_SYN         0x01
@@ -292,12 +293,93 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
     return 0;
 }
 
+// Emit inbound SYN event from a connection-request context.
+// Returns 1 when an event is emitted, 0 otherwise.
+static __always_inline int emit_inbound_syn_from_ctx(struct sock *sk, struct sk_buff *skb) {
+    if (!sk || !skb)
+        return 0;
+
+    u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
+    if (family != AF_INET)
+        return 0;
+
+    // tcp_v4_conn_request should run on listening sockets.
+    // This also helps reject wrong argument positions safely.
+    u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
+    if (sk_state != TCP_LISTEN)
+        return 0;
+
+    // Extract remote/local addresses from skb packet headers.
+    void *head = (void *)BPF_CORE_READ(skb, head);
+    u16 network_header = BPF_CORE_READ(skb, network_header);
+    u16 transport_header = BPF_CORE_READ(skb, transport_header);
+    if (!head)
+        return 0;
+
+    struct iphdr ip = {};
+    if (bpf_probe_read_kernel(&ip, sizeof(ip), (char *)head + network_header) < 0)
+        return 0;
+    if (ip.version != 4 || ip.ihl < 5)
+        return 0;
+
+    struct tcphdr tcp = {};
+    if (bpf_probe_read_kernel(&tcp, sizeof(tcp), (char *)head + transport_header) < 0)
+        return 0;
+
+    u32 saddr = bpf_ntohl(ip.saddr);               // Remote source IP
+    u32 daddr = bpf_ntohl(ip.daddr);               // Local destination IP
+    u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);  // Local service port
+    u16 rport = bpf_ntohs(tcp.source);             // Remote source port
+
+    if (saddr == 0 || lport == 0)
+        return 0;
+
+    struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e)
+        return 0;
+
+    e->saddr = saddr;
+    e->daddr = daddr;
+    e->lport = lport;
+    e->rport = rport;
+    e->family = family;
+    e->protocol = IPPROTO_TCP;
+    e->flags = FLAG_SYN;
+    e->direction = DIR_INBOUND;
+    e->timestamp = bpf_ktime_get_ns();
+
+    fill_process_info(e);
+    bpf_ringbuf_submit(e, 0);
+    return 1;
+}
+
+// Hook: TCP Connection Request (Incoming SYN)
+// Uses PT_REGS argument probing to tolerate kernel signature variants.
+SEC("kprobe/tcp_v4_conn_request")
+int detect_tcp_conn_request(struct pt_regs *ctx) {
+    if (!check_rate_limit())
+        return 0;
+
+    // Support multiple kernel signatures by probing likely (sock, skb) pairs.
+    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM1_CORE(ctx),
+                                  (struct sk_buff *)PT_REGS_PARM2_CORE(ctx)))
+        return 0;
+    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM2_CORE(ctx),
+                                  (struct sk_buff *)PT_REGS_PARM3_CORE(ctx)))
+        return 0;
+    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM1_CORE(ctx),
+                                  (struct sk_buff *)PT_REGS_PARM3_CORE(ctx)))
+        return 0;
+
+    return 0;
+}
+
 // Tracepoint: TCP state change - catches inbound SYN (SYN_RECV state)
 // More stable than kprobe - properly typed fields, works across kernel versions
 SEC("tracepoint/sock/inet_sock_set_state")
 int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
-    // Only care about transitions INTO SYN_RECV (server received a SYN)
-    if (ctx->newstate != TCP_SYN_RECV)
+    // Only care about transitions INTO SYN_RECV/NEW_SYN_RECV (server received a SYN)
+    if (ctx->newstate != TCP_SYN_RECV && ctx->newstate != TCP_NEW_SYN_RECV)
         return 0;
 
     if (ctx->protocol != IPPROTO_TCP)
@@ -313,14 +395,16 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     if (!e)
         return 0;
 
-    // Convert IP addresses from __u8[4] to u32 (network to host byte order)
-    // saddr = remote (connecting) IP, daddr = local (our) IP
-    e->saddr = (__u32)ctx->saddr[0] | ((__u32)ctx->saddr[1] << 8) |
-               ((__u32)ctx->saddr[2] << 16) | ((__u32)ctx->saddr[3] << 24);
-    e->daddr = (__u32)ctx->daddr[0] | ((__u32)ctx->daddr[1] << 8) |
-               ((__u32)ctx->daddr[2] << 16) | ((__u32)ctx->daddr[3] << 24);
-    e->lport = ctx->sport;                 // Our listening port
-    e->rport = ctx->dport;                 // Remote ephemeral port
+    // Tracepoint addresses are byte arrays in network order.
+    // Store as host-order u32 to match intToIP() usage in userspace.
+    e->saddr = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
+               ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
+    e->daddr = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
+               ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
+
+    // For inbound traffic, destination port is local service port.
+    e->lport = bpf_ntohs(ctx->dport);      // Local listening/service port
+    e->rport = bpf_ntohs(ctx->sport);      // Remote ephemeral/source port
     e->family = ctx->family;
     e->protocol = IPPROTO_TCP;
     e->flags = FLAG_SYN;

@@ -242,8 +242,8 @@ func validateEvent(e *Event) error {
 	if e.Saddr == 0 {
 		return errors.New("missing source IP")
 	}
-	if e.Lport == 0 {
-		return errors.New("missing port")
+	if e.Lport == 0 && e.Rport == 0 {
+		return errors.New("missing ports")
 	}
 	return nil
 }

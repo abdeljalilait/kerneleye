@@ -17,45 +17,80 @@ type EBPFResources struct {
 	KpClose       link.Link
 	KpSetState    link.Link
 	KpUdpRecv     link.Link
-	KpConnRequest link.Link // TCP connection request (incoming SYN)
+	KpConnRequest link.Link // Inbound SYN detector (kprobe or tracepoint)
 	IngressFilter *netlink.BpfFilter
 	EgressFilter  *netlink.BpfFilter
 }
 
-func loadBPFObjectsWithConnRequestFallback(objects *bpfObjects) (bool, error) {
-	if err := loadBpfObjects(objects, nil); err == nil {
-		return false, nil
-	} else if !isConnRequestLoadError(err) {
-		return false, err
-	} else {
-		spec, specErr := loadBpf()
-		if specErr != nil {
-			return false, fmt.Errorf("eBPF load failed (%w); fallback spec load failed: %v", err, specErr)
-		}
-
-		prog, ok := spec.Programs["detect_tcp_conn_request"]
-		if !ok || prog == nil {
-			return false, err
-		}
-
-		// Replace only this optional probe with a verifier-safe no-op, then retry.
-		prog.Instructions = asm.Instructions{
-			asm.Mov.Imm(asm.R0, 0),
-			asm.Return(),
-		}
-
-		if retryErr := spec.LoadAndAssign(objects, nil); retryErr != nil {
-			return false, fmt.Errorf("eBPF load failed (%w); fallback retry failed: %v", err, retryErr)
-		}
-
-		Logger.Warnf("⚠️  detect_tcp_conn_request was rejected by kernel verifier; continuing with probe disabled: %v", err)
-		return true, nil
-	}
+type inboundSynProbeStatus struct {
+	ConnRequestDisabled bool
+	TracepointDisabled  bool
 }
 
-func isConnRequestLoadError(err error) bool {
+func markOptionalInboundSynProgramFromError(err error, status *inboundSynProbeStatus) bool {
 	msg := err.Error()
-	return strings.Contains(msg, "DetectInboundSyn") || strings.Contains(msg, "detect_inbound_syn")
+	changed := false
+
+	if !status.ConnRequestDisabled &&
+		(strings.Contains(msg, "DetectTcpConnRequest") || strings.Contains(msg, "detect_tcp_conn_request")) {
+		status.ConnRequestDisabled = true
+		changed = true
+	}
+	if !status.TracepointDisabled &&
+		(strings.Contains(msg, "DetectInboundSyn") || strings.Contains(msg, "detect_inbound_syn")) {
+		status.TracepointDisabled = true
+		changed = true
+	}
+
+	return changed
+}
+
+func loadBPFObjectsWithInboundSynFallback(objects *bpfObjects) (inboundSynProbeStatus, error) {
+	status := inboundSynProbeStatus{}
+	var firstErr error
+
+	for attempt := 0; attempt < 3; attempt++ {
+		spec, specErr := loadBpf()
+		if specErr != nil {
+			return status, fmt.Errorf("failed to load eBPF spec: %w", specErr)
+		}
+
+		if status.ConnRequestDisabled {
+			if prog, ok := spec.Programs["detect_tcp_conn_request"]; ok && prog != nil {
+				prog.Instructions = asm.Instructions{
+					asm.Mov.Imm(asm.R0, 0),
+					asm.Return(),
+				}
+			}
+		}
+		if status.TracepointDisabled {
+			if prog, ok := spec.Programs["detect_inbound_syn"]; ok && prog != nil {
+				prog.Instructions = asm.Instructions{
+					asm.Mov.Imm(asm.R0, 0),
+					asm.Return(),
+				}
+			}
+		}
+
+		if err := spec.LoadAndAssign(objects, nil); err == nil {
+			if status.ConnRequestDisabled {
+				Logger.Warn("⚠️  detect_tcp_conn_request was disabled due to kernel verifier rejection")
+			}
+			if status.TracepointDisabled {
+				Logger.Warn("⚠️  detect_inbound_syn was disabled due to kernel verifier rejection")
+			}
+			return status, nil
+		} else {
+			if firstErr == nil {
+				firstErr = err
+			}
+			if !markOptionalInboundSynProgramFromError(err, &status) {
+				return status, fmt.Errorf("eBPF load failed (%w); fallback retry failed: %v", firstErr, err)
+			}
+		}
+	}
+
+	return status, fmt.Errorf("eBPF load failed after optional-probe fallbacks: %w", firstErr)
 }
 
 // Close cleans up all eBPF resources
@@ -92,10 +127,8 @@ func (r *EBPFResources) Close() {
 // LoadAndAttacheBPF loads eBPF objects and attaches probes
 func LoadAndAttacheBPF() (*EBPFResources, error) {
 	res := &EBPFResources{Objects: &bpfObjects{}}
-	if err := loadBpfObjects(res.Objects, nil); err != nil {
-		if isConnRequestLoadError(err) {
-			Logger.Warn("⚠️  Tracepoint load error - check kernel support for sock:inet_sock_set_state")
-		}
+	synProbeStatus, err := loadBPFObjectsWithInboundSynFallback(res.Objects)
+	if err != nil {
 		return nil, err
 	}
 	var linkErr error
@@ -107,12 +140,32 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 		return nil, linkErr
 	}
 
-	// TCP state change tracepoint - catches inbound SYN (SYN_RECV state)
-	// More stable than kprobe - properly typed fields across kernel versions
-	res.KpConnRequest, linkErr = link.Tracepoint("sock", "inet_sock_set_state", res.Objects.DetectInboundSyn, nil)
-	if linkErr != nil {
-		Logger.Warnf("⚠️  tracepoint sock:inet_sock_set_state not available (non-critical): %v", linkErr)
-		// Non-fatal: accept-based detection still works
+	// Prefer tcp_v4_conn_request kprobe for inbound SYNs.
+	if !synProbeStatus.ConnRequestDisabled {
+		res.KpConnRequest, linkErr = link.Kprobe("tcp_v4_conn_request", res.Objects.DetectTcpConnRequest, nil)
+		if linkErr != nil {
+			Logger.Warnf("⚠️  kprobe tcp_v4_conn_request not available (non-critical): %v", linkErr)
+		} else {
+			Logger.Info("✅ Inbound SYN probe attached: kprobe tcp_v4_conn_request")
+		}
+	}
+
+	// Fallback: tracepoint-based inbound SYN detection.
+	if res.KpConnRequest == nil && !synProbeStatus.TracepointDisabled {
+		res.KpConnRequest, linkErr = link.Tracepoint("sock", "inet_sock_set_state", res.Objects.DetectInboundSyn, nil)
+		if linkErr != nil {
+			Logger.Warnf("⚠️  tracepoint sock:inet_sock_set_state not available (non-critical): %v", linkErr)
+		} else {
+			Logger.Info("✅ Inbound SYN probe attached: tracepoint sock:inet_sock_set_state")
+		}
+	}
+
+	if res.KpConnRequest == nil {
+		if synProbeStatus.ConnRequestDisabled && synProbeStatus.TracepointDisabled {
+			Logger.Warn("⚠️  inbound SYN probes disabled by verifier; SYN counters will remain zero")
+		} else {
+			Logger.Warn("⚠️  no inbound SYN probe attached; SYN counters may remain zero")
+		}
 	}
 
 	// TCP Connect (outgoing connections - SYN sent)
