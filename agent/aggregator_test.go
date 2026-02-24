@@ -116,3 +116,81 @@ func TestProcessEventOutboundEphemeralPortsDoNotTriggerPortScan(t *testing.T) {
 		t.Fatalf("rate-limit decisions = %d, want 0", rem.rateLimitCalls)
 	}
 }
+
+func TestIsAgentSelfTraffic(t *testing.T) {
+	agg := &Aggregator{agentPID: 4242}
+
+	if !agg.isAgentSelfTraffic(Event{Tgid: 4242}) {
+		t.Fatal("expected self-traffic match by TGID")
+	}
+	if agg.isAgentSelfTraffic(Event{Tgid: 7}) {
+		t.Fatal("did not expect non-matching TGID to be treated as self-traffic")
+	}
+
+	var byName Event
+	copy(byName.Comm[:], "kerneleye-agent")
+	if !(&Aggregator{}).isAgentSelfTraffic(byName) {
+		t.Fatal("expected fallback self-traffic match by process name")
+	}
+}
+
+func TestProcessEventIgnoresAgentSelfTraffic(t *testing.T) {
+	agg := &Aggregator{
+		stats:          NewSafeStats(),
+		cachedPublicIP: "203.0.113.10",
+		bootTime:       time.Now().Add(-time.Hour),
+		agentPID:       9999,
+	}
+
+	agg.ProcessEvent(Event{
+		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Lport:     51612,
+		Rport:     9091,
+		Protocol:  6,
+		Direction: DirOutbound,
+		Tgid:      9999,
+	})
+
+	if got := agg.stats.Len(); got != 0 {
+		t.Fatalf("stats entries = %d, want 0 for self-traffic", got)
+	}
+}
+
+func TestProcessEventIgnoresControlPlaneIPTraffic(t *testing.T) {
+	agg := &Aggregator{
+		stats:            NewSafeStats(),
+		cachedPublicIP:   "203.0.113.10",
+		bootTime:         time.Now().Add(-time.Hour),
+		controlPlaneIPs:  map[string]bool{"46.224.59.11": true},
+		controlPlaneHost: "grpc.example.net",
+		controlPlanePort: 9091,
+	}
+
+	// Outbound call to control-plane host should be ignored.
+	agg.ProcessEvent(Event{
+		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Lport:     51612,
+		Rport:     9091,
+		Protocol:  6,
+		Direction: DirOutbound,
+		Tgid:      1234,
+	})
+
+	if got := agg.stats.Len(); got != 0 {
+		t.Fatalf("stats entries = %d, want 0 for control-plane outbound traffic", got)
+	}
+
+	// Inbound from same IP should still be processed.
+	agg.ProcessEvent(Event{
+		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Lport:     22,
+		Rport:     58086,
+		Protocol:  6,
+		Direction: DirInbound,
+		Tgid:      5678,
+	})
+
+	if got := agg.stats.Len(); got != 1 {
+		t.Fatalf("stats entries = %d, want 1 for inbound traffic", got)
+	}
+}

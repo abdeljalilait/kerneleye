@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +41,10 @@ type Aggregator struct {
 	heartbeatTicker    *time.Ticker
 	bootTime           time.Time      // System boot time for eBPF timestamp conversion
 	wg                 sync.WaitGroup // Tracks background goroutines for graceful shutdown
+	agentPID           uint32         // Current agent process ID for self-traffic filtering
+	controlPlaneIPs    map[string]bool
+	controlPlaneHost   string
+	controlPlanePort   uint16
 
 	blockCmdClient *BlockCommandClient // Receives block commands from backend
 
@@ -69,6 +76,7 @@ func (a *Aggregator) ServerID() string {
 // NewAggregator creates a new aggregator with gRPC connection
 func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
+	controlPlaneHost, controlPlanePort, controlPlaneIPs := resolveControlPlaneEndpoint(grpcTarget)
 	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(grpcTarget), buildGRPCOpts(grpcTarget)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
@@ -124,7 +132,14 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 		cachedPublicIP:    cachedPublicIP,
 		serverIPs:         serverIPs,
 		bootTime:          bootTime,
+		agentPID:          uint32(os.Getpid()),
+		controlPlaneIPs:   controlPlaneIPs,
+		controlPlaneHost:  controlPlaneHost,
+		controlPlanePort:  controlPlanePort,
 		maxReconnectDelay: 5 * time.Minute,
+	}
+	if len(controlPlaneIPs) > 0 {
+		Logger.Infof("ℹ️  Control-plane filter enabled: host=%s port=%d resolved_ips=%d", controlPlaneHost, controlPlanePort, len(controlPlaneIPs))
 	}
 
 	// Start connection monitor
@@ -177,9 +192,76 @@ func trackedPortForEvent(event Event) uint16 {
 	return event.Rport
 }
 
+func resolveControlPlaneEndpoint(target string) (host string, port uint16, ips map[string]bool) {
+	ips = make(map[string]bool)
+
+	dialTarget := buildGRPCDialTarget(target)
+	host = dialTarget
+	port = 0
+	if h, p, err := net.SplitHostPort(dialTarget); err == nil {
+		host = h
+		if parsed, err := strconv.Atoi(p); err == nil && parsed >= 0 && parsed <= 65535 {
+			port = uint16(parsed)
+		}
+	}
+
+	if parsedIP := net.ParseIP(host); parsedIP != nil {
+		ips[parsedIP.String()] = true
+		return host, port, ips
+	}
+
+	resolved, err := net.LookupIP(host)
+	if err != nil {
+		Logger.Warnf("⚠️  Could not resolve gRPC host %q for control-plane filtering: %v", host, err)
+		return host, port, ips
+	}
+
+	for _, ip := range resolved {
+		ips[ip.String()] = true
+	}
+
+	return host, port, ips
+}
+
+func eventCommName(event Event) string {
+	name := event.Comm[:]
+	if idx := bytes.IndexByte(name, 0); idx >= 0 {
+		name = name[:idx]
+	}
+	return strings.TrimSpace(string(name))
+}
+
+func (a *Aggregator) isControlPlaneTraffic(event Event, remoteIP net.IP) bool {
+	if event.Direction != DirOutbound {
+		return false
+	}
+	if len(a.controlPlaneIPs) == 0 {
+		return false
+	}
+	return a.controlPlaneIPs[remoteIP.String()]
+}
+
+func (a *Aggregator) isAgentSelfTraffic(event Event) bool {
+	// Primary check: TGID equals current agent process.
+	if a.agentPID != 0 && event.Tgid == a.agentPID {
+		return true
+	}
+
+	// Fallback for environments where TGID might be unavailable in event data.
+	comm := eventCommName(event)
+	return comm == "kerneleye-agent" || comm == "kerneleye"
+}
+
 // ProcessEvent processes a single eBPF event (thread-safe via SafeStats)
 func (a *Aggregator) ProcessEvent(event Event) {
+	if a.isAgentSelfTraffic(event) {
+		return
+	}
+
 	ipObj := intToIP(event.Saddr)
+	if a.isControlPlaneTraffic(event, ipObj) {
+		return
+	}
 	if isPrivateIP(ipObj) {
 		return
 	}

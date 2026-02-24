@@ -307,7 +307,7 @@ func getGRPCURL(serverHost string) string {
 	// Check for explicit gRPC host first (recommended approach)
 	grpcHost := strings.TrimSpace(os.Getenv("KERNELEYE_GRPC_HOST"))
 	if grpcHost != "" {
-		return grpcHost + ":9091"
+		return grpcHost
 	}
 
 	// Fallback: check full gRPC URL
@@ -316,10 +316,10 @@ func getGRPCURL(serverHost string) string {
 		return grpcURL
 	}
 
-	// Derive from server host with port 9091
+	// Derive from server host (without port, agent will append 9091)
 	host := strings.Replace(serverHost, ":443", "", 1)
 	host = strings.Replace(host, ":8080", "", 1)
-	return host + ":9091"
+	return host
 }
 
 func getInstallScriptURL() string {

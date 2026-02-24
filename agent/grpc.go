@@ -23,9 +23,16 @@ const grpcDialTargetPrefix = "passthrough:///"
 // If grpcURL is provided, it takes precedence over serverHost.
 // The returned value may include an explicit scheme.
 func buildGRPCTarget(serverHost, grpcURL string) string {
-	// If explicit gRPC URL is provided, use it directly
+	// If explicit gRPC URL is provided, normalize it to port 9091
 	if grpcURL != "" {
-		return strings.TrimSpace(grpcURL)
+		grpcTarget := strings.TrimSpace(grpcURL)
+		// If no port, append 9091; otherwise replace existing port with 9091
+		if !strings.Contains(grpcTarget, ":") {
+			grpcTarget = grpcTarget + ":9091"
+		} else {
+			grpcTarget = strings.Replace(grpcTarget, ":443", ":9091", 1)
+		}
+		return grpcTarget
 	}
 	// Otherwise derive from server host
 	grpcTarget := strings.TrimSpace(serverHost)
