@@ -21,6 +21,25 @@ func (a *Aggregator) FlushToAPI() {
 	}
 	Logger.Infof("Flushing %d IPs to API...", a.stats.Len())
 
+	// Log details for debugging
+	snapshot := a.stats.SnapshotDeep()
+	for ip, stats := range snapshot {
+		dir := "inbound"
+		if stats.Direction == DirOutbound {
+			dir = "outbound"
+		}
+		var primaryPort uint16
+		maxCount := 0
+		for port, count := range stats.PortCounts {
+			if count > maxCount {
+				maxCount = count
+				primaryPort = port
+			}
+		}
+		Logger.Debugf("  → IP: %s port: %d dir: %s syn: %d ack: %d failed: %d unique_ports: %d",
+			ip, primaryPort, dir, stats.SYNCount, stats.ACKCount, stats.FailedHandshakes, len(stats.UniquePorts))
+	}
+
 	// Fetch byte counters using thread-safe iteration
 	if byteCounterMap != nil {
 		a.stats.ForEachMutable(func(ip string, stats *IPStats) {
@@ -88,7 +107,16 @@ func (a *Aggregator) FlushToAPI() {
 	}
 
 	if resp.Success {
-		Logger.Info("✅ Successfully sent %d events to gRPC API", len(pbEvents))
+		totalSyn := 0
+		totalAck := 0
+		totalFailed := 0
+		for _, e := range pbEvents {
+			totalSyn += int(e.SynCount)
+			totalAck += int(e.AckCount)
+			totalFailed += int(e.FailedHandshakes)
+		}
+		Logger.Infof("✅ Sent %d IPs (%d events) to gRPC API - syn=%d ack=%d failed=%d",
+			len(pbEvents), len(pbEvents), totalSyn, totalAck, totalFailed)
 		a.stats.Clear() // Thread-safe clear
 	} else {
 		Logger.Error("❌ gRPC API returned failure: %s", resp.Message)
