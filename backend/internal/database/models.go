@@ -199,6 +199,7 @@ type TrafficEvent struct {
 	LastSeen         pgtype.Timestamptz `json:"last_seen"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	Country          pgtype.Text        `json:"country"`
+	CountryCode      pgtype.Text        `json:"country_code"`
 	City             pgtype.Text        `json:"city"`
 	Isp              pgtype.Text        `json:"isp"`
 	HitCount         int32              `json:"hit_count"`

@@ -30,7 +30,7 @@ func buildGRPCTarget(serverHost, grpcURL string) string {
 	if !strings.Contains(grpcTarget, ":") {
 		grpcTarget = grpcTarget + ":9091"
 	} else {
-		grpcTarget = strings.Replace(grpcTarget, ":8080", ":9091", 1)
+		grpcTarget = strings.Replace(grpcTarget, ":443", ":9091", 1)
 	}
 	return grpcTarget
 }
@@ -45,8 +45,8 @@ func buildGRPCOpts(target string) []grpc.DialOption {
 			return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}))}
 		}
 	}
-	// For targets explicitly using port 443, use TLS
-	if strings.HasSuffix(target, ":443") {
+	// For targets explicitly using port 9091, use TLS
+	if strings.HasSuffix(target, ":9091") {
 		return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(nil))}
 	}
 	// Default: use insecure credentials for local development

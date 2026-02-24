@@ -268,9 +268,9 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 			}
 		}
 
-		var country, city, isp string
+		var country, countryCode, city, isp string
 		if h.geoIP != nil {
-			country, city, isp, _ = h.geoIP.Lookup(event.SourceIp)
+			country, countryCode, city, isp, _ = h.geoIP.Lookup(event.SourceIp)
 		}
 
 		// Convert protobuf direction to string
@@ -295,6 +295,7 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 			FirstSeen:        database.ToPgTimestamptz(event.FirstSeen.AsTime()),
 			LastSeen:         database.ToPgTimestamptz(event.LastSeen.AsTime()),
 			Country:          database.ToPgText(country),
+			CountryCode:      database.ToPgText(countryCode),
 			City:             database.ToPgText(city),
 			Isp:              database.ToPgText(isp),
 		})

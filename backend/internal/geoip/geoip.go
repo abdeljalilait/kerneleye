@@ -29,7 +29,7 @@ type Record struct {
 
 func NewService(dbPath string) (*Service, error) {
 	s := &Service{}
-	
+
 	// Try loading City DB
 	cityPath := filepath.Join(dbPath, "GeoLite2-City.mmdb")
 	cityDB, err := maxminddb.Open(cityPath)
@@ -38,7 +38,7 @@ func NewService(dbPath string) (*Service, error) {
 	} else {
 		s.cityDB = cityDB
 	}
-	
+
 	// Try loading ASN DB
 	asnPath := filepath.Join(dbPath, "GeoLite2-ASN.mmdb")
 	asnDB, err := maxminddb.Open(asnPath)
@@ -60,13 +60,13 @@ func (s *Service) Close() {
 	}
 }
 
-func (s *Service) Lookup(ipStr string) (country, city, isp string, err error) {
+func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp string, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 
 	if s.cityDB != nil {
@@ -79,9 +79,10 @@ func (s *Service) Lookup(ipStr string) (country, city, isp string, err error) {
 				Names map[string]string `maxminddb:"names"`
 			} `maxminddb:"city"`
 		}
-		
+
 		if err := s.cityDB.Lookup(ip).Decode(&record); err == nil {
 			country = record.Country.Names["en"]
+			countryCode = record.Country.ISOCode
 			city = record.City.Names["en"]
 		}
 	}
@@ -95,5 +96,5 @@ func (s *Service) Lookup(ipStr string) (country, city, isp string, err error) {
 		}
 	}
 
-	return country, city, isp, nil
+	return country, countryCode, city, isp, nil
 }

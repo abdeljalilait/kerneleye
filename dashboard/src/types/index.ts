@@ -25,6 +25,10 @@ export interface Threat {
   threat_type: 'none' | 'port_scan' | 'service_abuse' | 'syn_flood' | 'failed_handshake' | 'connection_burst';
   first_seen: string;
   last_seen: string;
+  country?: string;
+  country_code?: string;
+  city?: string;
+  isp?: string;
   location?: string; // Optional if we add GeoIP later
   reason?: string;
 }

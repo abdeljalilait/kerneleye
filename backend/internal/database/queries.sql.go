@@ -2571,7 +2571,7 @@ INSERT INTO traffic_events (
     syn_count, ack_count, failed_handshakes, unique_ports,
     bytes_in, bytes_out, threat_score, threat_level, threat_type,
     first_seen, last_seen, country, city, isp, asn, hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 1)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -2590,7 +2590,7 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     END,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
-RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type
+RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, country_code, city, isp, hit_count, direction, destination_ip, asn, threat_type
 `
 
 type UpsertTrafficEventParams struct {
@@ -2612,6 +2612,7 @@ type UpsertTrafficEventParams struct {
 	FirstSeen        pgtype.Timestamptz `json:"first_seen"`
 	LastSeen         pgtype.Timestamptz `json:"last_seen"`
 	Country          pgtype.Text        `json:"country"`
+	CountryCode      pgtype.Text        `json:"country_code"`
 	City             pgtype.Text        `json:"city"`
 	Isp              pgtype.Text        `json:"isp"`
 	Asn              pgtype.Text        `json:"asn"`
@@ -2637,6 +2638,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		arg.FirstSeen,
 		arg.LastSeen,
 		arg.Country,
+		arg.CountryCode,
 		arg.City,
 		arg.Isp,
 		arg.Asn,
@@ -2660,6 +2662,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.LastSeen,
 		&i.CreatedAt,
 		&i.Country,
+		&i.CountryCode,
 		&i.City,
 		&i.Isp,
 		&i.HitCount,

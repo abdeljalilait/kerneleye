@@ -279,23 +279,23 @@ func (cb *CommandBuilder) EnvironmentVariables() map[string]string {
 func getServerHost() string {
 	server := strings.TrimSpace(os.Getenv("KERNELEYE_SERVER"))
 	if server == "" {
-		return "api.kerneleye.net:443"
+		return "api.kerneleye.net:9091"
 	}
 
 	// Accept either host:port or full URL in env.
 	// Examples:
 	// - localhost:8080
-	// - https://api.example.com/api/v1  -> api.example.com:443
+	// - https://api.example.com/api/v1  -> api.example.com:9091
 	if strings.HasPrefix(server, "http://") || strings.HasPrefix(server, "https://") {
 		parsed, err := url.Parse(server)
 		if err != nil || parsed.Hostname() == "" {
-			return "api.kerneleye.net:443"
+			return "api.kerneleye.net:9091"
 		}
 		if parsed.Port() != "" {
 			return fmt.Sprintf("%s:%s", parsed.Hostname(), parsed.Port())
 		}
 		if parsed.Scheme == "https" {
-			return parsed.Hostname() + ":443"
+			return parsed.Hostname() + ":9091"
 		}
 		return parsed.Hostname() + ":80"
 	}
@@ -307,8 +307,7 @@ func getGRPCURL(serverHost string) string {
 	// Check for explicit gRPC host first (recommended approach)
 	grpcHost := strings.TrimSpace(os.Getenv("KERNELEYE_GRPC_HOST"))
 	if grpcHost != "" {
-		// Use explicit gRPC host with port 443
-		return grpcHost + ":443"
+		return grpcHost + ":9091"
 	}
 
 	// Fallback: check full gRPC URL
@@ -317,11 +316,10 @@ func getGRPCURL(serverHost string) string {
 		return grpcURL
 	}
 
-	// Derive from server host
-	if !strings.Contains(serverHost, ":") {
-		return serverHost + ":9091"
-	}
-	return strings.Replace(serverHost, ":8080", ":9091", 1)
+	// Derive from server host with port 9091
+	host := strings.Replace(serverHost, ":443", "", 1)
+	host = strings.Replace(host, ":8080", "", 1)
+	return host + ":9091"
 }
 
 func getInstallScriptURL() string {

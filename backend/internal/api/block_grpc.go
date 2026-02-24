@@ -55,7 +55,7 @@ func (h *BlockHandler) ReportBlock(ctx context.Context, req *kerneleyev1.BlockRe
 	var asn int32
 
 	if h.geoIP != nil {
-		countryName, city, asnOrg, _ = h.geoIP.Lookup(req.IpAddress)
+		countryName, countryCode, city, asnOrg, _ = h.geoIP.Lookup(req.IpAddress)
 	}
 
 	// 4. Detect if datacenter/VPN/Tor (simplified)
@@ -233,7 +233,7 @@ func (h *BlockHandler) isDatacenterIP(ip string) bool {
 		return false
 	}
 
-	_, _, isp, err := h.geoIP.Lookup(ip)
+	_, _, _, isp, err := h.geoIP.Lookup(ip)
 	if err != nil || isp == "" {
 		return false
 	}
