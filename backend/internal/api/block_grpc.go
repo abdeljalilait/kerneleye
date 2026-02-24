@@ -261,3 +261,51 @@ func (h *BlockHandler) isDatacenterIP(ip string) bool {
 
 	return false
 }
+
+// GetBlockList returns current active blocks for a server for state reconciliation
+func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlockListRequest) (*kerneleyev1.GetBlockListResponse, error) {
+	// 1. Authenticate server
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "invalid API key")
+	}
+
+	if server.Status != "active" {
+		return nil, status.Errorf(codes.PermissionDenied, "server not active")
+	}
+
+	// 2. Get active blocks for this server
+	blocks, err := h.queries.GetActiveBlocksForServer(ctx, server.ID)
+	if err != nil {
+		log.Printf("[GetBlockList] Failed to get blocks for server %s: %v", server.ID, err)
+		return &kerneleyev1.GetBlockListResponse{
+			Blocks:          nil,
+			ServerTimestamp: time.Now().Unix(),
+		}, nil
+	}
+
+	// 3. Convert to proto
+	result := make([]*kerneleyev1.BlockListEntry, 0, len(blocks))
+	for _, block := range blocks {
+		expiresAt := int64(0)
+		if block.ExpiresAt.Valid {
+			expiresAt = block.ExpiresAt.Time.Unix()
+		}
+
+		result = append(result, &kerneleyev1.BlockListEntry{
+			IpAddress:       block.IpAddress.String(),
+			IpVersion:       int32(block.IpVersion.Int32),
+			DurationSeconds: int64(block.DurationSeconds),
+			Reason:          strings.Join(block.Reasons, ", "),
+			BlockId:         block.ID.String(),
+			ExpiresAt:       expiresAt,
+		})
+	}
+
+	log.Printf("[GetBlockList] Returning %d active blocks for server %s", len(result), server.Hostname)
+
+	return &kerneleyev1.GetBlockListResponse{
+		Blocks:          result,
+		ServerTimestamp: time.Now().Unix(),
+	}, nil
+}

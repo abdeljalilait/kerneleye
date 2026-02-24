@@ -68,7 +68,7 @@ func (x BlockCommand_Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BlockCommand_Action.Descriptor instead.
 func (BlockCommand_Action) EnumDescriptor() ([]byte, []int) {
-	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{7, 0}
+	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{10, 0}
 }
 
 // BlockReportRequest - Agent sends when it blocks an IP
@@ -685,6 +685,195 @@ func (x *StreamBlockRequest) GetClientToken() string {
 	return ""
 }
 
+// GetBlockListRequest - Agent requests current block list for state reconciliation
+type GetBlockListRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApiKey        string                 `protobuf:"bytes,1,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	ClientToken   string                 `protobuf:"bytes,2,opt,name=client_token,json=clientToken,proto3" json:"client_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBlockListRequest) Reset() {
+	*x = GetBlockListRequest{}
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBlockListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBlockListRequest) ProtoMessage() {}
+
+func (x *GetBlockListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBlockListRequest.ProtoReflect.Descriptor instead.
+func (*GetBlockListRequest) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetBlockListRequest) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+func (x *GetBlockListRequest) GetClientToken() string {
+	if x != nil {
+		return x.ClientToken
+	}
+	return ""
+}
+
+type BlockListEntry struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	IpAddress       string                 `protobuf:"bytes,1,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
+	IpVersion       int32                  `protobuf:"varint,2,opt,name=ip_version,json=ipVersion,proto3" json:"ip_version,omitempty"`
+	DurationSeconds int64                  `protobuf:"varint,3,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	Reason          string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	BlockId         string                 `protobuf:"bytes,5,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
+	ExpiresAt       int64                  `protobuf:"varint,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // Unix timestamp
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *BlockListEntry) Reset() {
+	*x = BlockListEntry{}
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockListEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockListEntry) ProtoMessage() {}
+
+func (x *BlockListEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockListEntry.ProtoReflect.Descriptor instead.
+func (*BlockListEntry) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *BlockListEntry) GetIpAddress() string {
+	if x != nil {
+		return x.IpAddress
+	}
+	return ""
+}
+
+func (x *BlockListEntry) GetIpVersion() int32 {
+	if x != nil {
+		return x.IpVersion
+	}
+	return 0
+}
+
+func (x *BlockListEntry) GetDurationSeconds() int64 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
+func (x *BlockListEntry) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *BlockListEntry) GetBlockId() string {
+	if x != nil {
+		return x.BlockId
+	}
+	return ""
+}
+
+func (x *BlockListEntry) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+type GetBlockListResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Blocks          []*BlockListEntry      `protobuf:"bytes,1,rep,name=blocks,proto3" json:"blocks,omitempty"`
+	ServerTimestamp int64                  `protobuf:"varint,2,opt,name=server_timestamp,json=serverTimestamp,proto3" json:"server_timestamp,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetBlockListResponse) Reset() {
+	*x = GetBlockListResponse{}
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBlockListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBlockListResponse) ProtoMessage() {}
+
+func (x *GetBlockListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBlockListResponse.ProtoReflect.Descriptor instead.
+func (*GetBlockListResponse) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetBlockListResponse) GetBlocks() []*BlockListEntry {
+	if x != nil {
+		return x.Blocks
+	}
+	return nil
+}
+
+func (x *GetBlockListResponse) GetServerTimestamp() int64 {
+	if x != nil {
+		return x.ServerTimestamp
+	}
+	return 0
+}
+
 // BlockCommand - Backend sends command to agent
 type BlockCommand struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -700,7 +889,7 @@ type BlockCommand struct {
 
 func (x *BlockCommand) Reset() {
 	*x = BlockCommand{}
-	mi := &file_kerneleye_v1_blocks_proto_msgTypes[7]
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -712,7 +901,7 @@ func (x *BlockCommand) String() string {
 func (*BlockCommand) ProtoMessage() {}
 
 func (x *BlockCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_kerneleye_v1_blocks_proto_msgTypes[7]
+	mi := &file_kerneleye_v1_blocks_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -725,7 +914,7 @@ func (x *BlockCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockCommand.ProtoReflect.Descriptor instead.
 func (*BlockCommand) Descriptor() ([]byte, []int) {
-	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{7}
+	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *BlockCommand) GetAction() BlockCommand_Action {
@@ -835,7 +1024,23 @@ const file_kerneleye_v1_blocks_proto_rawDesc = "" +
 	"\x11remaining_seconds\x18\x03 \x01(\x03R\x10remainingSeconds\"P\n" +
 	"\x12StreamBlockRequest\x12\x17\n" +
 	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12!\n" +
-	"\fclient_token\x18\x02 \x01(\tR\vclientToken\"\xb1\x02\n" +
+	"\fclient_token\x18\x02 \x01(\tR\vclientToken\"Q\n" +
+	"\x13GetBlockListRequest\x12\x17\n" +
+	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12!\n" +
+	"\fclient_token\x18\x02 \x01(\tR\vclientToken\"\xcb\x01\n" +
+	"\x0eBlockListEntry\x12\x1d\n" +
+	"\n" +
+	"ip_address\x18\x01 \x01(\tR\tipAddress\x12\x1d\n" +
+	"\n" +
+	"ip_version\x18\x02 \x01(\x05R\tipVersion\x12)\n" +
+	"\x10duration_seconds\x18\x03 \x01(\x03R\x0fdurationSeconds\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x19\n" +
+	"\bblock_id\x18\x05 \x01(\tR\ablockId\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x06 \x01(\x03R\texpiresAt\"w\n" +
+	"\x14GetBlockListResponse\x124\n" +
+	"\x06blocks\x18\x01 \x03(\v2\x1c.kerneleye.v1.BlockListEntryR\x06blocks\x12)\n" +
+	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\"\xb1\x02\n" +
 	"\fBlockCommand\x129\n" +
 	"\x06action\x18\x01 \x01(\x0e2!.kerneleye.v1.BlockCommand.ActionR\x06action\x12\x1d\n" +
 	"\n" +
@@ -848,10 +1053,11 @@ const file_kerneleye_v1_blocks_proto_rawDesc = "" +
 	"\x05BLOCK\x10\x00\x12\v\n" +
 	"\aUNBLOCK\x10\x01\x12\x0e\n" +
 	"\n" +
-	"RATE_LIMIT\x10\x022\x90\x02\n" +
+	"RATE_LIMIT\x10\x022\xe7\x02\n" +
 	"\fBlockService\x12R\n" +
 	"\vReportBlock\x12 .kerneleye.v1.BlockReportRequest\x1a!.kerneleye.v1.BlockReportResponse\x12U\n" +
 	"\x0eGetBlockStatus\x12 .kerneleye.v1.BlockStatusRequest\x1a!.kerneleye.v1.BlockStatusResponse\x12U\n" +
+	"\fGetBlockList\x12!.kerneleye.v1.GetBlockListRequest\x1a\".kerneleye.v1.GetBlockListResponse\x12U\n" +
 	"\x13StreamBlockCommands\x12 .kerneleye.v1.StreamBlockRequest\x1a\x1a.kerneleye.v1.BlockCommand0\x01B<Z:github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1b\x06proto3"
 
 var (
@@ -867,7 +1073,7 @@ func file_kerneleye_v1_blocks_proto_rawDescGZIP() []byte {
 }
 
 var file_kerneleye_v1_blocks_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kerneleye_v1_blocks_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kerneleye_v1_blocks_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_kerneleye_v1_blocks_proto_goTypes = []any{
 	(BlockCommand_Action)(0),      // 0: kerneleye.v1.BlockCommand.Action
 	(*BlockReportRequest)(nil),    // 1: kerneleye.v1.BlockReportRequest
@@ -877,26 +1083,32 @@ var file_kerneleye_v1_blocks_proto_goTypes = []any{
 	(*BlockStatusRequest)(nil),    // 5: kerneleye.v1.BlockStatusRequest
 	(*BlockStatusResponse)(nil),   // 6: kerneleye.v1.BlockStatusResponse
 	(*StreamBlockRequest)(nil),    // 7: kerneleye.v1.StreamBlockRequest
-	(*BlockCommand)(nil),          // 8: kerneleye.v1.BlockCommand
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*GetBlockListRequest)(nil),   // 8: kerneleye.v1.GetBlockListRequest
+	(*BlockListEntry)(nil),        // 9: kerneleye.v1.BlockListEntry
+	(*GetBlockListResponse)(nil),  // 10: kerneleye.v1.GetBlockListResponse
+	(*BlockCommand)(nil),          // 11: kerneleye.v1.BlockCommand
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_kerneleye_v1_blocks_proto_depIdxs = []int32{
-	2, // 0: kerneleye.v1.BlockReportRequest.geo:type_name -> kerneleye.v1.GeoLocation
-	9, // 1: kerneleye.v1.BlockReportRequest.blocked_at:type_name -> google.protobuf.Timestamp
-	3, // 2: kerneleye.v1.BlockReportRequest.metrics:type_name -> kerneleye.v1.RawMetrics
-	0, // 3: kerneleye.v1.BlockCommand.action:type_name -> kerneleye.v1.BlockCommand.Action
-	9, // 4: kerneleye.v1.BlockCommand.issued_at:type_name -> google.protobuf.Timestamp
-	1, // 5: kerneleye.v1.BlockService.ReportBlock:input_type -> kerneleye.v1.BlockReportRequest
-	5, // 6: kerneleye.v1.BlockService.GetBlockStatus:input_type -> kerneleye.v1.BlockStatusRequest
-	7, // 7: kerneleye.v1.BlockService.StreamBlockCommands:input_type -> kerneleye.v1.StreamBlockRequest
-	4, // 8: kerneleye.v1.BlockService.ReportBlock:output_type -> kerneleye.v1.BlockReportResponse
-	6, // 9: kerneleye.v1.BlockService.GetBlockStatus:output_type -> kerneleye.v1.BlockStatusResponse
-	8, // 10: kerneleye.v1.BlockService.StreamBlockCommands:output_type -> kerneleye.v1.BlockCommand
-	8, // [8:11] is the sub-list for method output_type
-	5, // [5:8] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	2,  // 0: kerneleye.v1.BlockReportRequest.geo:type_name -> kerneleye.v1.GeoLocation
+	12, // 1: kerneleye.v1.BlockReportRequest.blocked_at:type_name -> google.protobuf.Timestamp
+	3,  // 2: kerneleye.v1.BlockReportRequest.metrics:type_name -> kerneleye.v1.RawMetrics
+	9,  // 3: kerneleye.v1.GetBlockListResponse.blocks:type_name -> kerneleye.v1.BlockListEntry
+	0,  // 4: kerneleye.v1.BlockCommand.action:type_name -> kerneleye.v1.BlockCommand.Action
+	12, // 5: kerneleye.v1.BlockCommand.issued_at:type_name -> google.protobuf.Timestamp
+	1,  // 6: kerneleye.v1.BlockService.ReportBlock:input_type -> kerneleye.v1.BlockReportRequest
+	5,  // 7: kerneleye.v1.BlockService.GetBlockStatus:input_type -> kerneleye.v1.BlockStatusRequest
+	8,  // 8: kerneleye.v1.BlockService.GetBlockList:input_type -> kerneleye.v1.GetBlockListRequest
+	7,  // 9: kerneleye.v1.BlockService.StreamBlockCommands:input_type -> kerneleye.v1.StreamBlockRequest
+	4,  // 10: kerneleye.v1.BlockService.ReportBlock:output_type -> kerneleye.v1.BlockReportResponse
+	6,  // 11: kerneleye.v1.BlockService.GetBlockStatus:output_type -> kerneleye.v1.BlockStatusResponse
+	10, // 12: kerneleye.v1.BlockService.GetBlockList:output_type -> kerneleye.v1.GetBlockListResponse
+	11, // 13: kerneleye.v1.BlockService.StreamBlockCommands:output_type -> kerneleye.v1.BlockCommand
+	10, // [10:14] is the sub-list for method output_type
+	6,  // [6:10] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kerneleye_v1_blocks_proto_init() }
@@ -910,7 +1122,7 @@ func file_kerneleye_v1_blocks_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kerneleye_v1_blocks_proto_rawDesc), len(file_kerneleye_v1_blocks_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

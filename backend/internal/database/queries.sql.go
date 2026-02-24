@@ -12,6 +12,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addToWhitelist = `-- name: AddToWhitelist :one
+
+INSERT INTO whitelist (user_id, ip_address, ip_version, reason, is_manual, created_by)
+VALUES ($1, $2, $3, $4, true, $1)
+ON CONFLICT (user_id, ip_address) DO UPDATE SET
+    reason = EXCLUDED.reason,
+    updated_at = NOW(),
+    is_manual = true
+RETURNING id, user_id, ip_address, ip_version, reason, is_manual, created_by, created_at, updated_at
+`
+
+type AddToWhitelistParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	IpAddress netip.Addr  `json:"ip_address"`
+	IpVersion int32       `json:"ip_version"`
+	Reason    pgtype.Text `json:"reason"`
+}
+
+// ============================================
+// Whitelist Queries
+// ============================================
+func (q *Queries) AddToWhitelist(ctx context.Context, arg AddToWhitelistParams) (Whitelist, error) {
+	row := q.db.QueryRow(ctx, addToWhitelist,
+		arg.UserID,
+		arg.IpAddress,
+		arg.IpVersion,
+		arg.Reason,
+	)
+	var i Whitelist
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.IpAddress,
+		&i.IpVersion,
+		&i.Reason,
+		&i.IsManual,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const clearUserRefreshToken = `-- name: ClearUserRefreshToken :one
 UPDATE users
 SET refresh_token = NULL,
@@ -291,6 +334,147 @@ func (q *Queries) DeleteServer(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const getActiveBlocksForServer = `-- name: GetActiveBlocksForServer :many
+SELECT 
+    id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
+    reasons, target_port, service_name, protocol, country_code, country_name,
+    city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
+    blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
+    unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    created_at, updated_at
+FROM blocks
+WHERE server_id = $1
+  AND is_active = true
+  AND expires_at > NOW()
+ORDER BY blocked_at DESC
+`
+
+// Gets active blocks for a specific server (for state reconciliation)
+func (q *Queries) GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]Block, error) {
+	rows, err := q.db.Query(ctx, getActiveBlocksForServer, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Block{}
+	for rows.Next() {
+		var i Block
+		if err := rows.Scan(
+			&i.ID,
+			&i.ServerID,
+			&i.UserID,
+			&i.IpAddress,
+			&i.IpVersion,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.Reasons,
+			&i.TargetPort,
+			&i.ServiceName,
+			&i.Protocol,
+			&i.CountryCode,
+			&i.CountryName,
+			&i.City,
+			&i.Region,
+			&i.Latitude,
+			&i.Longitude,
+			&i.Asn,
+			&i.AsnOrg,
+			&i.IsVpn,
+			&i.IsTor,
+			&i.IsDatacenter,
+			&i.BlockedAt,
+			&i.ExpiresAt,
+			&i.DurationSeconds,
+			&i.IsActive,
+			&i.IsAutoBlocked,
+			&i.UnblockedAt,
+			&i.UnblockedBy,
+			&i.UnblockReason,
+			&i.AgentVersion,
+			&i.RawMetrics,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllActiveBlocks = `-- name: GetAllActiveBlocks :many
+SELECT 
+    id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
+    reasons, target_port, service_name, protocol, country_code, country_name,
+    city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
+    blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
+    unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    created_at, updated_at
+FROM blocks
+WHERE is_active = true
+  AND expires_at > NOW()
+ORDER BY blocked_at DESC
+`
+
+// Gets all active blocks across all servers (for BlockManager state recovery)
+func (q *Queries) GetAllActiveBlocks(ctx context.Context) ([]Block, error) {
+	rows, err := q.db.Query(ctx, getAllActiveBlocks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Block{}
+	for rows.Next() {
+		var i Block
+		if err := rows.Scan(
+			&i.ID,
+			&i.ServerID,
+			&i.UserID,
+			&i.IpAddress,
+			&i.IpVersion,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.Reasons,
+			&i.TargetPort,
+			&i.ServiceName,
+			&i.Protocol,
+			&i.CountryCode,
+			&i.CountryName,
+			&i.City,
+			&i.Region,
+			&i.Latitude,
+			&i.Longitude,
+			&i.Asn,
+			&i.AsnOrg,
+			&i.IsVpn,
+			&i.IsTor,
+			&i.IsDatacenter,
+			&i.BlockedAt,
+			&i.ExpiresAt,
+			&i.DurationSeconds,
+			&i.IsActive,
+			&i.IsAutoBlocked,
+			&i.UnblockedAt,
+			&i.UnblockedBy,
+			&i.UnblockReason,
+			&i.AgentVersion,
+			&i.RawMetrics,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAttackTypeBreakdown = `-- name: GetAttackTypeBreakdown :many
 SELECT 
     CASE 
@@ -340,6 +524,98 @@ func (q *Queries) GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeB
 	for rows.Next() {
 		var i GetAttackTypeBreakdownRow
 		if err := rows.Scan(&i.AttackType, &i.Count, &i.UniqueSources); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBlockableIPs = `-- name: GetBlockableIPs :many
+SELECT 
+    te.source_ip,
+    te.server_id,
+    s.hostname as server_name,
+    s.user_id,
+    MAX(te.threat_score)::int as threat_score,
+    MAX(te.threat_level)::text as threat_level,
+    MAX(te.threat_type)::text as threat_type,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.ack_count)::bigint as total_ack,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    COUNT(DISTINCT te.server_id)::int as server_count,
+    MAX(te.last_seen) as last_seen,
+    te.country,
+    te.city,
+    te.isp,
+    te.asn
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE te.last_seen >= $1
+  AND te.threat_score >= $2
+  AND te.direction = 'inbound'
+GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.city, te.isp, te.asn
+ORDER BY MAX(te.threat_score) DESC
+`
+
+type GetBlockableIPsParams struct {
+	LastSeen    pgtype.Timestamptz `json:"last_seen"`
+	ThreatScore int32              `json:"threat_score"`
+}
+
+type GetBlockableIPsRow struct {
+	SourceIp    netip.Addr  `json:"source_ip"`
+	ServerID    pgtype.UUID `json:"server_id"`
+	ServerName  string      `json:"server_name"`
+	UserID      pgtype.UUID `json:"user_id"`
+	ThreatScore int32       `json:"threat_score"`
+	ThreatLevel string      `json:"threat_level"`
+	ThreatType  string      `json:"threat_type"`
+	TotalSyn    int64       `json:"total_syn"`
+	TotalAck    int64       `json:"total_ack"`
+	TotalFailed int64       `json:"total_failed"`
+	UniquePorts int32       `json:"unique_ports"`
+	ServerCount int32       `json:"server_count"`
+	LastSeen    interface{} `json:"last_seen"`
+	Country     pgtype.Text `json:"country"`
+	City        pgtype.Text `json:"city"`
+	Isp         pgtype.Text `json:"isp"`
+	Asn         pgtype.Text `json:"asn"`
+}
+
+// Gets IPs that exceed the scoring threshold for potential blocking
+func (q *Queries) GetBlockableIPs(ctx context.Context, arg GetBlockableIPsParams) ([]GetBlockableIPsRow, error) {
+	rows, err := q.db.Query(ctx, getBlockableIPs, arg.LastSeen, arg.ThreatScore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBlockableIPsRow{}
+	for rows.Next() {
+		var i GetBlockableIPsRow
+		if err := rows.Scan(
+			&i.SourceIp,
+			&i.ServerID,
+			&i.ServerName,
+			&i.UserID,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.ThreatType,
+			&i.TotalSyn,
+			&i.TotalAck,
+			&i.TotalFailed,
+			&i.UniquePorts,
+			&i.ServerCount,
+			&i.LastSeen,
+			&i.Country,
+			&i.City,
+			&i.Isp,
+			&i.Asn,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -419,6 +695,72 @@ func (q *Queries) GetDailyAttackStats(ctx context.Context, arg GetDailyAttackSta
 	return items, nil
 }
 
+const getHighScoreTraffic = `-- name: GetHighScoreTraffic :many
+SELECT 
+    te.source_ip,
+    MAX(te.threat_score)::int as threat_score,
+    MAX(te.threat_level)::text as threat_level,
+    MAX(te.threat_type)::text as threat_type,
+    COUNT(DISTINCT te.server_id)::int as server_count,
+    MAX(te.last_seen) as last_seen,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports
+FROM traffic_events te
+WHERE te.threat_score >= $1
+  AND te.last_seen >= $2
+GROUP BY te.source_ip
+ORDER BY te.threat_score DESC
+`
+
+type GetHighScoreTrafficParams struct {
+	ThreatScore int32              `json:"threat_score"`
+	LastSeen    pgtype.Timestamptz `json:"last_seen"`
+}
+
+type GetHighScoreTrafficRow struct {
+	SourceIp    netip.Addr  `json:"source_ip"`
+	ThreatScore int32       `json:"threat_score"`
+	ThreatLevel string      `json:"threat_level"`
+	ThreatType  string      `json:"threat_type"`
+	ServerCount int32       `json:"server_count"`
+	LastSeen    interface{} `json:"last_seen"`
+	TotalSyn    int64       `json:"total_syn"`
+	TotalFailed int64       `json:"total_failed"`
+	UniquePorts int32       `json:"unique_ports"`
+}
+
+// Gets IPs with scores above threshold for potential blocking
+func (q *Queries) GetHighScoreTraffic(ctx context.Context, arg GetHighScoreTrafficParams) ([]GetHighScoreTrafficRow, error) {
+	rows, err := q.db.Query(ctx, getHighScoreTraffic, arg.ThreatScore, arg.LastSeen)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetHighScoreTrafficRow{}
+	for rows.Next() {
+		var i GetHighScoreTrafficRow
+		if err := rows.Scan(
+			&i.SourceIp,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.ThreatType,
+			&i.ServerCount,
+			&i.LastSeen,
+			&i.TotalSyn,
+			&i.TotalFailed,
+			&i.UniquePorts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getHourlyAttackDistribution = `-- name: GetHourlyAttackDistribution :many
 SELECT 
     EXTRACT(HOUR FROM te.created_at)::int as hour,
@@ -455,6 +797,101 @@ func (q *Queries) GetHourlyAttackDistribution(ctx context.Context, arg GetHourly
 	for rows.Next() {
 		var i GetHourlyAttackDistributionRow
 		if err := rows.Scan(&i.Hour, &i.AttackCount, &i.BlockedCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getIPTrafficHistory = `-- name: GetIPTrafficHistory :many
+SELECT 
+    te.source_ip,
+    te.server_id,
+    s.hostname as server_name,
+    te.syn_count,
+    te.ack_count,
+    te.failed_handshakes,
+    te.unique_ports,
+    te.threat_score,
+    te.threat_level,
+    te.threat_type,
+    te.destination_port,
+    te.protocol,
+    te.direction,
+    te.first_seen,
+    te.last_seen,
+    te.country,
+    te.city,
+    te.isp
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE te.source_ip = $1
+  AND s.user_id = $2
+ORDER BY te.last_seen DESC
+LIMIT $3
+`
+
+type GetIPTrafficHistoryParams struct {
+	SourceIp netip.Addr  `json:"source_ip"`
+	UserID   pgtype.UUID `json:"user_id"`
+	Limit    int32       `json:"limit"`
+}
+
+type GetIPTrafficHistoryRow struct {
+	SourceIp         netip.Addr         `json:"source_ip"`
+	ServerID         pgtype.UUID        `json:"server_id"`
+	ServerName       string             `json:"server_name"`
+	SynCount         int32              `json:"syn_count"`
+	AckCount         int32              `json:"ack_count"`
+	FailedHandshakes int32              `json:"failed_handshakes"`
+	UniquePorts      int32              `json:"unique_ports"`
+	ThreatScore      int32              `json:"threat_score"`
+	ThreatLevel      string             `json:"threat_level"`
+	ThreatType       pgtype.Text        `json:"threat_type"`
+	DestinationPort  int32              `json:"destination_port"`
+	Protocol         string             `json:"protocol"`
+	Direction        string             `json:"direction"`
+	FirstSeen        pgtype.Timestamptz `json:"first_seen"`
+	LastSeen         pgtype.Timestamptz `json:"last_seen"`
+	Country          pgtype.Text        `json:"country"`
+	City             pgtype.Text        `json:"city"`
+	Isp              pgtype.Text        `json:"isp"`
+}
+
+// Gets historical traffic for a specific IP across all servers
+func (q *Queries) GetIPTrafficHistory(ctx context.Context, arg GetIPTrafficHistoryParams) ([]GetIPTrafficHistoryRow, error) {
+	rows, err := q.db.Query(ctx, getIPTrafficHistory, arg.SourceIp, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetIPTrafficHistoryRow{}
+	for rows.Next() {
+		var i GetIPTrafficHistoryRow
+		if err := rows.Scan(
+			&i.SourceIp,
+			&i.ServerID,
+			&i.ServerName,
+			&i.SynCount,
+			&i.AckCount,
+			&i.FailedHandshakes,
+			&i.UniquePorts,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.ThreatType,
+			&i.DestinationPort,
+			&i.Protocol,
+			&i.Direction,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.Country,
+			&i.City,
+			&i.Isp,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -521,6 +958,68 @@ func (q *Queries) GetPlanByPolarProductID(ctx context.Context, polarProductID pg
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getRecentlyActiveIPs = `-- name: GetRecentlyActiveIPs :many
+SELECT 
+    te.source_ip,
+    te.server_id,
+    MAX(te.last_seen) as last_seen,
+    COUNT(*)::int as event_count,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.ack_count)::bigint as total_ack,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports
+FROM traffic_events te
+WHERE te.server_id = $1
+  AND te.last_seen >= $2
+GROUP BY te.source_ip, te.server_id
+`
+
+type GetRecentlyActiveIPsParams struct {
+	ServerID pgtype.UUID        `json:"server_id"`
+	LastSeen pgtype.Timestamptz `json:"last_seen"`
+}
+
+type GetRecentlyActiveIPsRow struct {
+	SourceIp    netip.Addr  `json:"source_ip"`
+	ServerID    pgtype.UUID `json:"server_id"`
+	LastSeen    interface{} `json:"last_seen"`
+	EventCount  int32       `json:"event_count"`
+	TotalSyn    int64       `json:"total_syn"`
+	TotalAck    int64       `json:"total_ack"`
+	TotalFailed int64       `json:"total_failed"`
+	UniquePorts int32       `json:"unique_ports"`
+}
+
+// Gets IPs that have been active within the time window
+func (q *Queries) GetRecentlyActiveIPs(ctx context.Context, arg GetRecentlyActiveIPsParams) ([]GetRecentlyActiveIPsRow, error) {
+	rows, err := q.db.Query(ctx, getRecentlyActiveIPs, arg.ServerID, arg.LastSeen)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetRecentlyActiveIPsRow{}
+	for rows.Next() {
+		var i GetRecentlyActiveIPsRow
+		if err := rows.Scan(
+			&i.SourceIp,
+			&i.ServerID,
+			&i.LastSeen,
+			&i.EventCount,
+			&i.TotalSyn,
+			&i.TotalAck,
+			&i.TotalFailed,
+			&i.UniquePorts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getServerByAPIKey = `-- name: GetServerByAPIKey :one
@@ -1023,6 +1522,87 @@ func (q *Queries) GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams
 	return items, nil
 }
 
+const getTrafficAggregationByIP = `-- name: GetTrafficAggregationByIP :many
+
+SELECT 
+    te.source_ip,
+    SUM(te.syn_count)::bigint as syn_count,
+    SUM(te.ack_count)::bigint as ack_count,
+    SUM(te.failed_handshakes)::bigint as failed_handshakes,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    SUM(te.bytes_in)::bigint as bytes_in,
+    SUM(te.bytes_out)::bigint as bytes_out,
+    MAX(te.threat_score)::int as max_threat_score,
+    COUNT(*)::int as event_count,
+    MIN(te.first_seen) as window_start,
+    MAX(te.last_seen) as window_end,
+    te.server_id,
+    COUNT(DISTINCT te.destination_port) as port_count
+FROM traffic_events te
+WHERE te.server_id = $1
+  AND te.last_seen >= $2
+GROUP BY te.source_ip, te.server_id
+`
+
+type GetTrafficAggregationByIPParams struct {
+	ServerID pgtype.UUID        `json:"server_id"`
+	LastSeen pgtype.Timestamptz `json:"last_seen"`
+}
+
+type GetTrafficAggregationByIPRow struct {
+	SourceIp         netip.Addr  `json:"source_ip"`
+	SynCount         int64       `json:"syn_count"`
+	AckCount         int64       `json:"ack_count"`
+	FailedHandshakes int64       `json:"failed_handshakes"`
+	UniquePorts      int32       `json:"unique_ports"`
+	BytesIn          int64       `json:"bytes_in"`
+	BytesOut         int64       `json:"bytes_out"`
+	MaxThreatScore   int32       `json:"max_threat_score"`
+	EventCount       int32       `json:"event_count"`
+	WindowStart      interface{} `json:"window_start"`
+	WindowEnd        interface{} `json:"window_end"`
+	ServerID         pgtype.UUID `json:"server_id"`
+	PortCount        int64       `json:"port_count"`
+}
+
+// ============================================
+// Traffic Aggregation Queries for Backend Scoring
+// ============================================
+// Aggregates traffic by source_ip over a given time window for scoring
+func (q *Queries) GetTrafficAggregationByIP(ctx context.Context, arg GetTrafficAggregationByIPParams) ([]GetTrafficAggregationByIPRow, error) {
+	rows, err := q.db.Query(ctx, getTrafficAggregationByIP, arg.ServerID, arg.LastSeen)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTrafficAggregationByIPRow{}
+	for rows.Next() {
+		var i GetTrafficAggregationByIPRow
+		if err := rows.Scan(
+			&i.SourceIp,
+			&i.SynCount,
+			&i.AckCount,
+			&i.FailedHandshakes,
+			&i.UniquePorts,
+			&i.BytesIn,
+			&i.BytesOut,
+			&i.MaxThreatScore,
+			&i.EventCount,
+			&i.WindowStart,
+			&i.WindowEnd,
+			&i.ServerID,
+			&i.PortCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, password_hash, plan, max_servers, created_at, updated_at, polar_customer_id, polar_subscription_id, subscription_status, subscription_current_period_start, subscription_current_period_end, subscription_cancel_at_period_end, trial_ends_at, has_used_trial, refresh_token, refresh_token_expires_at FROM users
 WHERE email = $1
@@ -1147,6 +1727,94 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype
 	return i, err
 }
 
+const getUserHighScoreTraffic = `-- name: GetUserHighScoreTraffic :many
+SELECT 
+    te.source_ip,
+    MAX(te.threat_score)::int as threat_score,
+    MAX(te.threat_level)::text as threat_level,
+    MAX(te.threat_type)::text as threat_type,
+    s.id as server_id,
+    s.hostname as server_name,
+    COUNT(DISTINCT te.destination_port)::int as unique_ports,
+    SUM(te.syn_count)::bigint as total_syn,
+    SUM(te.failed_handshakes)::bigint as total_failed,
+    MAX(te.last_seen) as last_seen,
+    te.country,
+    te.city,
+    te.isp
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.threat_score >= $2
+  AND te.last_seen >= $3
+GROUP BY te.source_ip, te.server_id, s.hostname, te.country, te.city, te.isp
+ORDER BY te.threat_score DESC
+LIMIT $4
+`
+
+type GetUserHighScoreTrafficParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	ThreatScore int32              `json:"threat_score"`
+	LastSeen    pgtype.Timestamptz `json:"last_seen"`
+	Limit       int32              `json:"limit"`
+}
+
+type GetUserHighScoreTrafficRow struct {
+	SourceIp    netip.Addr  `json:"source_ip"`
+	ThreatScore int32       `json:"threat_score"`
+	ThreatLevel string      `json:"threat_level"`
+	ThreatType  string      `json:"threat_type"`
+	ServerID    pgtype.UUID `json:"server_id"`
+	ServerName  string      `json:"server_name"`
+	UniquePorts int32       `json:"unique_ports"`
+	TotalSyn    int64       `json:"total_syn"`
+	TotalFailed int64       `json:"total_failed"`
+	LastSeen    interface{} `json:"last_seen"`
+	Country     pgtype.Text `json:"country"`
+	City        pgtype.Text `json:"city"`
+	Isp         pgtype.Text `json:"isp"`
+}
+
+// Gets high score traffic for all servers owned by user
+func (q *Queries) GetUserHighScoreTraffic(ctx context.Context, arg GetUserHighScoreTrafficParams) ([]GetUserHighScoreTrafficRow, error) {
+	rows, err := q.db.Query(ctx, getUserHighScoreTraffic,
+		arg.UserID,
+		arg.ThreatScore,
+		arg.LastSeen,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUserHighScoreTrafficRow{}
+	for rows.Next() {
+		var i GetUserHighScoreTrafficRow
+		if err := rows.Scan(
+			&i.SourceIp,
+			&i.ThreatScore,
+			&i.ThreatLevel,
+			&i.ThreatType,
+			&i.ServerID,
+			&i.ServerName,
+			&i.UniquePorts,
+			&i.TotalSyn,
+			&i.TotalFailed,
+			&i.LastSeen,
+			&i.Country,
+			&i.City,
+			&i.Isp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserSubscriptionStatus = `-- name: GetUserSubscriptionStatus :one
 SELECT 
     u.id,
@@ -1202,6 +1870,108 @@ func (q *Queries) GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID)
 		&i.CurrentServerCount,
 	)
 	return i, err
+}
+
+const getWhitelistByUser = `-- name: GetWhitelistByUser :many
+SELECT id, user_id, ip_address, ip_version, reason, is_manual, created_by, created_at, updated_at FROM whitelist
+WHERE user_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetWhitelistByUser(ctx context.Context, userID pgtype.UUID) ([]Whitelist, error) {
+	rows, err := q.db.Query(ctx, getWhitelistByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Whitelist{}
+	for rows.Next() {
+		var i Whitelist
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.IpAddress,
+			&i.IpVersion,
+			&i.Reason,
+			&i.IsManual,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getWhitelistedIPs = `-- name: GetWhitelistedIPs :many
+SELECT ip_address FROM whitelist
+WHERE user_id = $1
+`
+
+func (q *Queries) GetWhitelistedIPs(ctx context.Context, userID pgtype.UUID) ([]netip.Addr, error) {
+	rows, err := q.db.Query(ctx, getWhitelistedIPs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []netip.Addr{}
+	for rows.Next() {
+		var ip_address netip.Addr
+		if err := rows.Scan(&ip_address); err != nil {
+			return nil, err
+		}
+		items = append(items, ip_address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const isIPAttackingUserServer = `-- name: IsIPAttackingUserServer :one
+SELECT EXISTS(
+    SELECT 1 FROM traffic_events te
+    JOIN servers s ON te.server_id = s.id
+    WHERE s.user_id = $1 AND te.source_ip = $2
+    LIMIT 1
+) as is_attacking
+`
+
+type IsIPAttackingUserServerParams struct {
+	UserID   pgtype.UUID `json:"user_id"`
+	SourceIp netip.Addr  `json:"source_ip"`
+}
+
+// Check if an IP has attacked any of the user's servers
+func (q *Queries) IsIPAttackingUserServer(ctx context.Context, arg IsIPAttackingUserServerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isIPAttackingUserServer, arg.UserID, arg.SourceIp)
+	var is_attacking bool
+	err := row.Scan(&is_attacking)
+	return is_attacking, err
+}
+
+const isIPWhitelisted = `-- name: IsIPWhitelisted :one
+SELECT EXISTS(
+    SELECT 1 FROM whitelist
+    WHERE user_id = $1 AND ip_address = $2
+) as is_whitelisted
+`
+
+type IsIPWhitelistedParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	IpAddress netip.Addr  `json:"ip_address"`
+}
+
+func (q *Queries) IsIPWhitelisted(ctx context.Context, arg IsIPWhitelistedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isIPWhitelisted, arg.UserID, arg.IpAddress)
+	var is_whitelisted bool
+	err := row.Scan(&is_whitelisted)
+	return is_whitelisted, err
 }
 
 const listActivePlans = `-- name: ListActivePlans :many
@@ -1300,6 +2070,54 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 			&i.AcknowledgedAt,
 			&i.ResolvedAt,
 			&i.ServerHostname,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllActiveServers = `-- name: ListAllActiveServers :many
+SELECT id, user_id, hostname, api_key, ip_address, status, agent_version, created_at, last_seen
+FROM servers
+WHERE status = 'active'
+`
+
+type ListAllActiveServersRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	Hostname     string             `json:"hostname"`
+	ApiKey       pgtype.Text        `json:"api_key"`
+	IpAddress    *netip.Addr        `json:"ip_address"`
+	Status       string             `json:"status"`
+	AgentVersion pgtype.Text        `json:"agent_version"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	LastSeen     pgtype.Timestamptz `json:"last_seen"`
+}
+
+func (q *Queries) ListAllActiveServers(ctx context.Context) ([]ListAllActiveServersRow, error) {
+	rows, err := q.db.Query(ctx, listAllActiveServers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllActiveServersRow{}
+	for rows.Next() {
+		var i ListAllActiveServersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Hostname,
+			&i.ApiKey,
+			&i.IpAddress,
+			&i.Status,
+			&i.AgentVersion,
+			&i.CreatedAt,
+			&i.LastSeen,
 		); err != nil {
 			return nil, err
 		}
@@ -1467,6 +2285,21 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 	return items, nil
 }
 
+const removeFromWhitelist = `-- name: RemoveFromWhitelist :exec
+DELETE FROM whitelist
+WHERE user_id = $1 AND ip_address = $2
+`
+
+type RemoveFromWhitelistParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	IpAddress netip.Addr  `json:"ip_address"`
+}
+
+func (q *Queries) RemoveFromWhitelist(ctx context.Context, arg RemoveFromWhitelistParams) error {
+	_, err := q.db.Exec(ctx, removeFromWhitelist, arg.UserID, arg.IpAddress)
+	return err
+}
+
 const updateServerAPIKey = `-- name: UpdateServerAPIKey :exec
 UPDATE servers
 SET api_key = $2,
@@ -1578,6 +2411,34 @@ type UpdateServerStatusParams struct {
 
 func (q *Queries) UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error {
 	_, err := q.db.Exec(ctx, updateServerStatus, arg.ID, arg.Status)
+	return err
+}
+
+const updateTrafficScore = `-- name: UpdateTrafficScore :exec
+UPDATE traffic_events
+SET threat_score = $3,
+    threat_level = $4,
+    threat_type = $5,
+    updated_at = NOW()
+WHERE server_id = $1 AND source_ip = $2
+`
+
+type UpdateTrafficScoreParams struct {
+	ServerID    pgtype.UUID `json:"server_id"`
+	SourceIp    netip.Addr  `json:"source_ip"`
+	ThreatScore int32       `json:"threat_score"`
+	ThreatLevel string      `json:"threat_level"`
+	ThreatType  pgtype.Text `json:"threat_type"`
+}
+
+func (q *Queries) UpdateTrafficScore(ctx context.Context, arg UpdateTrafficScoreParams) error {
+	_, err := q.db.Exec(ctx, updateTrafficScore,
+		arg.ServerID,
+		arg.SourceIp,
+		arg.ThreatScore,
+		arg.ThreatLevel,
+		arg.ThreatType,
+	)
 	return err
 }
 

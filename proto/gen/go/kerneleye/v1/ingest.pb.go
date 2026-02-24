@@ -685,9 +685,13 @@ type ConfigUpdate struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	FlushIntervalSeconds *uint32                `protobuf:"varint,1,opt,name=flush_interval_seconds,json=flushIntervalSeconds,proto3,oneof" json:"flush_interval_seconds,omitempty"`
 	EnableUdpMonitoring  *bool                  `protobuf:"varint,2,opt,name=enable_udp_monitoring,json=enableUdpMonitoring,proto3,oneof" json:"enable_udp_monitoring,omitempty"`
-	EnableBlocking       *bool                  `protobuf:"varint,3,opt,name=enable_blocking,json=enableBlocking,proto3,oneof" json:"enable_blocking,omitempty"` // Phase 2
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	EnableBlocking       *bool                  `protobuf:"varint,3,opt,name=enable_blocking,json=enableBlocking,proto3,oneof" json:"enable_blocking,omitempty"`
+	// Scoring configuration from agent
+	ScoringThresholdSuspicious *uint32 `protobuf:"varint,4,opt,name=scoring_threshold_suspicious,json=scoringThresholdSuspicious,proto3,oneof" json:"scoring_threshold_suspicious,omitempty"`
+	ScoringThresholdMalicious  *uint32 `protobuf:"varint,5,opt,name=scoring_threshold_malicious,json=scoringThresholdMalicious,proto3,oneof" json:"scoring_threshold_malicious,omitempty"`
+	ScoringAutoBlockThreshold  *uint32 `protobuf:"varint,6,opt,name=scoring_auto_block_threshold,json=scoringAutoBlockThreshold,proto3,oneof" json:"scoring_auto_block_threshold,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *ConfigUpdate) Reset() {
@@ -739,6 +743,27 @@ func (x *ConfigUpdate) GetEnableBlocking() bool {
 		return *x.EnableBlocking
 	}
 	return false
+}
+
+func (x *ConfigUpdate) GetScoringThresholdSuspicious() uint32 {
+	if x != nil && x.ScoringThresholdSuspicious != nil {
+		return *x.ScoringThresholdSuspicious
+	}
+	return 0
+}
+
+func (x *ConfigUpdate) GetScoringThresholdMalicious() uint32 {
+	if x != nil && x.ScoringThresholdMalicious != nil {
+		return *x.ScoringThresholdMalicious
+	}
+	return 0
+}
+
+func (x *ConfigUpdate) GetScoringAutoBlockThreshold() uint32 {
+	if x != nil && x.ScoringAutoBlockThreshold != nil {
+		return *x.ScoringAutoBlockThreshold
+	}
+	return 0
 }
 
 type TrafficBatch struct {
@@ -1498,14 +1523,20 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x127\n" +
 	"\x06config\x18\x03 \x01(\v2\x1a.kerneleye.v1.ConfigUpdateH\x00R\x06config\x88\x01\x01B\t\n" +
-	"\a_config\"\xf9\x01\n" +
+	"\a_config\"\xad\x04\n" +
 	"\fConfigUpdate\x129\n" +
 	"\x16flush_interval_seconds\x18\x01 \x01(\rH\x00R\x14flushIntervalSeconds\x88\x01\x01\x127\n" +
 	"\x15enable_udp_monitoring\x18\x02 \x01(\bH\x01R\x13enableUdpMonitoring\x88\x01\x01\x12,\n" +
-	"\x0fenable_blocking\x18\x03 \x01(\bH\x02R\x0eenableBlocking\x88\x01\x01B\x19\n" +
+	"\x0fenable_blocking\x18\x03 \x01(\bH\x02R\x0eenableBlocking\x88\x01\x01\x12E\n" +
+	"\x1cscoring_threshold_suspicious\x18\x04 \x01(\rH\x03R\x1ascoringThresholdSuspicious\x88\x01\x01\x12C\n" +
+	"\x1bscoring_threshold_malicious\x18\x05 \x01(\rH\x04R\x19scoringThresholdMalicious\x88\x01\x01\x12D\n" +
+	"\x1cscoring_auto_block_threshold\x18\x06 \x01(\rH\x05R\x19scoringAutoBlockThreshold\x88\x01\x01B\x19\n" +
 	"\x17_flush_interval_secondsB\x18\n" +
 	"\x16_enable_udp_monitoringB\x12\n" +
-	"\x10_enable_blocking\"\xe2\x02\n" +
+	"\x10_enable_blockingB\x1f\n" +
+	"\x1d_scoring_threshold_suspiciousB\x1e\n" +
+	"\x1c_scoring_threshold_maliciousB\x1f\n" +
+	"\x1d_scoring_auto_block_threshold\"\xe2\x02\n" +
 	"\fTrafficBatch\x12\x17\n" +
 	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12\x1b\n" +
 	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12C\n" +

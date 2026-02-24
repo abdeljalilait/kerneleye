@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net/url"
@@ -52,17 +53,20 @@ func normalizeGRPCTarget(target string) string {
 }
 
 func buildGRPCOpts(target string) []grpc.DialOption {
-	// For known proxy domains, use insecure credentials since TLS is terminated at the proxy
-	// This handles the case where Traefik/ELB handles TLS termination
-	insecureDomains := []string{"grpc.kerneleye.net", "grpc."}
-	for _, domain := range insecureDomains {
+	// For known proxy domains with TLS, use secure credentials
+	// Traefik handles TLS termination, so we need to use TLS to communicate with it
+	tlsDomains := []string{"grpc.kerneleye.net", "grpc."}
+	for _, domain := range tlsDomains {
 		if strings.HasPrefix(target, domain) {
-			return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+			// Use TLS credentials for Traefik with HTTP/2 + TLS
+			return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}))}
 		}
 	}
+	// For targets explicitly using port 443, use TLS
 	if strings.HasSuffix(target, ":443") {
 		return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(nil))}
 	}
+	// Default: use insecure credentials for local development
 	return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 }
 

@@ -257,5 +257,13 @@ func (a *Aggregator) buildMetrics(stats IPStatsSnapshot) scoring.IPMetrics {
 		PortHits:               portHits,
 		MaxPortHits:            maxHits,
 		PrimaryPort:            primaryPort,
+		Direction:              getScoringDirection(stats.Direction),
 	}
+}
+
+func getScoringDirection(dir uint8) scoring.Direction {
+	if dir == DirOutbound {
+		return scoring.DirectionOutbound
+	}
+	return scoring.DirectionInbound
 }

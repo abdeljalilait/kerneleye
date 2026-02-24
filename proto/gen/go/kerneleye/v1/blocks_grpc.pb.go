@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	BlockService_ReportBlock_FullMethodName         = "/kerneleye.v1.BlockService/ReportBlock"
 	BlockService_GetBlockStatus_FullMethodName      = "/kerneleye.v1.BlockService/GetBlockStatus"
+	BlockService_GetBlockList_FullMethodName        = "/kerneleye.v1.BlockService/GetBlockList"
 	BlockService_StreamBlockCommands_FullMethodName = "/kerneleye.v1.BlockService/StreamBlockCommands"
 )
 
@@ -34,6 +35,8 @@ type BlockServiceClient interface {
 	ReportBlock(ctx context.Context, in *BlockReportRequest, opts ...grpc.CallOption) (*BlockReportResponse, error)
 	// GetBlockStatus - Agent checks if an IP should be blocked (sync with backend)
 	GetBlockStatus(ctx context.Context, in *BlockStatusRequest, opts ...grpc.CallOption) (*BlockStatusResponse, error)
+	// GetBlockList - Agent requests current block list for state reconciliation
+	GetBlockList(ctx context.Context, in *GetBlockListRequest, opts ...grpc.CallOption) (*GetBlockListResponse, error)
 	// StreamBlockCommands - Backend streams block/unblock commands to agents
 	StreamBlockCommands(ctx context.Context, in *StreamBlockRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlockCommand], error)
 }
@@ -60,6 +63,16 @@ func (c *blockServiceClient) GetBlockStatus(ctx context.Context, in *BlockStatus
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BlockStatusResponse)
 	err := c.cc.Invoke(ctx, BlockService_GetBlockStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *blockServiceClient) GetBlockList(ctx context.Context, in *GetBlockListRequest, opts ...grpc.CallOption) (*GetBlockListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBlockListResponse)
+	err := c.cc.Invoke(ctx, BlockService_GetBlockList_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +108,8 @@ type BlockServiceServer interface {
 	ReportBlock(context.Context, *BlockReportRequest) (*BlockReportResponse, error)
 	// GetBlockStatus - Agent checks if an IP should be blocked (sync with backend)
 	GetBlockStatus(context.Context, *BlockStatusRequest) (*BlockStatusResponse, error)
+	// GetBlockList - Agent requests current block list for state reconciliation
+	GetBlockList(context.Context, *GetBlockListRequest) (*GetBlockListResponse, error)
 	// StreamBlockCommands - Backend streams block/unblock commands to agents
 	StreamBlockCommands(*StreamBlockRequest, grpc.ServerStreamingServer[BlockCommand]) error
 	mustEmbedUnimplementedBlockServiceServer()
@@ -112,6 +127,9 @@ func (UnimplementedBlockServiceServer) ReportBlock(context.Context, *BlockReport
 }
 func (UnimplementedBlockServiceServer) GetBlockStatus(context.Context, *BlockStatusRequest) (*BlockStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBlockStatus not implemented")
+}
+func (UnimplementedBlockServiceServer) GetBlockList(context.Context, *GetBlockListRequest) (*GetBlockListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBlockList not implemented")
 }
 func (UnimplementedBlockServiceServer) StreamBlockCommands(*StreamBlockRequest, grpc.ServerStreamingServer[BlockCommand]) error {
 	return status.Error(codes.Unimplemented, "method StreamBlockCommands not implemented")
@@ -173,6 +191,24 @@ func _BlockService_GetBlockStatus_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BlockService_GetBlockList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BlockServiceServer).GetBlockList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BlockService_GetBlockList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BlockServiceServer).GetBlockList(ctx, req.(*GetBlockListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BlockService_StreamBlockCommands_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(StreamBlockRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -198,6 +234,10 @@ var BlockService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBlockStatus",
 			Handler:    _BlockService_GetBlockStatus_Handler,
+		},
+		{
+			MethodName: "GetBlockList",
+			Handler:    _BlockService_GetBlockList_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
