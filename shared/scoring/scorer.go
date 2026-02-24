@@ -201,19 +201,39 @@ func (ts *ThreatScorer) calculatePortScore(uniquePorts int, connectionRate float
 		return 0
 	}
 
+	if duration <= 0 {
+		duration = ts.MinWindowDuration.Seconds()
+		if duration <= 0 {
+			duration = 1
+		}
+	}
+
 	portsPerSec := float64(uniquePorts) / duration
 	portsPerConnection := float64(uniquePorts) / (connectionRate + 1)
+	dynamicThreshold := math.Max(0.5, 5.0/duration)
+	excess := float64(uniquePorts - ts.PortScanThreshold)
+	if excess < 0 {
+		excess = 0
+	}
 
-	if portsPerConnection > 0.8 && uniquePorts > 10 {
-		dynamicThreshold := math.Max(0.5, 5.0/duration)
-
-		if portsPerSec > dynamicThreshold {
-			excess := float64(uniquePorts - ts.PortScanThreshold)
-			if excess > 0 {
-				return 5.0 + math.Sqrt(excess)
-			}
-			return float64(uniquePorts) / 5.0
+	if portsPerConnection <= 0.8 {
+		// Lower-confidence signal: broad but less concentrated access pattern.
+		if uniquePorts >= ts.PortScanThreshold+3 && portsPerSec > dynamicThreshold*1.5 {
+			return 1.0 + excess*0.25
 		}
+		return 0
+	}
+
+	// Mid-range scans (5-10 ports) should still contribute a small signal.
+	if uniquePorts <= 10 {
+		if portsPerSec >= dynamicThreshold*0.6 {
+			return 1.0 + excess*0.4
+		}
+		return 0
+	}
+
+	if portsPerSec > dynamicThreshold {
+		return 5.0 + math.Sqrt(excess)
 	}
 
 	return 0
@@ -276,10 +296,6 @@ func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics) float64 {
 
 	hits := metrics.MaxPortHits
 
-	if hits < 10 {
-		return 0
-	}
-
 	var severity float64
 	switch {
 	case hits >= 100:
@@ -319,34 +335,52 @@ func (ts *ThreatScorer) classifyThreat(score int) ThreatLevel {
 }
 
 func (ts *ThreatScorer) classifyThreatType(metrics IPMetrics, syn, port, failed, service, burst float64) ThreatType {
-	maxComponent := syn
-	threatType := ThreatTypeNone
-
-	if port > maxComponent && metrics.UniquePorts >= ts.PortScanThreshold {
-		maxComponent = port
-		threatType = ThreatTypePortScan
+	type candidate struct {
+		threatType ThreatType
+		value      float64
+		priority   int // lower wins on tie
 	}
 
-	if service > maxComponent && metrics.MaxPortHits >= ts.ServiceAbuseThreshold {
-		maxComponent = service
-		threatType = ThreatTypeServiceAbuse
+	candidates := []candidate{
+		{threatType: ThreatTypeServiceAbuse, value: service, priority: 0},
+		{threatType: ThreatTypePortScan, value: port, priority: 1},
+		{threatType: ThreatTypeSynFlood, value: syn, priority: 2},
+		{threatType: ThreatTypeFailedHandshake, value: failed, priority: 3},
+		{threatType: ThreatTypeConnectionBurst, value: burst, priority: 4},
 	}
 
-	if syn > maxComponent && syn > 0 {
-		maxComponent = syn
-		threatType = ThreatTypeSynFlood
+	bestType := ThreatTypeNone
+	bestValue := 0.0
+	bestPriority := math.MaxInt
+
+	for _, c := range candidates {
+		if c.value <= 0 {
+			continue
+		}
+
+		switch c.threatType {
+		case ThreatTypePortScan:
+			if metrics.UniquePorts < ts.PortScanThreshold {
+				continue
+			}
+		case ThreatTypeServiceAbuse:
+			if metrics.MaxPortHits < ts.ServiceAbuseThreshold {
+				continue
+			}
+		case ThreatTypeConnectionBurst:
+			if c.value <= 5.0 {
+				continue
+			}
+		}
+
+		if c.value > bestValue || (c.value == bestValue && c.priority < bestPriority) {
+			bestType = c.threatType
+			bestValue = c.value
+			bestPriority = c.priority
+		}
 	}
 
-	if failed > maxComponent && failed > 0 {
-		maxComponent = failed
-		threatType = ThreatTypeFailedHandshake
-	}
-
-	if burst > maxComponent && burst > 5.0 {
-		threatType = ThreatTypeConnectionBurst
-	}
-
-	return threatType
+	return bestType
 }
 
 func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, connRate, duration float64) []string {

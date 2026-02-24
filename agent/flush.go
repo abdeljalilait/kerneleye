@@ -11,6 +11,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+type scoredMetrics struct {
+	Score   scoring.ThreatScore
+	Metrics scoring.IPMetrics
+}
+
 // FlushToAPI sends aggregated stats to the backend with fault tolerance
 func (a *Aggregator) FlushToAPI() {
 	// 1. First, try to send any pending batches from buffer
@@ -54,15 +59,15 @@ func (a *Aggregator) FlushToAPI() {
 		})
 	}
 
-	// Build proto events using thread-safe snapshot
-	pbEvents := a.buildProtoEvents()
+	snapshot = a.stats.SnapshotDeep()
+	now := time.Now()
+	scored := a.calculateScoreContexts(snapshot, now)
+	pbEvents := a.buildProtoEventsFromSnapshot(snapshot, scored, now)
 
 	// Process scores with AutoBlocker (if enabled)
 	if a.autoBlocker != nil && a.scorer != nil {
-		snapshot := a.stats.SnapshotDeep()
-		for ip, stats := range snapshot {
-			metrics := a.buildMetrics(stats)
-			score := a.scorer.CalculateScore(metrics)
+		for ip, ctx := range scored {
+			score := ctx.Score
 
 			// Log high-score events for debugging
 			if score.Score >= 30 {
@@ -190,6 +195,12 @@ func (a *Aggregator) retryPendingBatches() {
 // buildProtoEvents converts stats to protobuf events using thread-safe snapshot
 func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 	snapshot := a.stats.SnapshotDeep()
+	now := time.Now()
+	scored := a.calculateScoreContexts(snapshot, now)
+	return a.buildProtoEventsFromSnapshot(snapshot, scored, now)
+}
+
+func (a *Aggregator) buildProtoEventsFromSnapshot(snapshot map[string]IPStatsSnapshot, scored map[string]scoredMetrics, now time.Time) []*pb.ConnectionEvent {
 	pbEvents := make([]*pb.ConnectionEvent, 0, len(snapshot))
 
 	for ip, stats := range snapshot {
@@ -217,25 +228,16 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 			sourceIP = stats.LocalIP // Our server
 			destIP = ip              // Remote server we connected to
 		}
-		// Validate timestamps - use current time if invalid (not within reasonable range)
-		firstSeen := stats.FirstSeen
-		lastSeen := stats.LastSeen
-		now := time.Now()
-		oneYearAgo := now.AddDate(-1, 0, 0)
-		oneYearFromNow := now.AddDate(1, 0, 0)
-		if firstSeen.Before(oneYearAgo) || firstSeen.After(oneYearFromNow) {
-			firstSeen = now
-		}
-		if lastSeen.Before(oneYearAgo) || lastSeen.After(oneYearFromNow) {
-			lastSeen = now
-		}
-
+		firstSeen, lastSeen := sanitizeStatsWindow(stats.FirstSeen, stats.LastSeen, now)
 		score := scoring.ThreatScore{}
-		if a.scorer != nil {
-			metrics := a.buildMetrics(stats)
-			metrics.WindowStart = firstSeen
-			metrics.WindowEnd = lastSeen
-			score = a.scorer.CalculateScore(metrics)
+		if ctx, ok := scored[ip]; ok {
+			score = ctx.Score
+			if !ctx.Metrics.WindowStart.IsZero() {
+				firstSeen = ctx.Metrics.WindowStart
+			}
+			if !ctx.Metrics.WindowEnd.IsZero() {
+				lastSeen = ctx.Metrics.WindowEnd
+			}
 		}
 
 		pbEvents = append(pbEvents, &pb.ConnectionEvent{
@@ -253,6 +255,46 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 		})
 	}
 	return pbEvents
+}
+
+func (a *Aggregator) calculateScoreContexts(snapshot map[string]IPStatsSnapshot, now time.Time) map[string]scoredMetrics {
+	if a.scorer == nil {
+		return map[string]scoredMetrics{}
+	}
+
+	result := make(map[string]scoredMetrics, len(snapshot))
+	for ip, stats := range snapshot {
+		metrics := a.buildMetrics(stats)
+		metrics.WindowStart, metrics.WindowEnd = sanitizeStatsWindow(stats.FirstSeen, stats.LastSeen, now)
+
+		if a.history != nil {
+			signals, err := a.history.LoadSignals(ip, stats.Direction, now)
+			if err != nil {
+				Logger.Warnf("⚠️  Failed to load history signals for %s: %v", ip, err)
+			} else {
+				if signals.MaxThreatScore > metrics.PreviousScore {
+					metrics.PreviousScore = signals.MaxThreatScore
+				}
+				if signals.MaxPortHits > metrics.MaxPortHits {
+					metrics.MaxPortHits = signals.MaxPortHits
+				}
+			}
+		}
+
+		score := a.scorer.CalculateScore(metrics)
+		result[ip] = scoredMetrics{
+			Score:   score,
+			Metrics: metrics,
+		}
+
+		if a.history != nil {
+			if err := a.history.PersistBucket(ip, stats.Direction, metrics, score, now); err != nil {
+				Logger.Warnf("⚠️  Failed to persist history bucket for %s: %v", ip, err)
+			}
+		}
+	}
+
+	return result
 }
 
 // buildMetrics converts IPStatsSnapshot to scoring.IPMetrics for threat scoring
@@ -318,6 +360,22 @@ func getScoringDirection(dir uint8) scoring.Direction {
 		return scoring.DirectionOutbound
 	}
 	return scoring.DirectionInbound
+}
+
+func sanitizeStatsWindow(firstSeen, lastSeen, now time.Time) (time.Time, time.Time) {
+	oneYearAgo := now.AddDate(-1, 0, 0)
+	oneYearFromNow := now.AddDate(1, 0, 0)
+
+	if firstSeen.IsZero() || firstSeen.Before(oneYearAgo) || firstSeen.After(oneYearFromNow) {
+		firstSeen = now
+	}
+	if lastSeen.IsZero() || lastSeen.Before(oneYearAgo) || lastSeen.After(oneYearFromNow) {
+		lastSeen = now
+	}
+	if lastSeen.Before(firstSeen) {
+		lastSeen = firstSeen
+	}
+	return firstSeen, lastSeen
 }
 
 func toProtoThreatLevel(level scoring.ThreatLevel) pb.ThreatLevel {

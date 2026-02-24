@@ -150,3 +150,51 @@ func TestCalculateScore_FailedHandshakes(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateScore_PortScanMidRangeGetsSignal(t *testing.T) {
+	ts := NewThreatScorer()
+	now := time.Now()
+
+	metrics := IPMetrics{
+		SYNCount:         6,
+		ACKCount:         0,
+		FailedHandshakes: 0,
+		UniquePorts:      6, // Between threshold (5) and previous hard gate (10)
+		TotalConnections: 6,
+		WindowStart:      now.Add(-10 * time.Second),
+		WindowEnd:        now,
+		Direction:        DirectionInbound,
+	}
+
+	score := ts.CalculateScore(metrics)
+	if score.RawMetrics.PortScanComponent <= 0 {
+		t.Fatalf("expected positive port-scan component for mid-range unique ports, got %.2f", score.RawMetrics.PortScanComponent)
+	}
+}
+
+func TestClassifyThreatType_PrefersPortScanOnTie(t *testing.T) {
+	ts := NewThreatScorer()
+
+	metrics := IPMetrics{
+		UniquePorts: ts.PortScanThreshold,
+	}
+
+	got := ts.classifyThreatType(metrics, 3.0, 3.0, 0, 0, 0)
+	if got != ThreatTypePortScan {
+		t.Fatalf("expected tie to prefer port_scan, got %s", got)
+	}
+}
+
+func TestCalculateServiceAbuseScore_RespectsConfiguredThreshold(t *testing.T) {
+	ts := NewThreatScorer()
+	ts.ServiceAbuseThreshold = 5
+
+	metrics := IPMetrics{
+		MaxPortHits: 6,
+	}
+
+	score := ts.calculateServiceAbuseScore(metrics)
+	if score <= 0 {
+		t.Fatalf("expected positive service-abuse score when threshold is met, got %.2f", score)
+	}
+}

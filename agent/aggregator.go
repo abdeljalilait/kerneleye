@@ -30,6 +30,7 @@ type Aggregator struct {
 	analyzer           *remediation.Analyzer
 	autoBlocker        *remediation.AutoBlocker
 	scorer             *scoring.ThreatScorer
+	history            *HistoryStore
 	buffer             *BufferDB       // SQLite buffer for fault tolerance
 	cachedPublicIP     string          // Cached public IP
 	serverIPs          map[string]bool // Server's local IPs for direction detection
@@ -80,6 +81,12 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 		return nil, fmt.Errorf("buffer init: %w", err)
 	}
 
+	// Initialize local history store for persistent periodic threat context.
+	history, err := NewHistoryStore("", DefaultHistoryStoreConfig())
+	if err != nil {
+		Logger.Warnf("⚠️  History store unavailable; persistent periodic scoring disabled: %v", err)
+	}
+
 	// Get server's local IPs at startup (IPv4 + IPv6)
 	serverIPs := getServerIPs()
 
@@ -112,6 +119,7 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 		grpcClient:        pb.NewIngestServiceClient(conn),
 		remediator:        rem,
 		analyzer:          ana,
+		history:           history,
 		buffer:            buffer,
 		cachedPublicIP:    cachedPublicIP,
 		serverIPs:         serverIPs,
@@ -454,6 +462,12 @@ func (a *Aggregator) Close() error {
 	if a.buffer != nil {
 		if err := a.buffer.Close(); err != nil {
 			Logger.Warnf("⚠️  Error closing buffer DB: %v", err)
+		}
+	}
+
+	if a.history != nil {
+		if err := a.history.Close(); err != nil {
+			Logger.Warnf("⚠️  Error closing history DB: %v", err)
 		}
 	}
 
