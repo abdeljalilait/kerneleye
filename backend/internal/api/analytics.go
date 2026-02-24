@@ -53,6 +53,50 @@ func HandleGetDailyAttackStats(queries *database.Queries) fiber.Handler {
 	}
 }
 
+// HandleGetDailyBlockStats returns daily block statistics (actually prevented attacks)
+func HandleGetDailyBlockStats(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id").(string)
+
+		// Parse date range from query params
+		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
+
+		// Default to last 7 days if not provided
+		if startDate == "" {
+			startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+		}
+		if endDate == "" {
+			endDate = time.Now().Format("2006-01-02")
+		}
+
+		// Parse dates
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid start_date format")
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid end_date format")
+		}
+		end = end.Add(24 * time.Hour) // Include the full end date
+
+		stats, err := queries.GetDailyBlockStats(c.Context(), database.GetDailyBlockStatsParams{
+			UserID:      database.ToPgUUID(userID),
+			BlockedAt:   database.ToPgTimestamptz(start),
+			BlockedAt_2: database.ToPgTimestamptz(end),
+		})
+		if err != nil {
+			log.Printf("[API] GetDailyBlockStats error: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to get block stats")
+		}
+
+		return c.JSON(fiber.Map{
+			"data": stats,
+		})
+	}
+}
+
 // HandleGetAttackTypeBreakdown returns attack type distribution
 func HandleGetAttackTypeBreakdown(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {

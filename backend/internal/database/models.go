@@ -79,19 +79,6 @@ type Block struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
-// IPs to block or allow (Phase 2)
-type BlockList struct {
-	ID        pgtype.UUID        `json:"id"`
-	ServerID  pgtype.UUID        `json:"server_id"`
-	IpAddress netip.Addr         `json:"ip_address"`
-	Action    string             `json:"action"`
-	Reason    pgtype.Text        `json:"reason"`
-	AutoAdded pgtype.Bool        `json:"auto_added"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	CreatedBy pgtype.UUID        `json:"created_by"`
-}
-
 type BlockStatsDaily struct {
 	UserID          pgtype.UUID `json:"user_id"`
 	ServerID        pgtype.UUID `json:"server_id"`

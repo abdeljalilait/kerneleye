@@ -698,6 +698,65 @@ func (q *Queries) GetDailyAttackStats(ctx context.Context, arg GetDailyAttackSta
 	return items, nil
 }
 
+const getDailyBlockStats = `-- name: GetDailyBlockStats :many
+SELECT 
+    DATE(b.blocked_at) as date,
+    COUNT(*)::int as total_blocks,
+    COUNT(DISTINCT b.ip_address)::int as unique_ips,
+    SUM(CASE WHEN b.threat_level = 'malicious' THEN 1 ELSE 0 END)::int as malicious_blocks,
+    SUM(CASE WHEN b.threat_level = 'suspicious' THEN 1 ELSE 0 END)::int as suspicious_blocks,
+    SUM(CASE WHEN b.is_active = true AND (b.expires_at IS NULL OR b.expires_at > NOW()) THEN 1 ELSE 0 END)::int as active_blocks
+FROM blocks b
+WHERE b.user_id = $1
+  AND b.blocked_at >= $2
+  AND b.blocked_at <= $3
+GROUP BY DATE(b.blocked_at)
+ORDER BY date DESC
+`
+
+type GetDailyBlockStatsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	BlockedAt   pgtype.Timestamptz `json:"blocked_at"`
+	BlockedAt_2 pgtype.Timestamptz `json:"blocked_at_2"`
+}
+
+type GetDailyBlockStatsRow struct {
+	Date             pgtype.Date `json:"date"`
+	TotalBlocks      int32       `json:"total_blocks"`
+	UniqueIps        int32       `json:"unique_ips"`
+	MaliciousBlocks  int32       `json:"malicious_blocks"`
+	SuspiciousBlocks int32       `json:"suspicious_blocks"`
+	ActiveBlocks     int32       `json:"active_blocks"`
+}
+
+// Get blocked IPs stats from blocks table (actually prevented attacks)
+func (q *Queries) GetDailyBlockStats(ctx context.Context, arg GetDailyBlockStatsParams) ([]GetDailyBlockStatsRow, error) {
+	rows, err := q.db.Query(ctx, getDailyBlockStats, arg.UserID, arg.BlockedAt, arg.BlockedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetDailyBlockStatsRow{}
+	for rows.Next() {
+		var i GetDailyBlockStatsRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.TotalBlocks,
+			&i.UniqueIps,
+			&i.MaliciousBlocks,
+			&i.SuspiciousBlocks,
+			&i.ActiveBlocks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getHighScoreTraffic = `-- name: GetHighScoreTraffic :many
 SELECT 
     te.source_ip,

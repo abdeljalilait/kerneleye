@@ -50,6 +50,8 @@ type Querier interface {
 	// Reports & Analytics Queries
 	// ============================================
 	GetDailyAttackStats(ctx context.Context, arg GetDailyAttackStatsParams) ([]GetDailyAttackStatsRow, error)
+	// Get blocked IPs stats from blocks table (actually prevented attacks)
+	GetDailyBlockStats(ctx context.Context, arg GetDailyBlockStatsParams) ([]GetDailyBlockStatsRow, error)
 	// Gets IPs with scores above threshold for potential blocking
 	GetHighScoreTraffic(ctx context.Context, arg GetHighScoreTrafficParams) ([]GetHighScoreTrafficRow, error)
 	GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error)

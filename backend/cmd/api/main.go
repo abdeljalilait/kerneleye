@@ -218,6 +218,7 @@ func main() {
 
 	// Analytics endpoints (Reports & Visualizer)
 	protected.Get("/analytics/daily-attacks", api.HandleGetDailyAttackStats(queries))
+	protected.Get("/analytics/daily-blocks", api.HandleGetDailyBlockStats(queries))
 	protected.Get("/analytics/attack-types", api.HandleGetAttackTypeBreakdown(queries))
 	protected.Get("/analytics/top-countries", api.HandleGetTopSourceCountries(queries))
 	protected.Get("/analytics/hourly-distribution", api.HandleGetHourlyAttackDistribution(queries))

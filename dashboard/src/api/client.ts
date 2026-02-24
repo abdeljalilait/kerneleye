@@ -101,6 +101,8 @@ export const analyticsAPI = {
   // Reports
   getDailyAttacks: (startDate?: string, endDate?: string) => 
     api.get(`/analytics/daily-attacks?start_date=${startDate || ''}&end_date=${endDate || ''}`),
+  getDailyBlocks: (startDate?: string, endDate?: string) => 
+    api.get(`/analytics/daily-blocks?start_date=${startDate || ''}&end_date=${endDate || ''}`),
   getAttackTypes: (startDate?: string, endDate?: string) => 
     api.get(`/analytics/attack-types?start_date=${startDate || ''}&end_date=${endDate || ''}`),
   getTopCountries: (startDate?: string, endDate?: string, limit?: number) => 

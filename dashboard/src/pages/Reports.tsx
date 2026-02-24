@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
-import { useNavigate } from '@tanstack/react-router';
 import {
   Card,
   Button,
@@ -11,7 +10,6 @@ import {
   Statistic,
   Select,
   Space,
-  Badge,
   Table,
   Spin,
 } from 'antd';
@@ -45,6 +43,7 @@ import {
 import { 
   useServers,
   useDailyAttackStats,
+  useDailyBlockStats,
   useAttackTypeBreakdown,
   useTopSourceCountries,
   useHourlyAttackDistribution,
@@ -57,7 +56,6 @@ const { RangePicker } = DatePicker;
 const COLORS = ['#6366f1', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981', '#64748b'];
 
 export default function Reports() {
-  const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(() => {
     const end = dayjs();
     const start = dayjs().subtract(7, 'day');
@@ -73,18 +71,28 @@ export default function Reports() {
 
   // Fetch analytics data
   const { data: dailyStats, isLoading: dailyStatsLoading } = useDailyAttackStats(startDate, endDate);
+  const { data: blockStats, isLoading: blockStatsLoading } = useDailyBlockStats(startDate, endDate);
   const { data: attackTypes, isLoading: attackTypesLoading } = useAttackTypeBreakdown(startDate, endDate);
   const { data: topCountries, isLoading: countriesLoading } = useTopSourceCountries(startDate, endDate, 5);
   const { data: hourlyData, isLoading: hourlyLoading } = useHourlyAttackDistribution(startDate, endDate);
 
   // Transform daily stats for chart display
+  // Combine traffic_events (monitored attacks) with blocks (prevented attacks)
   const dailyData = useMemo(() => {
+    // Create a map from blockStats for quick lookup
+    const blockMap = new Map();
+    if (blockStats) {
+      blockStats.forEach((b: any) => {
+        blockMap.set(b.date, b.total_blocks || 0);
+      });
+    }
+
     if (!dailyStats) return [];
     return dailyStats.map((day: any) => ({
       date: dayjs(day.date).format('MMM D'),
       fullDate: day.date,
-      total: day.total_attacks || 0,
-      blocked: day.blocked || 0,
+      monitored: day.total_attacks || 0,  // Threats detected (from traffic_events)
+      prevented: blockMap.get(day.date) || 0,  // Actually blocked (from blocks table)
       uniqueIPs: day.unique_sources || 0,
       sshBruteforce: day.ssh_attacks || 0,
       httpScan: day.http_attacks || 0,
@@ -92,7 +100,7 @@ export default function Reports() {
       httpExploit: Math.floor((day.http_attacks || 0) * 0.2),
       portScan: day.other_attacks || 0,
     })).reverse();
-  }, [dailyStats]);
+  }, [dailyStats, blockStats]);
 
   // Transform attack types for pie chart
   const threatTypeData = useMemo(() => {
@@ -129,9 +137,9 @@ export default function Reports() {
   }, [hourlyData]);
 
   // Calculate totals
-  const totalAttacks = dailyData.reduce((sum: number, d: any) => sum + d.total, 0);
-  const totalBlocked = dailyData.reduce((sum: number, d: any) => sum + d.blocked, 0);
-  const avgAttacksPerDay = dailyData.length > 0 ? Math.round(totalAttacks / dailyData.length) : 0;
+  const totalMonitored = dailyData.reduce((sum: number, d: any) => sum + d.monitored, 0);
+  const totalPrevented = dailyData.reduce((sum: number, d: any) => sum + d.prevented, 0);
+  const avgAttacksPerDay = dailyData.length > 0 ? Math.round(totalMonitored / dailyData.length) : 0;
   const totalUniqueIPs = dailyData.reduce((sum: number, d: any) => sum + d.uniqueIPs, 0);
 
   const handleDateChange = (dates: [Dayjs | null, Dayjs | null] | null, _dateStrings: [string, string]) => {
@@ -148,40 +156,24 @@ export default function Reports() {
       render: (text: string) => new Date(text).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     },
     {
-      title: 'Total Attacks',
-      dataIndex: 'total',
-      key: 'total',
+      title: 'Monitored',
+      dataIndex: 'monitored',
+      key: 'monitored',
       render: (value: number) => value.toLocaleString(),
     },
     {
-      title: 'SSH Attacks',
-      dataIndex: 'sshBruteforce',
-      key: 'ssh',
-      render: (value: number) => (
-        <Badge color="#6366f1" text={value.toLocaleString()} />
-      ),
-    },
-    {
-      title: 'HTTP Attacks',
-      dataIndex: 'httpScan',
-      key: 'http',
-      render: (value: number) => (
-        <Badge color="#f59e0b" text={value.toLocaleString()} />
-      ),
-    },
-    {
-      title: 'Blocked',
-      dataIndex: 'blocked',
-      key: 'blocked',
+      title: 'Prevented',
+      dataIndex: 'prevented',
+      key: 'prevented',
       render: (value: number, record: any) => (
         <Text style={{ color: '#10b981' }}>
-          {value.toLocaleString()} ({record.total > 0 ? ((value / record.total) * 100).toFixed(1) : 0}%)
+          {value.toLocaleString()} ({record.monitored > 0 ? ((value / record.monitored) * 100).toFixed(1) : 0}%)
         </Text>
       ),
     },
   ];
 
-  const isLoading = serversLoading || dailyStatsLoading || 
+  const isLoading = serversLoading || dailyStatsLoading || blockStatsLoading ||
                     attackTypesLoading || countriesLoading || hourlyLoading;
 
   return (
@@ -274,12 +266,12 @@ export default function Reports() {
                       <Text style={{ color: 'var(--text-secondary)' }}>Prevented Attacks</Text>
                     </Space>
                   }
-                  value={totalBlocked.toLocaleString()}
+                  value={totalPrevented.toLocaleString()}
                   valueStyle={{ color: '#10b981', fontSize: 28, fontWeight: 700 }}
                   prefix={<TrendingUp size={20} style={{ marginRight: 8 }} />}
                 />
                 <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
-                  {totalAttacks > 0 ? ((totalBlocked / totalAttacks) * 100).toFixed(1) : 0}% blocked rate
+                  {totalMonitored > 0 ? ((totalPrevented / totalMonitored) * 100).toFixed(1) : 0}% of threats prevented
                 </Text>
               </Card>
             </Col>
@@ -298,10 +290,10 @@ export default function Reports() {
                   title={
                     <Space>
                       <AlertTriangle size={16} color="#f59e0b" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Total Threats</Text>
+                      <Text style={{ color: 'var(--text-secondary)' }}>Monitored Threats</Text>
                     </Space>
                   }
-                  value={totalAttacks.toLocaleString()}
+                  value={totalMonitored.toLocaleString()}
                   valueStyle={{ color: 'var(--text-primary)', fontSize: 28, fontWeight: 700 }}
                 />
                 <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
@@ -446,7 +438,7 @@ export default function Reports() {
                           {threat.value >= 1000 ? `${(threat.value / 1000).toFixed(1)}k` : threat.value}
                         </Text>
                         <Text style={{ color: 'var(--text-tertiary)', width: 60, textAlign: 'right' }}>
-                          {totalAttacks > 0 ? ((threat.value / totalAttacks) * 100).toFixed(1) : 0}%
+                          {totalMonitored > 0 ? ((threat.value / totalMonitored) * 100).toFixed(1) : 0}%
                         </Text>
                       </Space>
                     </Row>

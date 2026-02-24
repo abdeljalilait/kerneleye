@@ -394,6 +394,17 @@ export const useDailyAttackStats = (startDate?: string, endDate?: string) => {
   });
 };
 
+export const useDailyBlockStats = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ['analytics', 'daily-blocks', startDate, endDate],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getDailyBlocks(startDate, endDate);
+      return data.data;
+    },
+    enabled: !!startDate && !!endDate,
+  });
+};
+
 export const useAttackTypeBreakdown = (startDate?: string, endDate?: string) => {
   return useQuery({
     queryKey: ['analytics', 'attack-types', startDate, endDate],

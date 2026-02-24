@@ -267,6 +267,22 @@ WHERE s.user_id = $1
 GROUP BY DATE(te.created_at)
 ORDER BY date DESC;
 
+-- name: GetDailyBlockStats :many
+-- Get blocked IPs stats from blocks table (actually prevented attacks)
+SELECT 
+    DATE(b.blocked_at) as date,
+    COUNT(*)::int as total_blocks,
+    COUNT(DISTINCT b.ip_address)::int as unique_ips,
+    SUM(CASE WHEN b.threat_level = 'malicious' THEN 1 ELSE 0 END)::int as malicious_blocks,
+    SUM(CASE WHEN b.threat_level = 'suspicious' THEN 1 ELSE 0 END)::int as suspicious_blocks,
+    SUM(CASE WHEN b.is_active = true AND (b.expires_at IS NULL OR b.expires_at > NOW()) THEN 1 ELSE 0 END)::int as active_blocks
+FROM blocks b
+WHERE b.user_id = $1
+  AND b.blocked_at >= $2
+  AND b.blocked_at <= $3
+GROUP BY DATE(b.blocked_at)
+ORDER BY date DESC;
+
 -- name: GetAttackTypeBreakdown :many
 SELECT 
     CASE 
