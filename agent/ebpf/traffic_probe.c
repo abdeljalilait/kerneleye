@@ -292,37 +292,43 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
     return 0;
 }
 
-// Hook: TCP Connection Request (Incoming SYN - detects inbound attacks)
-// Using socket fields instead of sk_buff for stability
-SEC("kprobe/tcp_v4_conn_request")
-int BPF_KPROBE(detect_tcp_conn_request, struct sock *sk, struct sk_buff *skb) {
-    (void)skb;
-    
-    if (sk == NULL) return 0;
-    if (!check_rate_limit()) return 0;
-    
-    u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
-    if (family != AF_INET) return 0;
-    
-    u32 saddr = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_daddr));
-    u32 daddr = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr));
-    u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);
-    u16 rport = bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
-    
+// Tracepoint: TCP state change - catches inbound SYN (SYN_RECV state)
+// More stable than kprobe - properly typed fields, works across kernel versions
+SEC("tracepoint/sock/inet_sock_set_state")
+int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
+    // Only care about transitions INTO SYN_RECV (server received a SYN)
+    if (ctx->newstate != TCP_SYN_RECV)
+        return 0;
+
+    if (ctx->protocol != IPPROTO_TCP)
+        return 0;
+
+    if (ctx->family != AF_INET)
+        return 0;
+
+    if (!check_rate_limit())
+        return 0;
+
     struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-    if (!e) return 0;
-    
-    e->saddr = saddr;
-    e->daddr = daddr;
-    e->lport = lport;
-    e->rport = rport;
-    e->family = family;
+    if (!e)
+        return 0;
+
+    // Convert IP addresses from __u8[4] to u32 (network to host byte order)
+    // saddr = remote (connecting) IP, daddr = local (our) IP
+    e->saddr = (__u32)ctx->saddr[0] | ((__u32)ctx->saddr[1] << 8) |
+               ((__u32)ctx->saddr[2] << 16) | ((__u32)ctx->saddr[3] << 24);
+    e->daddr = (__u32)ctx->daddr[0] | ((__u32)ctx->daddr[1] << 8) |
+               ((__u32)ctx->daddr[2] << 16) | ((__u32)ctx->daddr[3] << 24);
+    e->lport = ctx->sport;                 // Our listening port
+    e->rport = ctx->dport;                 // Remote ephemeral port
+    e->family = ctx->family;
     e->protocol = IPPROTO_TCP;
     e->flags = FLAG_SYN;
     e->direction = DIR_INBOUND;
     e->timestamp = bpf_ktime_get_ns();
-    
+
     fill_process_info(e);
+
     bpf_ringbuf_submit(e, 0);
     return 0;
 }

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
 )
@@ -16,6 +20,42 @@ type EBPFResources struct {
 	KpConnRequest link.Link // TCP connection request (incoming SYN)
 	IngressFilter *netlink.BpfFilter
 	EgressFilter  *netlink.BpfFilter
+}
+
+func loadBPFObjectsWithConnRequestFallback(objects *bpfObjects) (bool, error) {
+	if err := loadBpfObjects(objects, nil); err == nil {
+		return false, nil
+	} else if !isConnRequestLoadError(err) {
+		return false, err
+	} else {
+		spec, specErr := loadBpf()
+		if specErr != nil {
+			return false, fmt.Errorf("eBPF load failed (%w); fallback spec load failed: %v", err, specErr)
+		}
+
+		prog, ok := spec.Programs["detect_tcp_conn_request"]
+		if !ok || prog == nil {
+			return false, err
+		}
+
+		// Replace only this optional probe with a verifier-safe no-op, then retry.
+		prog.Instructions = asm.Instructions{
+			asm.Mov.Imm(asm.R0, 0),
+			asm.Return(),
+		}
+
+		if retryErr := spec.LoadAndAssign(objects, nil); retryErr != nil {
+			return false, fmt.Errorf("eBPF load failed (%w); fallback retry failed: %v", err, retryErr)
+		}
+
+		Logger.Warnf("⚠️  detect_tcp_conn_request was rejected by kernel verifier; continuing with probe disabled: %v", err)
+		return true, nil
+	}
+}
+
+func isConnRequestLoadError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "DetectInboundSyn") || strings.Contains(msg, "detect_inbound_syn")
 }
 
 // Close cleans up all eBPF resources
@@ -53,49 +93,53 @@ func (r *EBPFResources) Close() {
 func LoadAndAttacheBPF() (*EBPFResources, error) {
 	res := &EBPFResources{Objects: &bpfObjects{}}
 	if err := loadBpfObjects(res.Objects, nil); err != nil {
+		if isConnRequestLoadError(err) {
+			Logger.Warn("⚠️  Tracepoint load error - check kernel support for sock:inet_sock_set_state")
+		}
 		return nil, err
 	}
-	var err error
+	var linkErr error
 
 	// TCP Accept (incoming connections)
-	res.KpAccept, err = link.Kretprobe("inet_csk_accept", res.Objects.DetectTcpAccept, nil)
-	if err != nil {
+	res.KpAccept, linkErr = link.Kretprobe("inet_csk_accept", res.Objects.DetectTcpAccept, nil)
+	if linkErr != nil {
 		res.Close()
-		return nil, err
+		return nil, linkErr
 	}
 
-	// TCP Connection Request (incoming SYN - detects inbound attacks like brute force)
-	res.KpConnRequest, err = link.Kprobe("tcp_v4_conn_request", res.Objects.DetectTcpConnRequest, nil)
-	if err != nil {
-		Logger.Warnf("⚠️  tcp_v4_conn_request probe not available (non-critical): %v", err)
+	// TCP state change tracepoint - catches inbound SYN (SYN_RECV state)
+	// More stable than kprobe - properly typed fields across kernel versions
+	res.KpConnRequest, linkErr = link.Tracepoint("sock", "inet_sock_set_state", res.Objects.DetectInboundSyn, nil)
+	if linkErr != nil {
+		Logger.Warnf("⚠️  tracepoint sock:inet_sock_set_state not available (non-critical): %v", linkErr)
 		// Non-fatal: accept-based detection still works
 	}
 
 	// TCP Connect (outgoing connections - SYN sent)
-	res.KpConnect, err = link.Kprobe("tcp_connect", res.Objects.DetectTcpConnect, nil)
-	if err != nil {
+	res.KpConnect, linkErr = link.Kprobe("tcp_connect", res.Objects.DetectTcpConnect, nil)
+	if linkErr != nil {
 		res.Close()
-		return nil, err
+		return nil, linkErr
 	}
 
 	// TCP State Change (clean SYN tracker on ESTABLISHED)
-	res.KpSetState, err = link.Kprobe("tcp_set_state", res.Objects.DetectTcpStateChange, nil)
-	if err != nil {
-		Logger.Warnf("⚠️  tcp_set_state probe not available (non-critical): %v", err)
+	res.KpSetState, linkErr = link.Kprobe("tcp_set_state", res.Objects.DetectTcpStateChange, nil)
+	if linkErr != nil {
+		Logger.Warnf("⚠️  tcp_set_state probe not available (non-critical): %v", linkErr)
 		// Non-fatal: tcp_close will still clean up, just less efficiently
 	}
 
 	// TCP Close (detect failed handshakes)
-	res.KpClose, err = link.Kprobe("tcp_close", res.Objects.DetectTcpClose, nil)
-	if err != nil {
+	res.KpClose, linkErr = link.Kprobe("tcp_close", res.Objects.DetectTcpClose, nil)
+	if linkErr != nil {
 		res.Close()
-		return nil, err
+		return nil, linkErr
 	}
 
 	// UDP Receive
-	res.KpUdpRecv, err = link.Kprobe("udp_recvmsg", res.Objects.DetectUdpRecv, nil)
-	if err != nil {
-		Logger.Warnf("⚠️  udp_recvmsg probe not available (non-critical): %v", err)
+	res.KpUdpRecv, linkErr = link.Kprobe("udp_recvmsg", res.Objects.DetectUdpRecv, nil)
+	if linkErr != nil {
+		Logger.Warnf("⚠️  udp_recvmsg probe not available (non-critical): %v", linkErr)
 		// Non-fatal: UDP monitoring optional
 	}
 
