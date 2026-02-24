@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/netip"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kerneleye/backend/internal/database"
@@ -247,19 +248,11 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 
 	eventsProcessed := uint64(0)
 	for _, event := range req.Events {
-		metrics := scoring.IPMetrics{
-			SYNCount:         int(event.SynCount),
-			ACKCount:         int(event.AckCount),
-			FailedHandshakes: int(event.FailedHandshakes),
-			UniquePorts:      int(event.UniquePortsCount),
-			TotalConnections: int(event.SynCount + event.AckCount),
-			BytesIn:          event.BytesIn,
-			BytesOut:         event.BytesOut,
-			WindowStart:      event.FirstSeen.AsTime(),
-			WindowEnd:        event.LastSeen.AsTime(),
-		}
-
+		metrics := buildMetricsFromEvent(event)
 		score := h.scorer.CalculateScore(metrics)
+		if agentScore, ok := scoreFromAgentEvent(event); ok && agentScore.Score >= score.Score {
+			score = agentScore
+		}
 
 		sourceIP, err := database.ToNetAddr(event.SourceIp)
 		if err != nil {
@@ -281,10 +274,7 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		}
 
 		// Convert protobuf direction to string
-		direction := "inbound"
-		if event.Direction == pb.Direction_DIRECTION_OUTBOUND {
-			direction = "outbound"
-		}
+		direction := directionLabel(event.Direction)
 
 		_, err = h.queries.UpsertTrafficEvent(ctx, database.UpsertTrafficEventParams{
 			ServerID:         server.ID,
@@ -345,6 +335,143 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		Message:         "Traffic data processed",
 		EventsProcessed: eventsProcessed,
 	}, nil
+}
+
+func buildMetricsFromEvent(event *pb.ConnectionEvent) scoring.IPMetrics {
+	synCount := int(event.SynCount)
+	ackCount := int(event.AckCount)
+	failed := int(event.FailedHandshakes)
+
+	servicePorts := make([]int, 0, len(event.PortsAccessed))
+	for _, port := range event.PortsAccessed {
+		servicePorts = append(servicePorts, int(port))
+	}
+
+	uniquePorts := int(event.UniquePortsCount)
+	if uniquePorts == 0 && len(servicePorts) > 0 {
+		uniquePorts = len(servicePorts)
+	}
+
+	firstSeen, lastSeen := normalizeWindow(event.FirstSeen.AsTime(), event.LastSeen.AsTime())
+
+	established := ackCount - synCount
+	if established < 0 {
+		established = 0
+	}
+
+	maxPortHits := synCount
+	if ackCount > maxPortHits {
+		maxPortHits = ackCount
+	}
+	if failed > maxPortHits {
+		maxPortHits = failed
+	}
+
+	portHits := map[int]int{}
+	if event.DestinationPort > 0 && maxPortHits > 0 {
+		portHits[int(event.DestinationPort)] = maxPortHits
+	}
+
+	return scoring.IPMetrics{
+		SYNCount:               synCount,
+		ACKCount:               ackCount,
+		FailedHandshakes:       failed,
+		UniquePorts:            uniquePorts,
+		TotalConnections:       synCount + ackCount,
+		BytesIn:                event.BytesIn,
+		BytesOut:               event.BytesOut,
+		WindowStart:            firstSeen,
+		WindowEnd:              lastSeen,
+		EstablishedConnections: established,
+		PreviousScore:          int(event.ThreatScore),
+		ServicePorts:           servicePorts,
+		PortHits:               portHits,
+		MaxPortHits:            maxPortHits,
+		PrimaryPort:            int(event.DestinationPort),
+		Direction:              scoringDirection(event.Direction),
+	}
+}
+
+func scoreFromAgentEvent(event *pb.ConnectionEvent) (scoring.ThreatScore, bool) {
+	hasScore := event.ThreatScore > 0 ||
+		event.ThreatLevel != pb.ThreatLevel_THREAT_LEVEL_NORMAL ||
+		event.ThreatType != pb.ThreatType_THREAT_TYPE_NONE
+	if !hasScore {
+		return scoring.ThreatScore{}, false
+	}
+
+	return scoring.ThreatScore{
+		Score:      int(event.ThreatScore),
+		Level:      scoringThreatLevel(event.ThreatLevel),
+		Type:       scoringThreatType(event.ThreatType),
+		Reasons:    event.Reasons,
+		Timestamp:  time.Now(),
+		Direction:  scoringDirection(event.Direction),
+		Confidence: 1.0,
+	}, true
+}
+
+func normalizeWindow(start, end time.Time) (time.Time, time.Time) {
+	now := time.Now()
+	oneYearAgo := now.AddDate(-1, 0, 0)
+	oneYearFromNow := now.AddDate(1, 0, 0)
+
+	if start.IsZero() || start.Before(oneYearAgo) || start.After(oneYearFromNow) {
+		start = now
+	}
+	if end.IsZero() || end.Before(oneYearAgo) || end.After(oneYearFromNow) {
+		end = now
+	}
+	if end.Before(start) {
+		end = start
+	}
+
+	return start, end
+}
+
+func scoringDirection(direction pb.Direction) scoring.Direction {
+	if direction == pb.Direction_DIRECTION_OUTBOUND {
+		return scoring.DirectionOutbound
+	}
+	if direction == pb.Direction_DIRECTION_INBOUND {
+		return scoring.DirectionInbound
+	}
+	return scoring.DirectionUnknown
+}
+
+func directionLabel(direction pb.Direction) string {
+	if direction == pb.Direction_DIRECTION_OUTBOUND {
+		return "outbound"
+	}
+	return "inbound"
+}
+
+func scoringThreatLevel(level pb.ThreatLevel) scoring.ThreatLevel {
+	switch level {
+	case pb.ThreatLevel_THREAT_LEVEL_MALICIOUS:
+		return scoring.ThreatLevelMalicious
+	case pb.ThreatLevel_THREAT_LEVEL_SUSPICIOUS:
+		return scoring.ThreatLevelSuspicious
+	default:
+		return scoring.ThreatLevelNormal
+	}
+}
+
+func scoringThreatType(threatType pb.ThreatType) scoring.ThreatType {
+	switch threatType {
+	case pb.ThreatType_THREAT_TYPE_PORT_SCAN:
+		return scoring.ThreatTypePortScan
+	case pb.ThreatType_THREAT_TYPE_SERVICE_ABUSE:
+		return scoring.ThreatTypeServiceAbuse
+	case pb.ThreatType_THREAT_TYPE_SYN_FLOOD:
+		return scoring.ThreatTypeSynFlood
+	case pb.ThreatType_THREAT_TYPE_FAILED_HANDSHAKE:
+		return scoring.ThreatTypeFailedHandshake
+	case pb.ThreatType_THREAT_TYPE_CONNECTION_BURST:
+		return scoring.ThreatTypeConnectionBurst
+	default:
+		return scoring.ThreatTypeNone
+	}
 }
 
 // getServiceFromPort returns a service name string based on port number

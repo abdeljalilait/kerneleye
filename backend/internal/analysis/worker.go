@@ -110,7 +110,8 @@ func (w *Worker) scoreServerTraffic(ctx context.Context, server database.ListAll
 	}
 
 	for _, row := range agg {
-		if row.EventCount < int32(w.config.MinEvents) {
+		totalSignals := int(row.SynCount + row.AckCount + row.FailedHandshakes)
+		if totalSignals < w.config.MinEvents {
 			continue
 		}
 
@@ -183,27 +184,49 @@ func (w *Worker) buildMetrics(row database.GetTrafficAggregationByIPRow) scoring
 		windowEnd = time.Now()
 	}
 
-	windowDuration := windowEnd.Sub(windowStart).Seconds()
-	if windowDuration < 1 {
-		windowDuration = 1
-	}
-
 	established := int(row.AckCount) - int(row.SynCount)
 	if established < 0 {
 		established = 0
+	}
+
+	uniquePorts := int(row.PortCount)
+	if uniquePorts <= 0 {
+		uniquePorts = 1
+	}
+
+	totalConnections := int(row.SynCount + row.AckCount)
+
+	// Approximate concentration on a single port using aggregate counters.
+	// This allows service-abuse scoring to trigger even when traffic is spread
+	// across many ingest windows but persists on the same endpoint.
+	baseHits := int(row.SynCount)
+	if ack := int(row.AckCount); ack > baseHits {
+		baseHits = ack
+	}
+	if failed := int(row.FailedHandshakes); failed > baseHits {
+		baseHits = failed
+	}
+	maxPortHits := baseHits
+	if uniquePorts > 1 {
+		maxPortHits = baseHits / uniquePorts
+		if baseHits%uniquePorts != 0 {
+			maxPortHits++
+		}
 	}
 
 	return scoring.IPMetrics{
 		SYNCount:               int(row.SynCount),
 		ACKCount:               int(row.AckCount),
 		FailedHandshakes:       int(row.FailedHandshakes),
-		UniquePorts:            int(row.PortCount),
-		TotalConnections:       int(row.SynCount + row.AckCount),
+		UniquePorts:            uniquePorts,
+		TotalConnections:       totalConnections,
 		BytesIn:                uint64(row.BytesIn),
 		BytesOut:               uint64(row.BytesOut),
 		WindowStart:            windowStart,
 		WindowEnd:              windowEnd,
 		EstablishedConnections: established,
 		PreviousScore:          int(row.MaxThreatScore),
+		MaxPortHits:            maxPortHits,
+		Direction:              scoring.DirectionInbound,
 	}
 }

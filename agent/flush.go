@@ -229,6 +229,15 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 		if lastSeen.Before(oneYearAgo) || lastSeen.After(oneYearFromNow) {
 			lastSeen = now
 		}
+
+		score := scoring.ThreatScore{}
+		if a.scorer != nil {
+			metrics := a.buildMetrics(stats)
+			metrics.WindowStart = firstSeen
+			metrics.WindowEnd = lastSeen
+			score = a.scorer.CalculateScore(metrics)
+		}
+
 		pbEvents = append(pbEvents, &pb.ConnectionEvent{
 			SourceIp: sourceIP, DestinationIp: destIP, DestinationPort: uint32(primaryPort),
 			Protocol: getProtocolFromNumber(stats.Protocol), SynCount: uint32(stats.SYNCount),
@@ -236,7 +245,11 @@ func (a *Aggregator) buildProtoEvents() []*pb.ConnectionEvent {
 			BytesIn: stats.BytesIn, BytesOut: stats.BytesOut,
 			FirstSeen: timestamppb.New(firstSeen), LastSeen: timestamppb.New(lastSeen),
 			UniquePortsCount: uint32(len(stats.UniquePorts)), PortsAccessed: portsAccessed,
-			Direction: pb.Direction(stats.Direction + 1),
+			Direction:   pb.Direction(stats.Direction + 1),
+			ThreatScore: uint32(max(score.Score, 0)),
+			ThreatLevel: toProtoThreatLevel(score.Level),
+			ThreatType:  toProtoThreatType(score.Type),
+			Reasons:     score.Reasons,
 		})
 	}
 	return pbEvents
@@ -305,4 +318,32 @@ func getScoringDirection(dir uint8) scoring.Direction {
 		return scoring.DirectionOutbound
 	}
 	return scoring.DirectionInbound
+}
+
+func toProtoThreatLevel(level scoring.ThreatLevel) pb.ThreatLevel {
+	switch level {
+	case scoring.ThreatLevelMalicious:
+		return pb.ThreatLevel_THREAT_LEVEL_MALICIOUS
+	case scoring.ThreatLevelSuspicious:
+		return pb.ThreatLevel_THREAT_LEVEL_SUSPICIOUS
+	default:
+		return pb.ThreatLevel_THREAT_LEVEL_NORMAL
+	}
+}
+
+func toProtoThreatType(threatType scoring.ThreatType) pb.ThreatType {
+	switch threatType {
+	case scoring.ThreatTypePortScan:
+		return pb.ThreatType_THREAT_TYPE_PORT_SCAN
+	case scoring.ThreatTypeServiceAbuse:
+		return pb.ThreatType_THREAT_TYPE_SERVICE_ABUSE
+	case scoring.ThreatTypeSynFlood:
+		return pb.ThreatType_THREAT_TYPE_SYN_FLOOD
+	case scoring.ThreatTypeFailedHandshake:
+		return pb.ThreatType_THREAT_TYPE_FAILED_HANDSHAKE
+	case scoring.ThreatTypeConnectionBurst:
+		return pb.ThreatType_THREAT_TYPE_CONNECTION_BURST
+	default:
+		return pb.ThreatType_THREAT_TYPE_NONE
+	}
 }

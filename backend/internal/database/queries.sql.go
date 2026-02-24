@@ -1541,6 +1541,7 @@ SELECT
 FROM traffic_events te
 WHERE te.server_id = $1
   AND te.last_seen >= $2
+  AND te.direction = 'inbound'
 GROUP BY te.source_ip, te.server_id
 `
 
@@ -2416,10 +2417,16 @@ func (q *Queries) UpdateServerStatus(ctx context.Context, arg UpdateServerStatus
 
 const updateTrafficScore = `-- name: UpdateTrafficScore :exec
 UPDATE traffic_events
-SET threat_score = $3,
-    threat_level = $4,
-    threat_type = $5
-WHERE server_id = $1 AND source_ip = $2
+SET threat_score = GREATEST(threat_score, $3),
+    threat_level = CASE
+        WHEN $3 > threat_score THEN $4
+        ELSE threat_level
+    END,
+    threat_type = CASE
+        WHEN $3 > threat_score THEN $5
+        ELSE threat_type
+    END
+WHERE server_id = $1 AND source_ip = $2 AND direction = 'inbound'
 `
 
 type UpdateTrafficScoreParams struct {
