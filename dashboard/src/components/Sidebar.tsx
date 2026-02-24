@@ -60,14 +60,17 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       width={220}
       style={{ boxShadow: 'none' }}
     >
-      <div style={{ height: 64, margin: 16, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12 }}>
+      <div style={{ margin: collapsed ? '16px 0' : 16, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12 }}>
          <img 
            src={logo} 
            alt="KernelEye" 
-           style={{ height: collapsed ? 36 : 52, width: 'auto' }} 
+           style={{ height: collapsed ? 36 : 48, width: 'auto', borderRadius: 8 }} 
          />
          {!collapsed && (
-           <span style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>KernelEye</span>
+           <div style={{ display: 'flex', flexDirection: 'column' }}>
+             <span style={{ color: 'white', fontWeight: 'bold', fontSize: 18, lineHeight: 1.2 }}>KernelEye</span>
+             <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, letterSpacing: 0.5, lineHeight: 1.2 }}>SECURITY MONITOR</span>
+           </div>
          )}
       </div>
 

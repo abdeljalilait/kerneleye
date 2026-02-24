@@ -550,6 +550,7 @@ SELECT
     COUNT(DISTINCT te.server_id)::int as server_count,
     MAX(te.last_seen) as last_seen,
     te.country,
+    te.country_code,
     te.city,
     te.isp,
     te.asn
@@ -558,7 +559,7 @@ JOIN servers s ON te.server_id = s.id
 WHERE te.last_seen >= $1
   AND te.threat_score >= $2
   AND te.direction = 'inbound'
-GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.city, te.isp, te.asn
+GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.country_code, te.city, te.isp, te.asn
 ORDER BY MAX(te.threat_score) DESC
 `
 
@@ -582,6 +583,7 @@ type GetBlockableIPsRow struct {
 	ServerCount int32       `json:"server_count"`
 	LastSeen    interface{} `json:"last_seen"`
 	Country     pgtype.Text `json:"country"`
+	CountryCode pgtype.Text `json:"country_code"`
 	City        pgtype.Text `json:"city"`
 	Isp         pgtype.Text `json:"isp"`
 	Asn         pgtype.Text `json:"asn"`
@@ -612,6 +614,7 @@ func (q *Queries) GetBlockableIPs(ctx context.Context, arg GetBlockableIPsParams
 			&i.ServerCount,
 			&i.LastSeen,
 			&i.Country,
+			&i.CountryCode,
 			&i.City,
 			&i.Isp,
 			&i.Asn,

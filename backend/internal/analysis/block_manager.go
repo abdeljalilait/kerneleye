@@ -206,7 +206,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		TargetPort:      pgtype.Int4{Int32: 0, Valid: false},
 		ServiceName:     pgtype.Text{String: "", Valid: false},
 		Protocol:        pgtype.Text{String: "", Valid: false},
-		CountryCode:     row.Country,
+		CountryCode:     row.CountryCode,
 		CountryName:     row.Country,
 		City:            row.City,
 		Region:          pgtype.Text{String: "", Valid: false},

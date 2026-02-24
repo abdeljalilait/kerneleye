@@ -49,6 +49,7 @@ gen-sql:
 gen-ebpf:
 	@echo "Generating eBPF programs..."
 	cd $(AGENT_DIR) && go generate ./...
+	@cp $(AGENT_DIR)/ebpf/xdp_firewall_bpfel.o $(AGENT_DIR)/assets/
 	@echo "eBPF programs compiled successfully"
 
 # Build Backend
@@ -92,6 +93,7 @@ clean:
 	@echo "Cleaning generated files..."
 	rm -f $(AGENT_DIR)/bpf_bpfel_x86.o $(AGENT_DIR)/bpf_bpfel_x86.go
 	rm -f $(AGENT_DIR)/ebpf/xdp_firewall_bpfel.o
+	rm -f $(AGENT_DIR)/assets/xdp_firewall_bpfel.o
 	rm -f $(BACKEND_DIR)/kerneleye-api
 	rm -f $(AGENT_DIR)/kerneleye-agent
 	@echo "Clean complete"

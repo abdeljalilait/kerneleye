@@ -584,6 +584,7 @@ SELECT
     COUNT(DISTINCT te.server_id)::int as server_count,
     MAX(te.last_seen) as last_seen,
     te.country,
+    te.country_code,
     te.city,
     te.isp,
     te.asn
@@ -592,7 +593,7 @@ JOIN servers s ON te.server_id = s.id
 WHERE te.last_seen >= $1
   AND te.threat_score >= $2
   AND te.direction = 'inbound'
-GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.city, te.isp, te.asn
+GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.country_code, te.city, te.isp, te.asn
 ORDER BY MAX(te.threat_score) DESC;
 
 -- name: GetActiveBlocksForServer :many

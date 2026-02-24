@@ -1,6 +1,7 @@
 package remediation
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
+
+	"github.com/kerneleye/agent/assets"
 )
 
 // DefaultXDPObjectPath is the default path to the XDP eBPF object file.
@@ -116,44 +119,51 @@ func (r *XDPRemediator) Setup() error {
 	return nil
 }
 
-// loadXDPFirewallSpec loads the XDP program spec from the configured path.
+// loadXDPFirewallSpec loads the XDP program spec.
 // It checks the following in order:
 // 1. Configured objectPath if set
 // 2. KERNELEYE_XDP_PATH environment variable
 // 3. DefaultXDPObjectPath
-// 4. Relative path "ebpf/xdp_firewall_bpfel.o" (for development)
+// 4. Relative to executable directory
+// 5. Embedded binary (fallback - always available)
 func (r *XDPRemediator) loadXDPFirewallSpec() (*ebpf.CollectionSpec, error) {
-	// Determine path to use
+	// Try to load from file system first (allows custom/user-provided objects)
 	path := r.objectPath
 	if path == "" {
 		path = os.Getenv("KERNELEYE_XDP_PATH")
 	}
 	if path == "" {
-		// Try default system path first
+		// Try default system path
 		if _, err := os.Stat(DefaultXDPObjectPath); err == nil {
 			path = DefaultXDPObjectPath
-		} else {
-			// Fall back to relative path for development
-			// Get the directory of the executable to make this more reliable
-			if ex, err := os.Executable(); err == nil {
-				// Try relative to executable directory
-				execDir := filepath.Dir(ex)
-				relPath := filepath.Join(execDir, "ebpf", "xdp_firewall_bpfel.o")
-				if _, err := os.Stat(relPath); err == nil {
-					path = relPath
-				}
-			}
 		}
 	}
 	if path == "" {
-		// Last resort: try current working directory relative path
-		path = "ebpf/xdp_firewall_bpfel.o"
+		// Try relative to executable directory
+		if ex, err := os.Executable(); err == nil {
+			execDir := filepath.Dir(ex)
+			relPath := filepath.Join(execDir, "ebpf", "xdp_firewall_bpfel.o")
+			if _, err := os.Stat(relPath); err == nil {
+				path = relPath
+			}
+		}
 	}
 
-	// Load from file
-	spec, err := ebpf.LoadCollectionSpec(path)
+	// If we found a file path, try to load from it
+	if path != "" {
+		if spec, err := ebpf.LoadCollectionSpec(path); err == nil {
+			return spec, nil
+		} else if r.objectPath != "" || os.Getenv("KERNELEYE_XDP_PATH") != "" {
+			// Only error if user explicitly specified a path that failed
+			return nil, fmt.Errorf("failed to load XDP spec from %s: %w", path, err)
+		}
+		// Otherwise, fall through to embedded
+	}
+
+	// Load from embedded bytes (always available)
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(assets.XDPFirewallBpfelO))
 	if err != nil {
-		return nil, fmt.Errorf("failed to load XDP spec from %s: %w", path, err)
+		return nil, fmt.Errorf("failed to load XDP spec from embedded data: %w", err)
 	}
 	return spec, nil
 }
