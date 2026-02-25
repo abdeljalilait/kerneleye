@@ -2,6 +2,7 @@ package remediation
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/ringbuf"
 
 	"github.com/kerneleye/agent/assets"
 )
@@ -37,8 +39,13 @@ type XDPRemediator struct {
 	xdpLink           link.Link
 	attached, pinMaps bool
 	pinPath           string
-	objectPath        string        // Path to the eBPF object file
-	OnBlock           BlockCallback // Called when an IP is blocked
+	objectPath        string                // Path to the eBPF object file
+	OnBlock           BlockCallback         // Called when an IP is blocked
+	OnBlockedPacket   BlockedPacketCallback // Called when XDP logs a blocked packet
+
+	ringbufReader *ringbuf.Reader
+	ringbufCancel chan struct{}
+	ringbufWg     sync.WaitGroup
 
 	mu sync.RWMutex // Protects all mutable fields
 }
@@ -340,6 +347,119 @@ func (r *XDPRemediator) Mode() XDPMode {
 	return r.mode
 }
 
+// StartBlockedPacketReader starts reading blocked packet events from the ring buffer
+// This should be called after Setup() and will call the OnBlockedPacket callback for each event
+func (r *XDPRemediator) StartBlockedPacketReader() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.attached || r.objs == nil || r.objs.XdpBlockEvents == nil {
+		return errNotAttached
+	}
+
+	if r.ringbufReader != nil {
+		return nil // Already started
+	}
+
+	reader, err := ringbuf.NewReader(r.objs.XdpBlockEvents)
+	if err != nil {
+		return fmt.Errorf("failed to create ring buffer reader: %w", err)
+	}
+
+	r.ringbufReader = reader
+	r.ringbufCancel = make(chan struct{})
+	r.ringbufWg.Add(1)
+
+	go r.readBlockedPackets()
+
+	logger.Infof("✅ XDP blocked packet reader started")
+	return nil
+}
+
+// StopBlockedPacketReader stops the ring buffer reader
+func (r *XDPRemediator) StopBlockedPacketReader() error {
+	r.mu.Lock()
+	if r.ringbufReader == nil {
+		r.mu.Unlock()
+		return nil
+	}
+
+	close(r.ringbufCancel)
+	reader := r.ringbufReader
+	r.ringbufReader = nil
+	r.mu.Unlock()
+
+	// Close the reader to unblock any pending Read() call
+	if err := reader.Close(); err != nil {
+		logger.Warnf("Failed to close ring buffer reader: %v", err)
+	}
+
+	// Wait for the goroutine to finish
+	r.ringbufWg.Wait()
+
+	logger.Infof("✅ XDP blocked packet reader stopped")
+	return nil
+}
+
+// readBlockedPackets is the goroutine that reads from the ring buffer
+func (r *XDPRemediator) readBlockedPackets() {
+	defer r.ringbufWg.Done()
+
+	for {
+		select {
+		case <-r.ringbufCancel:
+			return
+		default:
+		}
+
+		record, err := r.ringbufReader.Read()
+		if err != nil {
+			select {
+			case <-r.ringbufCancel:
+				return
+			default:
+				if errors.Is(err, ringbuf.ErrClosed) {
+					return
+				}
+				logger.Warnf("Ring buffer read error: %v", err)
+				continue
+			}
+		}
+
+		// Parse the blocked packet event
+		if len(record.RawSample) < 32 {
+			continue // Invalid sample size
+		}
+
+		var event BlockedPacketEvent
+		// Parse the event from the ring buffer
+		// C struct layout: src_ip (4), src_ip6 (16), ip_version (1), dest_port (2), protocol (1), reason (1), timestamp (8)
+		event.SrcIP = binary.LittleEndian.Uint32(record.RawSample[0:4])
+		copy(event.SrcIP6[:], record.RawSample[4:20])
+		event.IPVersion = record.RawSample[20]
+		event.DestPort = binary.LittleEndian.Uint16(record.RawSample[21:23])
+		event.Protocol = record.RawSample[23]
+		event.Reason = record.RawSample[24]
+		event.Timestamp = binary.LittleEndian.Uint64(record.RawSample[25:33])
+
+		// Convert IP to string
+		var ipStr string
+		if event.IPVersion == 6 {
+			ip := net.IP(event.SrcIP6[:])
+			ipStr = ip.String()
+		} else {
+			ip := make(net.IP, 4)
+			binary.BigEndian.PutUint32(ip, event.SrcIP)
+			ipStr = ip.String()
+		}
+
+		// Call the callback if set
+		if r.OnBlockedPacket != nil {
+			r.OnBlockedPacket(ipStr, event.DestPort, event.Protocol, event.Reason)
+		}
+	}
+}
+
 // Unblock removes IP from blocklist
 func (r *XDPRemediator) Unblock(ip net.IP) error {
 	r.mu.RLock()
@@ -398,6 +518,13 @@ func (r *XDPRemediator) cleanup() {
 func (r *XDPRemediator) cleanupWithErrors() error {
 	var errs []error
 
+	// Stop the ring buffer reader first
+	if r.ringbufReader != nil {
+		if err := r.StopBlockedPacketReader(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop ring buffer reader: %w", err))
+		}
+	}
+
 	if r.xdpLink != nil {
 		if err := r.xdpLink.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("failed to close XDP link: %w", err))
@@ -435,6 +562,11 @@ func (r *XDPRemediator) unpinAndClose() error {
 			if err := m.Close(); err != nil {
 				errs = append(errs, fmt.Errorf("failed to close map: %w", err))
 			}
+		}
+	}
+	if r.objs.XdpBlockEvents != nil {
+		if err := r.objs.XdpBlockEvents.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close block events map: %w", err))
 		}
 	}
 	if r.objs.XdpFirewall != nil {

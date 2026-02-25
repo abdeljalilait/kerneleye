@@ -10,10 +10,11 @@ import (
 // - XDP: Used for fast packet drops (blocked IPs)
 // - iptables: Used for rate limiting and as fallback when XDP unavailable
 type HybridRemediator struct {
-	xdp        *XDPRemediator
-	iptables   *IPSetRemediator
-	xdpEnabled bool
-	OnBlock    BlockCallback // Called when an IP is blocked
+	xdp             *XDPRemediator
+	iptables        *IPSetRemediator
+	xdpEnabled      bool
+	OnBlock         BlockCallback         // Called when an IP is blocked
+	OnBlockedPacket BlockedPacketCallback // Called when XDP logs a blocked packet
 }
 
 // HybridConfig configures the hybrid remediator
@@ -225,4 +226,19 @@ func (h *HybridRemediator) Unblock(ip net.IP) error {
 // GetIPSetRemediator returns the underlying IPSetRemediator for use with AutoBlocker
 func (h *HybridRemediator) GetIPSetRemediator() *IPSetRemediator {
 	return h.iptables
+}
+
+// StartBlockedPacketReader starts reading blocked packet events from XDP ring buffer
+// This should be called after Setup() and will call the OnBlockedPacket callback for each event
+func (h *HybridRemediator) StartBlockedPacketReader() error {
+	if !h.xdpEnabled || h.xdp == nil {
+		return fmt.Errorf("XDP not enabled, cannot start blocked packet reader")
+	}
+
+	// Wire the callback through to the XDP remediator
+	if h.OnBlockedPacket != nil {
+		h.xdp.OnBlockedPacket = h.OnBlockedPacket
+	}
+
+	return h.xdp.StartBlockedPacketReader()
 }
