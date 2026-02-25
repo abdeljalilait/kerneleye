@@ -1,12 +1,13 @@
 import { useParams, Link } from '@tanstack/react-router'
-import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users } from 'lucide-react'
+import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal, Input } from 'antd'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown } from 'lucide-react'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerTraffic, useDeleteServer } from '../hooks/useQueries'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useEffect, useState, useMemo } from 'react'
 import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import type { SortColumn } from 'react-data-grid'
 
 const { Title, Text } = Typography
 
@@ -63,6 +64,8 @@ export default function ServerDetail() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [ipModalOpen, setIpModalOpen] = useState(false)
   const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTraffic | null>(null)
+  const [ipFilter, setIpFilter] = useState('')
+  const [sortColumns, setSortColumns] = useState<readonly SortColumn[]>([])
   
   const { data: server, isLoading: serverLoading, error: serverError, refetch: refetchServer } = useServer(id)
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useServerStats(id)
@@ -396,47 +399,142 @@ export default function ServerDetail() {
     },
   ]
 
+  // Sort function for DataGrid
+  function getComparator(sortColumn: string) {
+    return (a: TrafficEvent, b: TrafficEvent) => {
+      let aVal: any, bVal: any
+      
+      switch (sortColumn) {
+        case 'source_ip':
+          aVal = a.source_ip
+          bVal = b.source_ip
+          break
+        case 'direction':
+          aVal = a.direction || ''
+          bVal = b.direction || ''
+          break
+        case 'country':
+          aVal = a.country || ''
+          bVal = b.country || ''
+          break
+        case 'city':
+          aVal = a.city || ''
+          bVal = b.city || ''
+          break
+        case 'bytes_in':
+          aVal = a.bytes_in || 0
+          bVal = b.bytes_in || 0
+          break
+        case 'bytes_out':
+          aVal = a.bytes_out || 0
+          bVal = b.bytes_out || 0
+          break
+        case 'syn_count':
+          aVal = a.syn_count || 0
+          bVal = b.syn_count || 0
+          break
+        case 'ack_count':
+          aVal = a.ack_count || 0
+          bVal = b.ack_count || 0
+          break
+        case 'hit_count':
+          aVal = a.hit_count || 0
+          bVal = b.hit_count || 0
+          break
+        case 'threat_score':
+          aVal = a.threat_score || 0
+          bVal = b.threat_score || 0
+          break
+        case 'last_seen':
+          aVal = new Date(a.last_seen || 0).getTime()
+          bVal = new Date(b.last_seen || 0).getTime()
+          break
+        default:
+          return 0
+      }
+      
+      if (typeof aVal === 'string') {
+        return aVal.localeCompare(bVal)
+      }
+      return aVal - bVal
+    }
+  }
+
+  // Filter and sort the IP data
+  const filteredAndSortedRows = useMemo(() => {
+    if (!selectedPortTraffic) return []
+    
+    let rows = [...selectedPortTraffic.sources]
+    
+    // Apply filter
+    if (ipFilter.trim()) {
+      const filter = ipFilter.toLowerCase()
+      rows = rows.filter(row => 
+        row.source_ip?.toLowerCase().includes(filter) ||
+        row.country?.toLowerCase().includes(filter) ||
+        row.city?.toLowerCase().includes(filter)
+      )
+    }
+    
+    // Apply sorting
+    if (sortColumns.length > 0) {
+      const { columnKey, direction } = sortColumns[0]
+      const comparator = getComparator(columnKey)
+      rows.sort((a, b) => {
+        const comp = comparator(a, b)
+        return direction === 'DESC' ? -comp : comp
+      })
+    }
+    
+    return rows
+  }, [selectedPortTraffic, ipFilter, sortColumns])
+
   // DataGrid columns for the IP modal
   const ipGridColumns = [
-    { key: 'source_ip', name: 'Remote IP', width: 140, frozen: true },
+    { key: 'source_ip', name: 'Remote IP', width: 140, frozen: true, sortable: true },
     { 
       key: 'direction', 
       name: 'Dir', 
       width: 70,
+      sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => (
         row.direction === 'outbound' 
           ? <Tag style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: 'none', fontSize: 10 }}>↑ OUT</Tag>
           : <Tag style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', fontSize: 10 }}>↓ IN</Tag>
       )
     },
-    { key: 'country', name: 'Country', width: 100, formatter: ({ row }: { row: TrafficEvent }) => row.country || '-' },
-    { key: 'city', name: 'City', width: 100, formatter: ({ row }: { row: TrafficEvent }) => row.city || '-' },
+    { key: 'country', name: 'Country', width: 100, sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.country || '-' },
+    { key: 'city', name: 'City', width: 100, sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.city || '-' },
     { 
       key: 'bytes_in', 
       name: 'Bytes In', 
       width: 90,
+      sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_in || 0)
     },
     { 
       key: 'bytes_out', 
       name: 'Bytes Out', 
       width: 90,
+      sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_out || 0)
     },
     { 
       key: 'syn_count', 
       name: 'SYN', 
       width: 60,
+      sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => (
         <span style={{ color: row.syn_count > 10 ? '#ef4444' : 'inherit' }}>{row.syn_count}</span>
       )
     },
-    { key: 'ack_count', name: 'ACK', width: 60 },
-    { key: 'hit_count', name: 'Hits', width: 70 },
+    { key: 'ack_count', name: 'ACK', width: 60, sortable: true },
+    { key: 'hit_count', name: 'Hits', width: 70, sortable: true },
     { 
       key: 'threat_score', 
       name: 'Score', 
       width: 70,
+      sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => (
         <span style={{ 
           color: row.threat_score > 50 ? '#ef4444' : row.threat_score > 20 ? '#f59e0b' : '#10b981',
@@ -450,6 +548,7 @@ export default function ServerDetail() {
       key: 'last_seen', 
       name: 'Last Seen', 
       width: 150,
+      sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => formatDate(row.last_seen)
     },
   ]
@@ -790,28 +889,79 @@ export default function ServerDetail() {
               Source IPs for Port {selectedPortTraffic?.port}/{selectedPortTraffic?.protocol}
             </span>
             <Badge 
-              count={selectedPortTraffic?.sources.length || 0} 
+              count={filteredAndSortedRows.length} 
               style={{ background: '#3b82f6' }}
             />
+            {ipFilter && (
+              <Tag style={{ fontSize: 11 }}>
+                Filtered from {selectedPortTraffic?.sources.length || 0}
+              </Tag>
+            )}
           </Space>
         }
         open={ipModalOpen}
-        onCancel={() => setIpModalOpen(false)}
+        onCancel={() => {
+          setIpModalOpen(false)
+          setIpFilter('')
+          setSortColumns([])
+        }}
         footer={null}
         width={1200}
         style={{ top: 50 }}
-        bodyStyle={{ padding: 0, height: 600 }}
+        bodyStyle={{ padding: 0 }}
       >
         {selectedPortTraffic && (
-          <DataGrid
-            columns={ipGridColumns}
-            rows={selectedPortTraffic.sources}
-            rowKeyGetter={(row) => row.id}
-            style={{ height: '100%' }}
-            className="rdg-dark"
-            headerRowHeight={40}
-            rowHeight={36}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', height: 600 }}>
+            {/* Filter Bar */}
+            <div style={{ 
+              padding: '12px 16px', 
+              borderBottom: '1px solid var(--border-subtle)',
+              background: 'var(--bg-tertiary)',
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center'
+            }}>
+              <Search size={16} color="var(--text-tertiary)" />
+              <Input
+                placeholder="Filter by IP, country, or city..."
+                value={ipFilter}
+                onChange={(e) => setIpFilter(e.target.value)}
+                style={{ 
+                  width: 300,
+                  background: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-subtle)'
+                }}
+                allowClear
+              />
+              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                Click column headers to sort
+              </Text>
+              {sortColumns.length > 0 && (
+                <Button 
+                  size="small" 
+                  icon={<ArrowUpDown size={14} />}
+                  onClick={() => setSortColumns([])}
+                >
+                  Clear Sort
+                </Button>
+              )}
+            </div>
+            
+            {/* DataGrid */}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <DataGrid
+                columns={ipGridColumns}
+                rows={filteredAndSortedRows}
+                rowKeyGetter={(row) => row.id}
+                style={{ height: '100%' }}
+                className="rdg-dark"
+                headerRowHeight={40}
+                rowHeight={36}
+                sortColumns={sortColumns}
+                onSortColumnsChange={setSortColumns}
+              />
+            </div>
+          </div>
         )}
       </Modal>
     </div>
