@@ -32,6 +32,16 @@ export const useBlocks = (params?: { page?: number; page_size?: number; server?:
   });
 };
 
+export const useBlockStats = () => {
+  return useQuery({
+    queryKey: ['block-stats'],
+    queryFn: async () => {
+      const { data } = await blocksAPI.stats();
+      return data;
+    },
+  });
+};
+
 export const useUnblockIP = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -47,7 +57,7 @@ export const useWhitelist = () => {
     queryKey: ['whitelist'],
     queryFn: async () => {
       const { data } = await whitelistAPI.list();
-      return data.data || [];
+      return data || [];
     },
   });
 };

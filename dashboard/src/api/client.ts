@@ -78,6 +78,7 @@ export const threatsAPI = {
 export const blocksAPI = {
   list: (params?: { page?: number; page_size?: number; server?: string; status?: string }) => 
     api.get('/blocks', { params }),
+  stats: () => api.get('/blocks/stats'),
   unblock: (ip: string, reason?: string) => 
     api.post(`/blocks/${encodeURIComponent(ip)}/unblock`, { reason }),
 };

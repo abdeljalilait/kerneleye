@@ -13,7 +13,9 @@ import {
   User,
   CreditCard,
   FileText,
-  BarChart3
+  BarChart3,
+  Ban,
+  CheckCircle
 } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
@@ -37,6 +39,16 @@ const mainMenuItems = [
     key: '/dashboard/threats',
     icon: <Shield size={18} />,
     label: 'Threats',
+  },
+  {
+    key: '/dashboard/blocked-ips',
+    icon: <Ban size={18} />,
+    label: 'Blocked IPs',
+  },
+  {
+    key: '/dashboard/whitelist',
+    icon: <CheckCircle size={18} />,
+    label: 'Whitelist',
   },
   {
     key: '/dashboard/alerts',
