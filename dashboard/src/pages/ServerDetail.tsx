@@ -489,13 +489,14 @@ export default function ServerDetail() {
     return rows
   }, [selectedPortTraffic, ipFilter, sortColumns])
 
-  // DataGrid columns for the IP modal
+  // DataGrid columns for the IP modal - using flex to fill width
   const ipGridColumns = [
-    { key: 'source_ip', name: 'Remote IP', width: 140, frozen: true, sortable: true },
+    { key: 'source_ip', name: 'Remote IP', minWidth: 140, width: '18%', frozen: true, sortable: true },
     { 
       key: 'direction', 
       name: 'Dir', 
-      width: 70,
+      minWidth: 70,
+      width: '8%',
       sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => (
         row.direction === 'outbound' 
@@ -503,37 +504,41 @@ export default function ServerDetail() {
           : <Tag style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', fontSize: 10 }}>↓ IN</Tag>
       )
     },
-    { key: 'country', name: 'Country', width: 100, sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.country || '-' },
-    { key: 'city', name: 'City', width: 100, sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.city || '-' },
+    { key: 'country', name: 'Country', minWidth: 100, width: '10%', sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.country || '-' },
+    { key: 'city', name: 'City', minWidth: 100, width: '10%', sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.city || '-' },
     { 
       key: 'bytes_in', 
       name: 'Bytes In', 
-      width: 90,
+      minWidth: 90,
+      width: '10%',
       sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_in || 0)
     },
     { 
       key: 'bytes_out', 
       name: 'Bytes Out', 
-      width: 90,
+      minWidth: 90,
+      width: '10%',
       sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_out || 0)
     },
     { 
       key: 'syn_count', 
       name: 'SYN', 
-      width: 60,
+      minWidth: 60,
+      width: '6%',
       sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => (
         <span style={{ color: row.syn_count > 10 ? '#ef4444' : 'inherit' }}>{row.syn_count}</span>
       )
     },
-    { key: 'ack_count', name: 'ACK', width: 60, sortable: true },
-    { key: 'hit_count', name: 'Hits', width: 70, sortable: true },
+    { key: 'ack_count', name: 'ACK', minWidth: 60, width: '6%', sortable: true },
+    { key: 'hit_count', name: 'Hits', minWidth: 70, width: '6%', sortable: true },
     { 
       key: 'threat_score', 
       name: 'Score', 
-      width: 70,
+      minWidth: 70,
+      width: '6%',
       sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => (
         <span style={{ 
@@ -547,7 +552,8 @@ export default function ServerDetail() {
     { 
       key: 'last_seen', 
       name: 'Last Seen', 
-      width: 150,
+      minWidth: 150,
+      width: '10%',
       sortable: true,
       formatter: ({ row }: { row: TrafficEvent }) => formatDate(row.last_seen)
     },
@@ -906,8 +912,8 @@ export default function ServerDetail() {
           setSortColumns([])
         }}
         footer={null}
-        width={1200}
-        style={{ top: 50 }}
+        width="95vw"
+        style={{ top: 50, maxWidth: 1400 }}
         bodyStyle={{ padding: 0 }}
       >
         {selectedPortTraffic && (
@@ -953,7 +959,7 @@ export default function ServerDetail() {
                 columns={ipGridColumns}
                 rows={filteredAndSortedRows}
                 rowKeyGetter={(row) => row.id}
-                style={{ height: '100%' }}
+                style={{ height: '100%', width: '100%' }}
                 className="rdg-dark"
                 headerRowHeight={40}
                 rowHeight={36}

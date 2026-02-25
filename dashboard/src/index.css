@@ -759,6 +759,15 @@ body {
   background: rgba(99, 102, 241, 0.08);
 }
 
+/* Make react-data-grid fill its container width */
+.rdg-dark {
+  width: 100% !important;
+}
+
+.rdg-dark .rdg {
+  width: 100% !important;
+}
+
 /* Filter card styling */
 .blocked-filters .ant-select-selector,
 .blocked-filters .ant-input {
