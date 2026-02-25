@@ -417,8 +417,11 @@ int xdp_firewall(struct xdp_md *ctx) {
             return XDP_PASS;
         }
         
+        // Extract ihl to local variable for verifier
+        __u8 ihl = ip->ihl;
+        
         // Validate full IP header length (including options when ihl > 5)
-        void *ip_end = (void *)ip + (ip->ihl * 4);
+        void *ip_end = (void *)ip + (ihl * 4);
         if (ip_end > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
@@ -426,7 +429,7 @@ int xdp_firewall(struct xdp_md *ctx) {
         
         // Additional validation: ensure total length is valid and within packet bounds
         __u16 total_len = bpf_ntohs(ip->tot_len);
-        if (total_len < (ip->ihl * 4) || (void *)ip + total_len > data_end) {
+        if (total_len < (ihl * 4) || (void *)ip + total_len > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
@@ -434,9 +437,6 @@ int xdp_firewall(struct xdp_md *ctx) {
         __u32 src_ip = ip->saddr;
         __u8 protocol = ip->protocol;
         __u16 dest_port = 0;
-        
-        // Extract ihl to local variable for verifier
-        __u8 ihl = ip->ihl;
         
         // Try to get destination port from TCP/UDP header
         // Need at least 8 bytes: source port (2) + dest port (2) + seq/ack (4) minimum
