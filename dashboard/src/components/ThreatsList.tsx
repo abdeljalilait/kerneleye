@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Table, Input, Button, Typography, Card, Space, Progress, Avatar, Drawer, Descriptions, Tag, Statistic, Row, Col, Popconfirm, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { Globe, Search, Shield, AlertTriangle, Ban, ExternalLink, MapPin, Clock, Activity, Server, Flag } from 'lucide-react'
+import { Globe, Search, Shield, AlertTriangle, Ban, ExternalLink, MapPin, Clock, Activity, Server, Flag, Lock } from 'lucide-react'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { Threat } from '../types'
 import api from '../api/client'
@@ -397,6 +397,25 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
                 <Text strong style={{ color: 'var(--text-primary)', fontSize: 14, fontFamily: 'monospace' }}>
                   {ip}
                 </Text>
+                {record.is_blocked && (
+                  <Tag
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: '0px 8px',
+                      borderRadius: 4,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Lock size={10} />
+                    BLOCKED
+                  </Tag>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                 <CountryFlag countryCode={record.country_code || record.country || ''} size={12} />
@@ -495,27 +514,43 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
           >
             Details
           </Button>
-          <Popconfirm
-            title="Block this IP?"
-            description={`${record.source_ip} will be blocked and added to the blocklist.`}
-            onConfirm={() => handleBlock(record)}
-            okText="Yes, block"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true, loading: blockMutation.isPending }}
-          >
+          {record.is_blocked ? (
             <Button 
               size="small" 
-              danger
-              icon={<Ban size={14} />}
-              loading={blockMutation.isPending}
+              disabled
+              icon={<Lock size={14} />}
               style={{
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: '#10b981',
+                opacity: 0.8,
               }}
             >
-              Block
+              Blocked
             </Button>
-          </Popconfirm>
+          ) : (
+            <Popconfirm
+              title="Block this IP?"
+              description={`${record.source_ip} will be blocked and added to the blocklist.`}
+              onConfirm={() => handleBlock(record)}
+              okText="Yes, block"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true, loading: blockMutation.isPending }}
+            >
+              <Button 
+                size="small" 
+                danger
+                icon={<Ban size={14} />}
+                loading={blockMutation.isPending}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                }}
+              >
+                Block
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       )
     }

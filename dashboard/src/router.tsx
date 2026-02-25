@@ -18,6 +18,7 @@ import BlockedIPs from './pages/BlockedIPs'
 import Whitelist from './pages/Whitelist'
 import CheckoutSuccess from './pages/CheckoutSuccess'
 import { WebSocketProvider } from './context/WebSocketContext'
+import GlobalNotifications from './components/GlobalNotifications'
 
 // 1. Create a root route
 const rootRoute = createRootRoute({
@@ -68,6 +69,7 @@ const dashboardRoute = createRoute({
   path: 'dashboard',
   component: () => (
     <WebSocketProvider>
+      <GlobalNotifications />
       <Dashboard />
     </WebSocketProvider>
   ),

@@ -1,6 +1,7 @@
 import { Button, Badge, Typography } from 'antd'
 import { Bell } from 'lucide-react'
-import { useLocation } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
+import { useAlerts } from '../hooks/useQueries'
 
 const { Text } = Typography
 
@@ -10,6 +11,10 @@ interface HeaderProps {
 
 export default function Header({ menuItems }: HeaderProps) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { data: alerts } = useAlerts()
+
+  const activeAlerts = alerts?.filter(a => a.status === 'active').length || 0
 
   const getSelectedKey = () => {
     const pathname = location.pathname
@@ -59,10 +64,11 @@ export default function Header({ menuItems }: HeaderProps) {
       {/* Right Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {/* Notification Bell */}
-        <Badge count={0} size="small" style={{ background: 'var(--accent-rose)' }}>
+        <Badge count={activeAlerts} size="small" style={{ background: activeAlerts > 0 ? '#ef4444' : 'var(--bg-tertiary)' }}>
           <Button
             type="text"
             icon={<Bell size={20} />}
+            onClick={() => navigate({ to: '/dashboard/alerts' })}
             style={{
               color: 'var(--text-secondary)',
               width: 44,

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -95,7 +96,7 @@ func HandleServerTraffic(queries *database.Queries) fiber.Handler {
 			}
 		}
 
-		// Build query params
+		// Build query params - use pgtype.Text for nullable text params
 		params := database.ListTrafficEventsByServerParams{
 			ServerID: database.ToPgUUID(serverID),
 			Limit:    int32(pageSize),
@@ -103,7 +104,7 @@ func HandleServerTraffic(queries *database.Queries) fiber.Handler {
 			Column8:  sortBy,
 		}
 
-		// Apply search filter
+		// Apply search filter (empty string means no filter)
 		if search != "" {
 			params.Column2 = search
 		}
@@ -189,7 +190,267 @@ func HandleServerStats(queries *database.Queries) fiber.Handler {
 	}
 }
 
-// HandleListThreats returns detected threats
+// PortTrafficResponse represents aggregated traffic data per port/protocol
+type PortTrafficResponse struct {
+	Port            int32           `json:"port"`
+	Protocol        string          `json:"protocol"`
+	UniqueIps       int32           `json:"unique_ips"`
+	TotalBytesIn    int64           `json:"total_bytes_in"`
+	TotalBytesOut   int64           `json:"total_bytes_out"`
+	TotalHits       int32           `json:"total_hits"`
+	TotalSyn        int32           `json:"total_syn"`
+	TotalAck        int32           `json:"total_ack"`
+	MaxThreatScore  int32           `json:"max_threat_score"`
+	MaxThreatLevel  string          `json:"max_threat_level"`
+	LastSeen        time.Time       `json:"last_seen"`
+	Sources         []PortSourceIP  `json:"sources"`
+}
+
+// PortSourceIP represents a source IP in port traffic
+type PortSourceIP struct {
+	SourceIP     string    `json:"source_ip"`
+	BytesIn      int64     `json:"bytes_in"`
+	BytesOut     int64     `json:"bytes_out"`
+	SynCount     int32     `json:"syn_count"`
+	AckCount     int32     `json:"ack_count"`
+	HitCount     int32     `json:"hit_count"`
+	ThreatScore  int32     `json:"threat_score"`
+	ThreatLevel  string    `json:"threat_level"`
+	Country      *string   `json:"country,omitempty"`
+	City         *string   `json:"city,omitempty"`
+	ISP          *string   `json:"isp,omitempty"`
+	LastSeen     time.Time `json:"last_seen"`
+	Direction    string    `json:"direction,omitempty"`
+}
+
+// HandleServerPortTraffic returns aggregated port traffic with source IPs for a specific server
+func HandleServerPortTraffic(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		serverID := c.Params("id")
+		userID := c.Locals("user_id")
+
+		// Verify ownership
+		server, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusNotFound, "Server not found")
+		}
+		if database.FromPgUUID(server.UserID) != userID.(string) {
+			return fiber.NewError(fiber.StatusForbidden, "Access denied")
+		}
+
+		// Parse query parameters
+		page := c.QueryInt("page", 1)
+		pageSize := c.QueryInt("page_size", 50)
+		if pageSize > 100 {
+			pageSize = 100
+		}
+		if pageSize < 1 {
+			pageSize = 1
+		}
+		offset := (page - 1) * pageSize
+
+		// Optional filters
+		search := c.Query("search")
+		threatLevel := c.Query("threat_level")
+		sortBy := c.Query("sort_by", "last_seen")
+
+		// Date range filters
+		var fromTime, toTime *time.Time
+		if from := c.Query("from"); from != "" {
+			if t, err := time.Parse(time.RFC3339, from); err == nil {
+				fromTime = &t
+			}
+		}
+		if to := c.Query("to"); to != "" {
+			if t, err := time.Parse(time.RFC3339, to); err == nil {
+				toTime = &t
+			}
+		}
+
+		// Build query params
+		params := database.ListPortTrafficByServerParams{
+			ServerID: database.ToPgUUID(serverID),
+			Limit:    int32(pageSize),
+			Offset:   int32(offset),
+			Column6:  sortBy,
+		}
+
+		// Apply search filter
+		if search != "" {
+			params.Column2 = search
+		}
+
+		// Apply threat_level filter
+		if threatLevel != "" {
+			params.Column3 = threatLevel
+		}
+
+		// Apply date range
+		if fromTime != nil {
+			params.Column4 = pgtype.Timestamptz{Time: *fromTime, Valid: true}
+		}
+		if toTime != nil {
+			params.Column5 = pgtype.Timestamptz{Time: *toTime, Valid: true}
+		}
+
+		// Get total count for pagination
+		countParams := database.CountPortTrafficByServerParams{
+			ServerID: database.ToPgUUID(serverID),
+		}
+		if search != "" {
+			countParams.Column2 = search
+		}
+		if threatLevel != "" {
+			countParams.Column3 = threatLevel
+		}
+		if fromTime != nil {
+			countParams.Column4 = pgtype.Timestamptz{Time: *fromTime, Valid: true}
+		}
+		if toTime != nil {
+			countParams.Column5 = pgtype.Timestamptz{Time: *toTime, Valid: true}
+		}
+
+		totalCount, err := queries.CountPortTrafficByServer(c.Context(), countParams)
+		if err != nil {
+			log.Printf("[HandleServerPortTraffic] Count error: %v", err)
+			totalCount = 0
+		}
+
+		rows, err := queries.ListPortTrafficByServer(c.Context(), params)
+		if err != nil {
+			log.Printf("[HandleServerPortTraffic] Error: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to fetch port traffic")
+		}
+
+		// Convert to response format
+		items := make([]PortTrafficResponse, 0, len(rows))
+		for _, row := range rows {
+			// Parse sources JSON
+			sources := make([]PortSourceIP, 0)
+			if row.Sources != nil {
+				var rawSources []map[string]interface{}
+				sourcesBytes, _ := json.Marshal(row.Sources)
+				if err := json.Unmarshal(sourcesBytes, &rawSources); err == nil {
+					for _, raw := range rawSources {
+						source := PortSourceIP{
+							SourceIP:    getString(raw, "source_ip"),
+							BytesIn:     getInt64(raw, "bytes_in"),
+							BytesOut:    getInt64(raw, "bytes_out"),
+							SynCount:    getInt32(raw, "syn_count"),
+							AckCount:    getInt32(raw, "ack_count"),
+							HitCount:    getInt32(raw, "hit_count"),
+							ThreatScore: getInt32(raw, "threat_score"),
+							ThreatLevel: getString(raw, "threat_level"),
+							Direction:   getString(raw, "direction"),
+						}
+						if country, ok := raw["country"].(string); ok && country != "" {
+							source.Country = &country
+						}
+						if city, ok := raw["city"].(string); ok && city != "" {
+							source.City = &city
+						}
+						if isp, ok := raw["isp"].(string); ok && isp != "" {
+							source.ISP = &isp
+						}
+						if lastSeen, ok := raw["last_seen"].(string); ok {
+							if t, err := time.Parse(time.RFC3339, lastSeen); err == nil {
+								source.LastSeen = t
+							}
+						}
+						sources = append(sources, source)
+					}
+				}
+			}
+
+			// Handle interface{} types from SQL
+			var maxThreatScore int32
+			if score, ok := row.MaxThreatScore.(int32); ok {
+				maxThreatScore = score
+			} else if score, ok := row.MaxThreatScore.(int64); ok {
+				maxThreatScore = int32(score)
+			} else if score, ok := row.MaxThreatScore.(float64); ok {
+				maxThreatScore = int32(score)
+			}
+
+			var maxThreatLevel string
+			if level, ok := row.MaxThreatLevel.(string); ok {
+				maxThreatLevel = level
+			}
+
+			var lastSeen time.Time
+			if ts, ok := row.LastSeen.(time.Time); ok {
+				lastSeen = ts
+			}
+
+			items = append(items, PortTrafficResponse{
+				Port:           row.DestinationPort,
+				Protocol:       row.Protocol,
+				UniqueIps:      int32(row.UniqueIps),
+				TotalBytesIn:   row.TotalBytesIn,
+				TotalBytesOut:  row.TotalBytesOut,
+				TotalHits:      row.TotalHits,
+				TotalSyn:       row.TotalSyn,
+				TotalAck:       row.TotalAck,
+				MaxThreatScore: maxThreatScore,
+				MaxThreatLevel: maxThreatLevel,
+				LastSeen:       lastSeen,
+				Sources:        sources,
+			})
+		}
+
+		// Return with pagination metadata
+		totalPages := int(math.Ceil(float64(totalCount) / float64(pageSize)))
+		return c.JSON(fiber.Map{
+			"data": items,
+			"pagination": fiber.Map{
+				"page":        page,
+				"page_size":   pageSize,
+				"total_count": totalCount,
+				"total_pages": totalPages,
+			},
+		})
+	}
+}
+
+// Helper functions for JSON parsing
+func getString(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func getInt64(m map[string]interface{}, key string) int64 {
+	switch v := m[key].(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	}
+	return 0
+}
+
+func getInt32(m map[string]interface{}, key string) int32 {
+	switch v := m[key].(type) {
+	case float64:
+		return int32(v)
+	case int32:
+		return v
+	case int:
+		return int32(v)
+	}
+	return 0
+}
+
+// ThreatWithBlockStatus extends TrafficEvent with block status
+type ThreatWithBlockStatus struct {
+	database.TrafficEvent
+	IsBlocked bool `json:"is_blocked"`
+}
+
+// HandleListThreats returns detected threats with block status
 func HandleListThreats(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id")
@@ -203,8 +464,9 @@ func HandleListThreats(queries *database.Queries) fiber.Handler {
 			limit = 1000
 		}
 
+		userUUID := database.ToPgUUID(userID.(string))
 		threats, err := queries.ListThreats(c.Context(), database.ListThreatsParams{
-			UserID: database.ToPgUUID(userID.(string)),
+			UserID: userUUID,
 			Limit:  int32(limit),
 		})
 		if err != nil {
@@ -212,7 +474,20 @@ func HandleListThreats(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to fetch threats")
 		}
 
-		return c.JSON(threats)
+		// Check block status for each threat
+		threatsWithStatus := make([]ThreatWithBlockStatus, 0, len(threats))
+		for _, threat := range threats {
+			isBlocked, _ := queries.IsIPBlocked(c.Context(), database.IsIPBlockedParams{
+				UserID:    userUUID,
+				IpAddress: threat.SourceIp,
+			})
+			threatsWithStatus = append(threatsWithStatus, ThreatWithBlockStatus{
+				TrafficEvent: threat,
+				IsBlocked:    isBlocked,
+			})
+		}
+
+		return c.JSON(threatsWithStatus)
 	}
 }
 

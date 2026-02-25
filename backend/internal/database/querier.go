@@ -21,6 +21,8 @@ type Querier interface {
 	CountActiveBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountBlocksToday(ctx context.Context, userID pgtype.UUID) (int64, error)
+	// Returns count of unique port/protocol combinations
+	CountPortTrafficByServer(ctx context.Context, arg CountPortTrafficByServerParams) (int32, error)
 	CountServersByUser(ctx context.Context, userID pgtype.UUID) (int32, error)
 	CountTrafficEventsByServer(ctx context.Context, arg CountTrafficEventsByServerParams) (int32, error)
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
@@ -101,6 +103,8 @@ type Querier interface {
 	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
 	ListAllActiveServers(ctx context.Context) ([]ListAllActiveServersRow, error)
 	ListBlocks(ctx context.Context, arg ListBlocksParams) ([]ListBlocksRow, error)
+	// Returns aggregated traffic data grouped by port and protocol with source IPs as JSON array
+	ListPortTrafficByServer(ctx context.Context, arg ListPortTrafficByServerParams) ([]ListPortTrafficByServerRow, error)
 	ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]Server, error)
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)

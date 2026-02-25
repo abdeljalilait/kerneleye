@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI, agentConfigAPI, blocksAPI, whitelistAPI } from '../api/client';
-import { Server, Threat, Alert, StatsOverview } from '../types';
+import { Server, Threat, Alert, StatsOverview, TrafficEvent, PaginatedResponse, PortTraffic } from '../types';
 
 export const useServers = () => {
   return useQuery({
@@ -141,32 +141,23 @@ export const useServerStats = (id: string | undefined) => {
   });
 };
 
-export const useServerTraffic = (id: string | undefined, limit: number = 100) => {
+export const useServerTraffic = (id: string | undefined, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
   return useQuery({
-    queryKey: ['server', id, 'traffic', limit],
+    queryKey: ['server', id, 'traffic', params],
     queryFn: async () => {
-      const { data } = await serversAPI.getTraffic(id!, limit);
-      return data as Array<{
-        id: string;
-        source_ip: string;
-        destination_port: number;
-        protocol: string;
-        syn_count: number;
-        ack_count: number;
-        failed_handshakes: number;
-        unique_ports: number;
-        bytes_in: number;
-        bytes_out: number;
-        threat_score: number;
-        threat_level: string;
-        country: string | null;
-        city: string | null;
-        isp: string | null;
-        hit_count: number;
-        first_seen: string;
-        last_seen: string;
-        created_at: string;
-      }>;
+      const { data } = await serversAPI.getTraffic(id!, params);
+      return data as PaginatedResponse<TrafficEvent>;
+    },
+    enabled: !!id,
+  });
+};
+
+export const useServerPortTraffic = (id: string | undefined, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
+  return useQuery({
+    queryKey: ['server', id, 'port-traffic', params],
+    queryFn: async () => {
+      const { data } = await serversAPI.getPortTraffic(id!, params);
+      return data as PaginatedResponse<PortTraffic>;
     },
     enabled: !!id,
   });

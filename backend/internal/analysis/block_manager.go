@@ -3,6 +3,7 @@ package analysis
 import (
 	"context"
 	"log"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -241,6 +242,27 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ExpiresAt: expiresAt,
 	}
 	bm.mu.Unlock()
+
+	// Create alert for this block
+	severity := "medium"
+	if row.ThreatScore >= 70 {
+		severity = "critical"
+	} else if row.ThreatScore >= 50 {
+		severity = "high"
+	}
+
+	ipAddr, _ := netip.ParseAddr(ipStr)
+	_, err = bm.queries.CreateAlert(ctx, database.CreateAlertParams{
+		ServerID:    row.ServerID,
+		SourceIp:    ipAddr,
+		ThreatScore: row.ThreatScore,
+		Reason:      "Auto-blocked: " + row.ThreatType,
+		Severity:    severity,
+		Status:      "active",
+	})
+	if err != nil {
+		log.Printf("[BlockManager] Failed to create alert for %s: %v", ipStr, err)
+	}
 
 	bm.sendBlockCommand(ipStr, duration, row.ThreatType, block.ID.String())
 

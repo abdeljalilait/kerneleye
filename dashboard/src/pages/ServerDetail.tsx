@@ -1,8 +1,9 @@
 import { useParams, Link } from '@tanstack/react-router'
 import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal, Input } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown } from 'lucide-react'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown, ArrowDownLeft, ArrowUpRight, Flag, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react'
 import type { ColumnsType } from 'antd/es/table'
-import { useServer, useServerStats, useServerTraffic, useDeleteServer } from '../hooks/useQueries'
+import { useServer, useServerStats, useServerPortTraffic, useDeleteServer } from '../hooks/useQueries'
+import type { PortTraffic, PortSourceIP } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useEffect, useState, useMemo } from 'react'
 import { DataGrid } from 'react-data-grid'
@@ -18,44 +19,10 @@ const formatDate = (date: string | null | undefined): string => {
   return d.toLocaleString()
 }
 
-interface TrafficEvent {
-  id: string
-  source_ip: string
-  destination_ip?: string
-  destination_port: number
-  protocol: string
-  direction?: string
-  syn_count: number
-  ack_count: number
-  failed_handshakes: number
-  unique_ports: number
-  bytes_in: number
-  bytes_out: number
-  threat_score: number
-  threat_level: string
-  country: string | null
-  city: string | null
-  isp: string | null
-  hit_count: number
-  first_seen: string
-  last_seen: string
-  created_at: string
-}
 
-interface PortTraffic {
+
+interface PortTrafficRow extends PortTraffic {
   key: string
-  port: number
-  protocol: string
-  sources: TrafficEvent[]
-  total_bytes_in: number
-  total_bytes_out: number
-  total_hits: number
-  total_syn: number
-  total_ack: number
-  max_threat_score: number
-  max_threat_level: string
-  unique_ips: number
-  last_seen: string
 }
 
 export default function ServerDetail() {
@@ -63,13 +30,21 @@ export default function ServerDetail() {
   const { lastMessage, isConnected } = useWebSocket()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [ipModalOpen, setIpModalOpen] = useState(false)
-  const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTraffic | null>(null)
+  const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTrafficRow | null>(null)
   const [ipFilter, setIpFilter] = useState('')
   const [sortColumns, setSortColumns] = useState<readonly SortColumn[]>([])
   
   const { data: server, isLoading: serverLoading, error: serverError, refetch: refetchServer } = useServer(id)
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useServerStats(id)
-  const { data: traffic, isLoading: trafficLoading, refetch: refetchTraffic } = useServerTraffic(id, 100)
+  const [trafficParams, setTrafficParams] = useState({ page: 1, page_size: 50, search: '', sort_by: 'last_seen' })
+  const { data: trafficResponse, isLoading: trafficLoading, refetch: refetchTraffic } = useServerPortTraffic(id, trafficParams)
+  const portTraffic: PortTrafficRow[] = useMemo(() => {
+    return (trafficResponse?.data || []).map(p => ({
+      ...p,
+      key: `${p.port}-${p.protocol}`,
+    }))
+  }, [trafficResponse])
+  const trafficPagination = trafficResponse?.pagination
   
   const deleteMutation = useDeleteServer()
   const { message } = App.useApp()
@@ -120,51 +95,7 @@ export default function ServerDetail() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
-  const portTraffic = useMemo((): PortTraffic[] => {
-    if (!traffic) return []
-    const groups = new Map<string, PortTraffic>()
-    
-    for (const event of (traffic as TrafficEvent[])) {
-      const portKey = `${event.destination_port}-${event.protocol}`
-      const existing = groups.get(portKey)
-      if (existing) {
-        existing.sources.push(event)
-        existing.total_bytes_in += event.bytes_in || 0
-        existing.total_bytes_out += event.bytes_out || 0
-        existing.total_hits += event.hit_count || 0
-        existing.total_syn += event.syn_count || 0
-        existing.total_ack += event.ack_count || 0
-        existing.unique_ips = existing.sources.length
-        if (event.threat_score > existing.max_threat_score) {
-          existing.max_threat_score = event.threat_score
-          existing.max_threat_level = event.threat_level
-        }
-        if (new Date(event.last_seen) > new Date(existing.last_seen)) {
-          existing.last_seen = event.last_seen
-        }
-      } else {
-        groups.set(portKey, {
-          key: portKey,
-          port: event.destination_port,
-          protocol: event.protocol,
-          sources: [event],
-          total_bytes_in: event.bytes_in || 0,
-          total_bytes_out: event.bytes_out || 0,
-          total_hits: event.hit_count || 0,
-          total_syn: event.syn_count || 0,
-          total_ack: event.ack_count || 0,
-          max_threat_score: event.threat_score,
-          max_threat_level: event.threat_level,
-          unique_ips: 1,
-          last_seen: event.last_seen,
-        })
-      }
-    }
-    
-    return Array.from(groups.values()).sort(
-      (a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime()
-    )
-  }, [traffic])
+
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -306,12 +237,12 @@ export default function ServerDetail() {
     },
   ]
 
-  const sourceColumns: ColumnsType<TrafficEvent> = [
+  const sourceColumns: ColumnsType<PortSourceIP> = [
     {
       title: 'Remote IP',
       key: 'remote_ip',
       width: 150,
-      render: (_: unknown, record: TrafficEvent) => {
+      render: (_: unknown, record: PortSourceIP) => {
         const remoteIP = record.direction === 'outbound' ? (record.destination_ip || record.source_ip) : record.source_ip
         const isYou = server?.ip_address && remoteIP === server.ip_address
         return (
@@ -401,7 +332,7 @@ export default function ServerDetail() {
 
   // Sort function for DataGrid
   function getComparator(sortColumn: string) {
-    return (a: TrafficEvent, b: TrafficEvent) => {
+    return (a: PortSourceIP, b: PortSourceIP) => {
       let aVal: any, bVal: any
       
       switch (sortColumn) {
@@ -489,73 +420,282 @@ export default function ServerDetail() {
     return rows
   }, [selectedPortTraffic, ipFilter, sortColumns])
 
+  // Get threat icon based on score
+  const getThreatIcon = (score: number) => {
+    if (score >= 50) return <AlertTriangle size={14} style={{ color: '#ef4444' }} />;
+    if (score >= 20) return <AlertCircle size={14} style={{ color: '#f59e0b' }} />;
+    return <CheckCircle2 size={14} style={{ color: '#10b981' }} />;
+  };
+
+  // Get threat color for background/badge
+  const getThreatColor = (score: number) => {
+    if (score >= 50) return { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' };
+    if (score >= 20) return { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.3)' };
+    return { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', border: 'rgba(16, 185, 129, 0.3)' };
+  };
+
   // DataGrid columns for the IP modal - using flex to fill width
   const ipGridColumns = [
-    { key: 'source_ip', name: 'Remote IP', minWidth: 140, width: '18%', frozen: true, sortable: true },
+    { 
+      key: 'source_ip', 
+      name: 'Remote IP', 
+      minWidth: 140, 
+      width: '16%', 
+      frozen: true, 
+      sortable: true,
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Globe size={14} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
+          <Text code style={{ fontSize: 12, background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+            {row.source_ip}
+          </Text>
+        </div>
+      )
+    },
     { 
       key: 'direction', 
       name: 'Dir', 
-      minWidth: 70,
-      width: '8%',
+      minWidth: 75,
+      width: '7%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => (
-        row.direction === 'outbound' 
-          ? <Tag style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: 'none', fontSize: 10 }}>↑ OUT</Tag>
-          : <Tag style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', fontSize: 10 }}>↓ IN</Tag>
+      formatter: ({ row }: { row: TrafficEvent }) => {
+        const isOutbound = row.direction === 'outbound';
+        return (
+          <div style={{ 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            gap: 4,
+            padding: '4px 8px',
+            borderRadius: 12,
+            background: isOutbound ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+            border: `1px solid ${isOutbound ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+          }}>
+            {isOutbound ? (
+              <ArrowUpRight size={12} style={{ color: '#3b82f6' }} />
+            ) : (
+              <ArrowDownLeft size={12} style={{ color: '#10b981' }} />
+            )}
+            <span style={{ 
+              fontSize: 10, 
+              fontWeight: 600,
+              color: isOutbound ? '#3b82f6' : '#10b981',
+              textTransform: 'uppercase'
+            }}>
+              {isOutbound ? 'OUT' : 'IN'}
+            </span>
+          </div>
+        );
+      }
+    },
+    { 
+      key: 'country', 
+      name: 'Country', 
+      minWidth: 110, 
+      width: '11%', 
+      sortable: true, 
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Flag size={13} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
+          <span style={{ color: row.country ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+            {row.country || 'Unknown'}
+          </span>
+        </div>
       )
     },
-    { key: 'country', name: 'Country', minWidth: 100, width: '10%', sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.country || '-' },
-    { key: 'city', name: 'City', minWidth: 100, width: '10%', sortable: true, formatter: ({ row }: { row: TrafficEvent }) => row.city || '-' },
+    { 
+      key: 'city', 
+      name: 'City', 
+      minWidth: 100, 
+      width: '10%', 
+      sortable: true, 
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <MapPin size={13} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
+          <span style={{ color: row.city ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+            {row.city || '-'}
+          </span>
+        </div>
+      )
+    },
     { 
       key: 'bytes_in', 
-      name: 'Bytes In', 
-      minWidth: 90,
-      width: '10%',
+      name: '↓ In', 
+      minWidth: 85,
+      width: '9%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_in || 0)
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <ArrowDownLeft size={12} style={{ color: '#10b981', opacity: 0.7 }} />
+          <span style={{ 
+            color: (row.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--text-secondary)',
+            fontWeight: (row.bytes_in || 0) > 1000000 ? 600 : 400,
+            fontSize: 12
+          }}>
+            {formatBytes(row.bytes_in || 0)}
+          </span>
+        </div>
+      )
     },
     { 
       key: 'bytes_out', 
-      name: 'Bytes Out', 
-      minWidth: 90,
-      width: '10%',
+      name: '↑ Out', 
+      minWidth: 85,
+      width: '9%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_out || 0)
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <ArrowUpRight size={12} style={{ color: '#3b82f6', opacity: 0.7 }} />
+          <span style={{ 
+            color: (row.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--text-secondary)',
+            fontWeight: (row.bytes_out || 0) > 1000000 ? 600 : 400,
+            fontSize: 12
+          }}>
+            {formatBytes(row.bytes_out || 0)}
+          </span>
+        </div>
+      )
     },
     { 
       key: 'syn_count', 
       name: 'SYN', 
-      minWidth: 60,
-      width: '6%',
+      minWidth: 55,
+      width: '5%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => (
-        <span style={{ color: row.syn_count > 10 ? '#ef4444' : 'inherit' }}>{row.syn_count}</span>
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ 
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '2px 8px',
+          borderRadius: 10,
+          background: row.syn_count > 10 ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-tertiary)',
+          border: `1px solid ${row.syn_count > 10 ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-subtle)'}`,
+        }}>
+          <span style={{ 
+            color: row.syn_count > 10 ? '#ef4444' : 'var(--text-secondary)',
+            fontWeight: row.syn_count > 10 ? 600 : 400,
+            fontSize: 12
+          }}>
+            {row.syn_count}
+          </span>
+        </div>
       )
     },
-    { key: 'ack_count', name: 'ACK', minWidth: 60, width: '6%', sortable: true },
-    { key: 'hit_count', name: 'Hits', minWidth: 70, width: '6%', sortable: true },
+    { 
+      key: 'ack_count', 
+      name: 'ACK', 
+      minWidth: 55, 
+      width: '5%', 
+      sortable: true,
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ 
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '2px 8px',
+          borderRadius: 10,
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border-subtle)',
+        }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+            {row.ack_count}
+          </span>
+        </div>
+      )
+    },
+    { 
+      key: 'hit_count', 
+      name: 'Hits', 
+      minWidth: 65, 
+      width: '6%', 
+      sortable: true,
+      formatter: ({ row }: { row: PortSourceIP }) => (
+        <div style={{ 
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          padding: '2px 8px',
+          borderRadius: 10,
+          background: row.hit_count > 50 ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
+          border: `1px solid ${row.hit_count > 50 ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-subtle)'}`,
+        }}>
+          <Activity size={11} style={{ color: row.hit_count > 50 ? '#6366f1' : 'var(--text-muted)' }} />
+          <span style={{ 
+            color: row.hit_count > 50 ? '#6366f1' : 'var(--text-secondary)',
+            fontWeight: row.hit_count > 50 ? 600 : 400,
+            fontSize: 12
+          }}>
+            {row.hit_count}
+          </span>
+        </div>
+      )
+    },
     { 
       key: 'threat_score', 
-      name: 'Score', 
-      minWidth: 70,
-      width: '6%',
+      name: 'Risk', 
+      minWidth: 75,
+      width: '7%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => (
-        <span style={{ 
-          color: row.threat_score > 50 ? '#ef4444' : row.threat_score > 20 ? '#f59e0b' : '#10b981',
-          fontWeight: 600 
-        }}>
-          {row.threat_score}
-        </span>
-      )
+      formatter: ({ row }: { row: TrafficEvent }) => {
+        const colors = getThreatColor(row.threat_score);
+        return (
+          <div style={{ 
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            padding: '3px 10px',
+            borderRadius: 12,
+            background: colors.bg,
+            border: `1px solid ${colors.border}`,
+          }}>
+            {getThreatIcon(row.threat_score)}
+            <span style={{ 
+              color: colors.text,
+              fontWeight: 700,
+              fontSize: 12
+            }}>
+              {row.threat_score}
+            </span>
+          </div>
+        );
+      }
     },
     { 
       key: 'last_seen', 
       name: 'Last Seen', 
-      minWidth: 150,
-      width: '10%',
+      minWidth: 140,
+      width: '12%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => formatDate(row.last_seen)
+      formatter: ({ row }: { row: TrafficEvent }) => {
+        const isRecent = new Date(row.last_seen).getTime() > Date.now() - 5 * 60 * 1000; // 5 minutes
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Clock size={13} style={{ 
+              color: isRecent ? '#10b981' : 'var(--text-muted)',
+              opacity: isRecent ? 1 : 0.5
+            }} />
+            <span style={{ 
+              color: isRecent ? '#10b981' : 'var(--text-tertiary)', 
+              fontSize: 12,
+              fontWeight: isRecent ? 500 : 400
+            }}>
+              {formatDate(row.last_seen)}
+            </span>
+            {isRecent && (
+              <span style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: '#10b981',
+                boxShadow: '0 0 6px #10b981',
+                animation: 'pulse 2s infinite'
+              }} />
+            )}
+          </div>
+        );
+      }
     },
   ]
 
@@ -854,11 +994,19 @@ export default function ServerDetail() {
         }
         extra={
           <Space>
+            <Input
+              placeholder="Search IP, country..."
+              value={trafficParams.search}
+              onChange={(e) => setTrafficParams(p => ({ ...p, search: e.target.value, page: 1 }))}
+              style={{ width: 180 }}
+              size="small"
+              prefix={<Search size={14} />}
+            />
             <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
               {isConnected ? '● Live' : '○ Paused'}
             </Text>
             <Badge 
-              count={portTraffic.length} 
+              count={trafficPagination?.total_count || portTraffic.length} 
               style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
             />
           </Space>
@@ -868,7 +1016,15 @@ export default function ServerDetail() {
           columns={portColumns}
           dataSource={portTraffic}
           rowKey="key"
-          pagination={{ pageSize: 15, size: 'small' }}
+          pagination={trafficPagination ? {
+            current: trafficPagination.page,
+            pageSize: trafficPagination.page_size,
+            total: trafficPagination.total_count,
+            showSizeChanger: true,
+            pageSizeOptions: ['25', '50', '100'],
+            showTotal: (total) => `${total} events`,
+            onChange: (page, pageSize) => setTrafficParams(p => ({ ...p, page, page_size: pageSize || 50 })),
+          } : { pageSize: 15, size: 'small' }}
           size="small"
           scroll={{ x: 1100 }}
           locale={{ 

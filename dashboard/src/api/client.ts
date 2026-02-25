@@ -59,7 +59,30 @@ export const serversAPI = {
   generateApiKey: () => api.get('/servers/generate-api-key'),
   create: (data: { server_name: string; config: any }) => api.post('/servers', data),
   updateStatus: (id: string, status: string) => api.patch(`/servers/${id}/status`, { status }),
-  getTraffic: (id: string, limit = 50) => api.get(`/servers/${id}/traffic?limit=${limit}`),
+  getTraffic: (id: string, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.set('page', String(params.page));
+    if (params?.page_size) queryParams.set('page_size', String(params.page_size));
+    if (params?.search) queryParams.set('search', params.search);
+    if (params?.threat_level) queryParams.set('threat_level', params.threat_level);
+    if (params?.sort_by) queryParams.set('sort_by', params.sort_by);
+    if (params?.from) queryParams.set('from', params.from);
+    if (params?.to) queryParams.set('to', params.to);
+    const query = queryParams.toString();
+    return api.get(`/servers/${id}/traffic${query ? `?${query}` : ''}`);
+  },
+  getPortTraffic: (id: string, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.set('page', String(params.page));
+    if (params?.page_size) queryParams.set('page_size', String(params.page_size));
+    if (params?.search) queryParams.set('search', params.search);
+    if (params?.threat_level) queryParams.set('threat_level', params.threat_level);
+    if (params?.sort_by) queryParams.set('sort_by', params.sort_by);
+    if (params?.from) queryParams.set('from', params.from);
+    if (params?.to) queryParams.set('to', params.to);
+    const query = queryParams.toString();
+    return api.get(`/servers/${id}/port-traffic${query ? `?${query}` : ''}`);
+  },
   getStats: (id: string) => api.get(`/servers/${id}/stats`),
   getConfig: (id: string) => api.get(`/servers/${id}/config`),
   updateConfig: (id: string, config: any) => api.patch(`/servers/${id}/config`, config),
