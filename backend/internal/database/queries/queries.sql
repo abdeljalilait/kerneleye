@@ -166,8 +166,24 @@ WHERE s.user_id = $1
 -- name: ListTrafficEventsByServer :many
 SELECT * FROM traffic_events
 WHERE server_id = $1
-ORDER BY created_at DESC
-LIMIT $2;
+  AND ($2::text IS NULL OR source_ip::text LIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5)
+ORDER BY 
+  CASE WHEN $8::text = 'threat_score' THEN threat_score END DESC,
+  CASE WHEN $8::text = 'syn_count' THEN syn_count END DESC,
+  CASE WHEN $8::text = 'hit_count' THEN hit_count END DESC,
+  last_seen DESC
+LIMIT $6 OFFSET $7;
+
+-- name: CountTrafficEventsByServer :one
+SELECT COUNT(*)::int as total_count FROM traffic_events
+WHERE server_id = $1
+  AND ($2::text IS NULL OR source_ip::text LIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5);
 
 -- name: GetServerStats :one
 SELECT 

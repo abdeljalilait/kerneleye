@@ -100,6 +100,36 @@ func (q *Queries) CountServersByUser(ctx context.Context, userID pgtype.UUID) (i
 	return column_1, err
 }
 
+const countTrafficEventsByServer = `-- name: CountTrafficEventsByServer :one
+SELECT COUNT(*)::int as total_count FROM traffic_events
+WHERE server_id = $1
+  AND ($2::text IS NULL OR source_ip::text LIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5)
+`
+
+type CountTrafficEventsByServerParams struct {
+	ServerID pgtype.UUID        `json:"server_id"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  pgtype.Timestamptz `json:"column_4"`
+	Column5  pgtype.Timestamptz `json:"column_5"`
+}
+
+func (q *Queries) CountTrafficEventsByServer(ctx context.Context, arg CountTrafficEventsByServerParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countTrafficEventsByServer,
+		arg.ServerID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+	)
+	var total_count int32
+	err := row.Scan(&total_count)
+	return total_count, err
+}
+
 const createAlert = `-- name: CreateAlert :one
 INSERT INTO alerts (server_id, source_ip, threat_score, reason, severity, status)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -2295,17 +2325,40 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 const listTrafficEventsByServer = `-- name: ListTrafficEventsByServer :many
 SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code FROM traffic_events
 WHERE server_id = $1
-ORDER BY created_at DESC
-LIMIT $2
+  AND ($2::text IS NULL OR source_ip::text LIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5)
+ORDER BY 
+  CASE WHEN $8::text = 'threat_score' THEN threat_score END DESC,
+  CASE WHEN $8::text = 'syn_count' THEN syn_count END DESC,
+  CASE WHEN $8::text = 'hit_count' THEN hit_count END DESC,
+  last_seen DESC
+LIMIT $6 OFFSET $7
 `
 
 type ListTrafficEventsByServerParams struct {
-	ServerID pgtype.UUID `json:"server_id"`
-	Limit    int32       `json:"limit"`
+	ServerID pgtype.UUID        `json:"server_id"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  pgtype.Timestamptz `json:"column_4"`
+	Column5  pgtype.Timestamptz `json:"column_5"`
+	Limit    int32              `json:"limit"`
+	Offset   int32              `json:"offset"`
+	Column8  string             `json:"column_8"`
 }
 
 func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error) {
-	rows, err := q.db.Query(ctx, listTrafficEventsByServer, arg.ServerID, arg.Limit)
+	rows, err := q.db.Query(ctx, listTrafficEventsByServer,
+		arg.ServerID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Limit,
+		arg.Offset,
+		arg.Column8,
+	)
 	if err != nil {
 		return nil, err
 	}

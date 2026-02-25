@@ -22,6 +22,7 @@ type Querier interface {
 	CountBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountBlocksToday(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountServersByUser(ctx context.Context, userID pgtype.UUID) (int32, error)
+	CountTrafficEventsByServer(ctx context.Context, arg CountTrafficEventsByServerParams) (int32, error)
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
 	// Blocks queries for the dashboard and API
 	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
