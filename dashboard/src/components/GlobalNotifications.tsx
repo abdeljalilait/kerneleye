@@ -12,7 +12,15 @@ export default function GlobalNotifications() {
     const { type, data } = lastMessage
 
     switch (type) {
-      case 'new_block':
+      case 'new_block': {
+        const duration = data.duration as number
+        const isPermanent = duration === 0 || duration === undefined
+        const durationText = isPermanent 
+          ? 'Permanent' 
+          : duration >= 3600 
+            ? `${Math.round(duration / 3600)}h` 
+            : `${Math.round(duration / 60)}m`
+        
         notification.info({
           message: (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -26,7 +34,7 @@ export default function GlobalNotifications() {
                 {data.ip_address}
               </div>
               <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.6)', marginTop: 4 }}>
-                Score: {data.threat_score} • Duration: {Math.round(data.duration / 60)}m
+                Score: {data.threat_score} • {durationText} • {data.block_type || 'Blocklist'}
               </div>
             </div>
           ),
@@ -35,6 +43,7 @@ export default function GlobalNotifications() {
           style: { background: '#fef2f2', border: '1px solid #fecaca' },
         })
         break
+      }
 
       case 'new_threat':
         notification.warning({

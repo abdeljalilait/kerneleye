@@ -276,6 +276,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 			"threat_type":  row.ThreatType,
 			"duration":     duration.Seconds(),
 			"expires_at":   expiresAt,
+			"block_type":   "blocklist",
 		})
 	}
 

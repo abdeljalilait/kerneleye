@@ -253,6 +253,65 @@ WHERE server_id = $1
   AND ($4::timestamptz IS NULL OR last_seen >= $4)
   AND ($5::timestamptz IS NULL OR last_seen <= $5);
 
+-- name: ListProtocolTrafficByServer :many
+-- Returns aggregated traffic data grouped by protocol with all source IPs
+SELECT 
+    protocol,
+    COUNT(DISTINCT source_ip) as unique_ips,
+    COUNT(DISTINCT destination_port) as unique_ports,
+    SUM(bytes_in)::bigint as total_bytes_in,
+    SUM(bytes_out)::bigint as total_bytes_out,
+    SUM(hit_count)::int as total_hits,
+    SUM(syn_count)::int as total_syn,
+    SUM(ack_count)::int as total_ack,
+    MAX(threat_score) as max_threat_score,
+    MAX(threat_level) as max_threat_level,
+    MAX(last_seen) as last_seen,
+    COALESCE(
+        jsonb_agg(
+            DISTINCT jsonb_build_object(
+                'source_ip', source_ip,
+                'destination_port', destination_port,
+                'bytes_in', bytes_in,
+                'bytes_out', bytes_out,
+                'syn_count', syn_count,
+                'ack_count', ack_count,
+                'hit_count', hit_count,
+                'threat_score', threat_score,
+                'threat_level', threat_level,
+                'country', country,
+                'city', city,
+                'isp', isp,
+                'last_seen', last_seen,
+                'direction', direction
+            )
+        ) FILTER (WHERE source_ip IS NOT NULL),
+        '[]'::jsonb
+    ) as sources
+FROM traffic_events
+WHERE server_id = $1
+  AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5)
+GROUP BY protocol
+ORDER BY 
+    CASE WHEN $6::text = 'threat_score' THEN MAX(threat_score) END DESC,
+    CASE WHEN $6::text = 'hits' THEN SUM(hit_count) END DESC,
+    CASE WHEN $6::text = 'bytes' THEN SUM(bytes_in) END DESC,
+    MAX(last_seen) DESC
+LIMIT $7 OFFSET $8;
+
+-- name: CountProtocolTrafficByServer :one
+-- Returns count of unique protocols
+SELECT COUNT(DISTINCT protocol)::int as total_count
+FROM traffic_events
+WHERE server_id = $1
+  AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5);
+
 -- name: DeleteServer :exec
 DELETE FROM servers
 WHERE id = $1;

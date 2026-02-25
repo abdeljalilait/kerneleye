@@ -120,6 +120,38 @@ func (q *Queries) CountPortTrafficByServer(ctx context.Context, arg CountPortTra
 	return total_count, err
 }
 
+const countProtocolTrafficByServer = `-- name: CountProtocolTrafficByServer :one
+SELECT COUNT(DISTINCT protocol)::int as total_count
+FROM traffic_events
+WHERE server_id = $1
+  AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5)
+`
+
+type CountProtocolTrafficByServerParams struct {
+	ServerID pgtype.UUID        `json:"server_id"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  pgtype.Timestamptz `json:"column_4"`
+	Column5  pgtype.Timestamptz `json:"column_5"`
+}
+
+// Returns count of unique protocols
+func (q *Queries) CountProtocolTrafficByServer(ctx context.Context, arg CountProtocolTrafficByServerParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countProtocolTrafficByServer,
+		arg.ServerID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+	)
+	var total_count int32
+	err := row.Scan(&total_count)
+	return total_count, err
+}
+
 const countServersByUser = `-- name: CountServersByUser :one
 SELECT COUNT(*)::int FROM servers
 WHERE user_id = $1
@@ -2351,6 +2383,124 @@ func (q *Queries) ListPortTrafficByServer(ctx context.Context, arg ListPortTraff
 			&i.DestinationPort,
 			&i.Protocol,
 			&i.UniqueIps,
+			&i.TotalBytesIn,
+			&i.TotalBytesOut,
+			&i.TotalHits,
+			&i.TotalSyn,
+			&i.TotalAck,
+			&i.MaxThreatScore,
+			&i.MaxThreatLevel,
+			&i.LastSeen,
+			&i.Sources,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProtocolTrafficByServer = `-- name: ListProtocolTrafficByServer :many
+SELECT 
+    protocol,
+    COUNT(DISTINCT source_ip) as unique_ips,
+    COUNT(DISTINCT destination_port) as unique_ports,
+    SUM(bytes_in)::bigint as total_bytes_in,
+    SUM(bytes_out)::bigint as total_bytes_out,
+    SUM(hit_count)::int as total_hits,
+    SUM(syn_count)::int as total_syn,
+    SUM(ack_count)::int as total_ack,
+    MAX(threat_score) as max_threat_score,
+    MAX(threat_level) as max_threat_level,
+    MAX(last_seen) as last_seen,
+    COALESCE(
+        jsonb_agg(
+            DISTINCT jsonb_build_object(
+                'source_ip', source_ip,
+                'destination_port', destination_port,
+                'bytes_in', bytes_in,
+                'bytes_out', bytes_out,
+                'syn_count', syn_count,
+                'ack_count', ack_count,
+                'hit_count', hit_count,
+                'threat_score', threat_score,
+                'threat_level', threat_level,
+                'country', country,
+                'city', city,
+                'isp', isp,
+                'last_seen', last_seen,
+                'direction', direction
+            )
+        ) FILTER (WHERE source_ip IS NOT NULL),
+        '[]'::jsonb
+    ) as sources
+FROM traffic_events
+WHERE server_id = $1
+  AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
+  AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
+  AND ($4::timestamptz IS NULL OR last_seen >= $4)
+  AND ($5::timestamptz IS NULL OR last_seen <= $5)
+GROUP BY protocol
+ORDER BY 
+    CASE WHEN $6::text = 'threat_score' THEN MAX(threat_score) END DESC,
+    CASE WHEN $6::text = 'hits' THEN SUM(hit_count) END DESC,
+    CASE WHEN $6::text = 'bytes' THEN SUM(bytes_in) END DESC,
+    MAX(last_seen) DESC
+LIMIT $7 OFFSET $8
+`
+
+type ListProtocolTrafficByServerParams struct {
+	ServerID pgtype.UUID        `json:"server_id"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  pgtype.Timestamptz `json:"column_4"`
+	Column5  pgtype.Timestamptz `json:"column_5"`
+	Column6  string             `json:"column_6"`
+	Limit    int32              `json:"limit"`
+	Offset   int32              `json:"offset"`
+}
+
+type ListProtocolTrafficByServerRow struct {
+	Protocol       string      `json:"protocol"`
+	UniqueIps      int64       `json:"unique_ips"`
+	UniquePorts    int64       `json:"unique_ports"`
+	TotalBytesIn   int64       `json:"total_bytes_in"`
+	TotalBytesOut  int64       `json:"total_bytes_out"`
+	TotalHits      int32       `json:"total_hits"`
+	TotalSyn       int32       `json:"total_syn"`
+	TotalAck       int32       `json:"total_ack"`
+	MaxThreatScore interface{} `json:"max_threat_score"`
+	MaxThreatLevel interface{} `json:"max_threat_level"`
+	LastSeen       interface{} `json:"last_seen"`
+	Sources        interface{} `json:"sources"`
+}
+
+// Returns aggregated traffic data grouped by protocol with all source IPs
+func (q *Queries) ListProtocolTrafficByServer(ctx context.Context, arg ListProtocolTrafficByServerParams) ([]ListProtocolTrafficByServerRow, error) {
+	rows, err := q.db.Query(ctx, listProtocolTrafficByServer,
+		arg.ServerID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProtocolTrafficByServerRow{}
+	for rows.Next() {
+		var i ListProtocolTrafficByServerRow
+		if err := rows.Scan(
+			&i.Protocol,
+			&i.UniqueIps,
+			&i.UniquePorts,
 			&i.TotalBytesIn,
 			&i.TotalBytesOut,
 			&i.TotalHits,
