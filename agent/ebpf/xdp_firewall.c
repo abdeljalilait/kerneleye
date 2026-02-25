@@ -410,22 +410,23 @@ int xdp_firewall(struct xdp_md *ctx) {
             return XDP_PASS;
         }
         
-        // Validate IP header version and ihl
-        __u8 ver_ihl = ip->version;
         __u8 ihl = ip->ihl & 0x0f;
-        if (ver_ihl != 4 || ihl < 5 || ihl > 15) {
+        
+        // Validate the RESULT of the multiplication, not just ihl
+        // The verifier cannot infer that (ihl * 4) is bounded just because ihl was checked
+        __u32 ip_hdr_len = (__u32)ihl * 4;
+        if (ip_hdr_len < 20 || ip_hdr_len > 60) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
         
-        // Validate full IP header
-        void *ip_end = (void *)ip + 20;
+        // Now ip_hdr_len is provably [20, 60] and safe for pointer math
+        void *ip_end = (void *)ip + ip_hdr_len;
         if (ip_end > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
         
-        // Validate total length
         __u16 total_len = bpf_ntohs(ip->tot_len);
         if (total_len < 20 || (void *)ip + total_len > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
@@ -434,15 +435,30 @@ int xdp_firewall(struct xdp_md *ctx) {
         
         __u32 src_ip = ip->saddr;
         __u8 protocol = ip->protocol;
+        __u16 dest_port = 0;
         
-        // Skip L4 port extraction for now - causes verifier issues
-        // Can add back after stable
+        // Anchor l4_start from data - gives verifier a better reference point
+        __u32 l4_offset = (void *)ip - data + ip_hdr_len;
+        if (l4_offset + 8 <= pkt_len) {
+            void *l4_start = data + l4_offset;
+            if (l4_start + 8 <= data_end) {
+                if (protocol == 6) {
+                    struct tcphdr *tcp = l4_start;
+                    if ((void *)(tcp + 1) <= data_end)
+                        dest_port = bpf_ntohs(tcp->dest);
+                } else if (protocol == 17) {
+                    struct udphdr *udp = l4_start;
+                    if ((void *)(udp + 1) <= data_end)
+                        dest_port = bpf_ntohs(udp->dest);
+                }
+            }
+        }
         
         // Check 1: IP blocklist (exact match)
         struct block_entry *entry = bpf_map_lookup_elem(&xdp_blocklist, &src_ip);
         if (entry && !is_expired(entry)) {
             update_stats(STATS_DROPPED, pkt_len);
-            log_blocked_packet(src_ip, NULL, 4, 0, protocol, 1); // reason 1 = blocklist
+            log_blocked_packet(src_ip, NULL, 4, dest_port, protocol, 1); // reason 1 = blocklist
             return XDP_DROP;
         }
         
@@ -450,7 +466,7 @@ int xdp_firewall(struct xdp_md *ctx) {
         // Check 2: CIDR range blocklist
         if (check_cidr_block(src_ip)) {
             update_stats(STATS_DROPPED, pkt_len);
-            log_blocked_packet(src_ip, NULL, 4, 0, protocol, 2); // reason 2 = cidr
+            log_blocked_packet(src_ip, NULL, 4, dest_port, protocol, 2); // reason 2 = cidr
             return XDP_DROP;
         }
 #endif
