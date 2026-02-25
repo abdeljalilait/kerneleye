@@ -170,6 +170,7 @@ struct {
 
 #ifdef ENABLE_RATE_LIMITING
 // Per-IP rate limiting state
+// NOTE: Not pinned (no LIBBPF_PIN_BY_NAME) - state is intentionally reset on program reload
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, 131072);  // 128K IPs
@@ -205,7 +206,7 @@ struct block_event {
 // Ring buffer for blocked packet events
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 4096);  // 4K events buffer
+    __uint(max_entries, 1 << 20);  // 1MB buffer (~32K events)
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } xdp_block_events SEC(".maps");
 
@@ -277,23 +278,22 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
             // Try to reset atomically
             __u64 old = __sync_val_compare_and_swap(&state->window_start, window_start, now);
             if (old == window_start) {
-                // We successfully reset
-                state->packet_count = 1;
-                state->byte_count = pkt_len;
+                // We successfully reset - use atomic stores to prevent races
+                __sync_lock_test_and_set(&state->packet_count, 1);
+                __sync_lock_test_and_set(&state->byte_count, pkt_len);
                 return 0;
             }
             // Another CPU reset - continue with new values
         }
         
-        // Increment packet count atomically
+        // Increment packet count atomically and use returned value
         if (cfg->max_pps > 0) {
-            __sync_fetch_and_add(&state->packet_count, 1);
-            // Read count after increment
-            __u32 pkt_count = state->packet_count;
+            __u32 pkt_count = __sync_fetch_and_add(&state->packet_count, 1) + 1;
             // Check against limit
             if (pkt_count >= cfg->max_pps) {
                 if (cfg->block_time_ns > 0) {
                     __u64 expires = now + cfg->block_time_ns;
+                    // Overflow check: if addition wrapped around, use max value
                     if (expires < now) expires = (__u64)-1;
                     struct block_entry block = { .expires_ns = expires };
                     bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
@@ -302,15 +302,14 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
             }
         }
         
-        // Increment byte count atomically
+        // Increment byte count atomically and use returned value
         if (cfg->max_bps > 0) {
-            __sync_fetch_and_add(&state->byte_count, pkt_len);
-            // Read count after increment
-            __u64 byte_count = state->byte_count;
+            __u64 byte_count = __sync_fetch_and_add(&state->byte_count, pkt_len) + pkt_len;
             // Check if exceeded
             if (byte_count > cfg->max_bps) {
                 if (cfg->block_time_ns > 0) {
                     __u64 expires = now + cfg->block_time_ns;
+                    // Overflow check: if addition wrapped around, use max value
                     if (expires < now) expires = (__u64)-1;
                     struct block_entry block = { .expires_ns = expires };
                     bpf_map_update_elem(&xdp_blocklist, &src_ip, &block, BPF_ANY);
@@ -325,10 +324,14 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
             .packet_count = 1,
             .byte_count = pkt_len,
         };
-        // Use BPF_NOEXIST to avoid race - if another CPU created it, retry
+        // Use BPF_NOEXIST to avoid race - if another CPU created it, update in-place
         long ret = bpf_map_update_elem(&xdp_rate_limit, &src_ip, &new_state, BPF_NOEXIST);
-        if (ret == -17) {  // EEXIST
-            bpf_map_update_elem(&xdp_rate_limit, &src_ip, &new_state, BPF_ANY);
+        if (ret == -17) {  // EEXIST - another CPU just created it, update atomically
+            state = bpf_map_lookup_elem(&xdp_rate_limit, &src_ip);
+            if (state) {
+                __sync_fetch_and_add(&state->packet_count, 1);
+                __sync_fetch_and_add(&state->byte_count, pkt_len);
+            }
         }
     }
     
@@ -340,9 +343,11 @@ static __always_inline int check_rate_limit(__u32 src_ip, __u32 pkt_len) {
 // Check if IP is in a blocked CIDR range
 // Key layout: prefix_len in host order, addr in network byte order
 // Userspace must insert entries with the same convention
+// BPF LPM trie behavior: passing prefix_len=32 with the full IP address will
+// find the longest matching prefix (e.g., /24 if that's what's in the trie)
 static __always_inline int check_cidr_block(__u32 src_ip) {
     struct lpm_key_v4 key = {
-        .prefix_len = 32,  // Full match first, LPM will find longest prefix
+        .prefix_len = 32,  // Start with full match, LPM finds longest prefix
         .addr = src_ip,    // Keep network byte order (same as userspace inserts)
     };
     
@@ -419,9 +424,9 @@ int xdp_firewall(struct xdp_md *ctx) {
             return XDP_PASS;
         }
         
-        // Additional validation: ensure total length is at least as large as header claims
+        // Additional validation: ensure total length is valid and within packet bounds
         __u16 total_len = bpf_ntohs(ip->tot_len);
-        if (total_len < (ip->ihl * 4)) {
+        if (total_len < (ip->ihl * 4) || (void *)ip + total_len > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
@@ -490,6 +495,7 @@ int xdp_firewall(struct xdp_md *ctx) {
         struct block_entry *entry = bpf_map_lookup_elem(&xdp_blocklist_v6, &ip6->saddr);
         if (entry && !is_expired(entry)) {
             update_stats(STATS_DROPPED, pkt_len);
+            log_blocked_packet(0, (__u8 *)&ip6->saddr, 6, 0, ip6->nexthdr, 1);
             return XDP_DROP;
         }
         
