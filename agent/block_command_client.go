@@ -171,13 +171,29 @@ func (b *BlockCommandClient) receiveLoop(ctx context.Context) {
 			return
 		default:
 			if err := b.connectAndStream(ctx); err != nil {
-				Logger.Warnf("[BlockCommandClient] Stream error: %v", err)
-				delay := b.getReconnectDelay()
+				// Don't retry if we're shutting down
+				if ctx.Err() != nil {
+					Logger.Info("[BlockCommandClient] Stopping: context cancelled")
+					return
+				}
 				select {
 				case <-b.stopChan:
 					return
-				case <-time.After(delay):
-					// Retry after delay
+				case <-ctx.Done():
+					Logger.Info("[BlockCommandClient] Stopping: context cancelled during reconnect")
+					return
+				default:
+					Logger.Warnf("[BlockCommandClient] Stream error: %v", err)
+					delay := b.getReconnectDelay()
+					select {
+					case <-b.stopChan:
+						return
+					case <-ctx.Done():
+						Logger.Info("[BlockCommandClient] Stopping: context cancelled during reconnect delay")
+						return
+					case <-time.After(delay):
+						// Retry after delay
+					}
 				}
 			}
 		}
@@ -204,6 +220,15 @@ func (b *BlockCommandClient) resetReconnectDelay() {
 
 // connectAndStream connects to the backend and streams block commands
 func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
+	// Check if context is already cancelled before starting
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-b.stopChan:
+		return nil
+	default:
+	}
+
 	b.mu.RLock()
 	client := b.client
 	conn := b.conn
@@ -220,6 +245,10 @@ func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
 		ClientToken: b.serverID,
 	})
 	if err != nil {
+		// Check if this is a context cancellation
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("failed to start stream: %w", err)
 	}
 
