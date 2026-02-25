@@ -410,15 +410,16 @@ int xdp_firewall(struct xdp_md *ctx) {
             return XDP_PASS;
         }
         
-        // Validate IP header length (ihl is in 32-bit words, minimum 5 = 20 bytes)
+        // Validate IP header length (ihl is in 32-bit words, minimum 5 = 20 bytes, max 15 = 60 bytes)
         // Also verify the packet is large enough to contain a valid IP header
-        if (ip->version != 4 || ip->ihl < 5) {
+        if (ip->version != 4 || ip->ihl < 5 || ip->ihl > 15) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
         
-        // Extract ihl to local variable for verifier
+        // Extract ihl to local variable for verifier - add min_len for bounds
         __u8 ihl = ip->ihl;
+        __u32 min_len = 20; // Minimum IPv4 header size
         
         // Validate full IP header length (including options when ihl > 5)
         void *ip_end = (void *)ip + (ihl * 4);
@@ -429,7 +430,7 @@ int xdp_firewall(struct xdp_md *ctx) {
         
         // Additional validation: ensure total length is valid and within packet bounds
         __u16 total_len = bpf_ntohs(ip->tot_len);
-        if (total_len < (ihl * 4) || (void *)ip + total_len > data_end) {
+        if (total_len < min_len || (void *)ip + total_len > data_end) {
             update_stats(STATS_ERRORS, pkt_len);
             return XDP_PASS;
         }
@@ -441,13 +442,24 @@ int xdp_firewall(struct xdp_md *ctx) {
         // Try to get destination port from TCP/UDP header
         // Need at least 8 bytes: source port (2) + dest port (2) + seq/ack (4) minimum
         void *l4_start = (void *)ip + (ihl * 4);
-        if (l4_start + 8 <= data_end) {
+        
+        // Explicit bounds check with pkt_len for verifier
+        __u32 l4_offset = ihl * 4;
+        __u32 pkt_remaining = pkt_len;
+        if (l4_offset + 8 > pkt_remaining) {
+            // Not enough data for L4 header, skip port extraction
+        } else if (l4_start + 8 <= data_end) {
             if (protocol == 6) { // TCP
                 struct tcphdr *tcp = l4_start;
-                dest_port = bpf_ntohs(tcp->dest);
+                // Additional bounds check for tcp header
+                if ((void *)(tcp + 1) <= data_end) {
+                    dest_port = bpf_ntohs(tcp->dest);
+                }
             } else if (protocol == 17) { // UDP
                 struct udphdr *udp = l4_start;
-                dest_port = bpf_ntohs(udp->dest);
+                if ((void *)(udp + 1) <= data_end) {
+                    dest_port = bpf_ntohs(udp->dest);
+                }
             }
         }
         
