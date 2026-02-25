@@ -13,11 +13,12 @@ import (
 type EventType string
 
 const (
-	EventNewThreat  EventType = "new_threat"
-	EventNewAlert   EventType = "new_alert"
-	EventNewTraffic EventType = "new_traffic"
-	EventNewServer  EventType = "new_server"
-	EventStats      EventType = "stats_update"
+	EventNewThreat     EventType = "new_threat"
+	EventNewAlert      EventType = "new_alert"
+	EventNewTraffic    EventType = "new_traffic"
+	EventNewServer     EventType = "new_server"
+	EventStats         EventType = "stats_update"
+	EventBlockedPacket EventType = "blocked_packet"
 )
 
 type WSMessage struct {

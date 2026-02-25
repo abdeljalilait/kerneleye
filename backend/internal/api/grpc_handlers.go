@@ -518,6 +518,66 @@ func getServiceFromPort(port int) string {
 	}
 }
 
+func (h *GrpcIngestHandler) ReportBlockedPacket(ctx context.Context, req *pb.BlockedPacketEvent) (*pb.BlockedPacketResponse, error) {
+	// Validate API key
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
+	if err != nil {
+		log.Printf("[gRPC ReportBlockedPacket] API key validation failed: %v", err)
+		return nil, status.Errorf(codes.Unauthenticated, "Invalid API Key")
+	}
+
+	if server.Status != "active" {
+		log.Printf("[gRPC ReportBlockedPacket] Rejecting for server_id=%s due to status=%s", server.ID.String(), server.Status)
+		return nil, status.Errorf(codes.PermissionDenied, "Server not active")
+	}
+
+	// Get protocol string
+	protocol := "TCP"
+	switch req.Protocol {
+	case pb.Protocol_PROTOCOL_UDP:
+		protocol = "UDP"
+	case pb.Protocol_PROTOCOL_ICMP:
+		protocol = "ICMP"
+	}
+
+	// Get reason string
+	reason := "unknown"
+	switch req.Reason {
+	case pb.BlockReason_BLOCK_REASON_BLOCKLIST:
+		reason = "blocklist"
+	case pb.BlockReason_BLOCK_REASON_CIDR:
+		reason = "cidr"
+	case pb.BlockReason_BLOCK_REASON_RATE_LIMIT:
+		reason = "rate_limit"
+	}
+
+	log.Printf("[gRPC ReportBlockedPacket] server_id=%s ip=%s port=%d protocol=%s reason=%s",
+		server.ID.String(), req.SourceIp, req.DestinationPort, protocol, reason)
+
+	// Get GeoIP info if available
+	var country, countryCode string
+	if h.geoIP != nil {
+		country, countryCode, _, _, _ = h.geoIP.Lookup(req.SourceIp)
+	}
+
+	// Broadcast to connected dashboard clients
+	h.hub.Broadcast(server.UserID.String(), "blocked_packet", map[string]any{
+		"server_id":        server.ID.String(),
+		"server_hostname":  server.Hostname,
+		"source_ip":        req.SourceIp,
+		"destination_port": req.DestinationPort,
+		"protocol":         protocol,
+		"reason":           reason,
+		"timestamp":        req.Timestamp.AsTime(),
+		"country":          country,
+		"country_code":     countryCode,
+	})
+
+	return &pb.BlockedPacketResponse{
+		Success: true,
+	}, nil
+}
+
 func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.BlockedIPEvent) (*pb.BlockedIPResponse, error) {
 	// Validate API key
 	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
