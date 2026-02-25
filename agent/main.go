@@ -145,6 +145,18 @@ func main() {
 	// Wire the block callback to report blocked IPs via gRPC
 	if remediator != nil {
 		remediator.OnBlock = aggregator.ReportBlockedIP
+
+		// Wire the blocked packet callback to report XDP blocked packets via gRPC
+		remediator.OnBlockedPacket = aggregator.ReportBlockedPacket
+
+		// Start the XDP blocked packet reader if XDP is enabled
+		if remediator.IsXDPEnabled() {
+			if err := remediator.StartBlockedPacketReader(); err != nil {
+				Logger.Warnf("⚠️  Failed to start XDP blocked packet reader: %v", err)
+			} else {
+				Logger.Info("📡 XDP blocked packet reader started")
+			}
+		}
 	}
 
 	if remediator != nil {

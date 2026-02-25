@@ -16,6 +16,7 @@ import (
 	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Aggregator holds per-IP statistics and manages flushing to the API
@@ -559,6 +560,68 @@ func (a *Aggregator) Close() error {
 // GetStats returns a snapshot of the stats map (for testing/debugging)
 func (a *Aggregator) GetStats() map[string]*IPStats {
 	return a.stats.Snapshot()
+}
+
+// ReportBlockedPacket sends a blocked packet event to the backend via gRPC
+// This is called by the XDP remediator when a packet is blocked
+func (a *Aggregator) ReportBlockedPacket(ip string, port uint16, protocol uint8, reason uint8) {
+	// Map protocol number to protobuf enum
+	var proto pb.Protocol
+	switch protocol {
+	case 6:
+		proto = pb.Protocol_PROTOCOL_TCP
+	case 17:
+		proto = pb.Protocol_PROTOCOL_UDP
+	case 1:
+		proto = pb.Protocol_PROTOCOL_ICMP
+	default:
+		proto = pb.Protocol_PROTOCOL_UNKNOWN
+	}
+
+	// Map reason to protobuf enum
+	var blockReason pb.BlockReason
+	switch reason {
+	case 1:
+		blockReason = pb.BlockReason_BLOCK_REASON_BLOCKLIST
+	case 2:
+		blockReason = pb.BlockReason_BLOCK_REASON_CIDR
+	case 3:
+		blockReason = pb.BlockReason_BLOCK_REASON_RATE_LIMIT
+	default:
+		blockReason = pb.BlockReason_BLOCK_REASON_UNKNOWN
+	}
+
+	req := &pb.BlockedPacketEvent{
+		ApiKey:          a.apiKey,
+		ServerId:        a.serverID,
+		SourceIp:        ip,
+		DestinationPort: uint32(port),
+		Protocol:        proto,
+		Reason:          blockReason,
+		Timestamp:       timestamppb.New(time.Now()),
+	}
+
+	// Send asynchronously to avoid blocking the ring buffer reader
+	go func() {
+		a.grpcMu.RLock()
+		client := a.grpcClient
+		if client == nil {
+			a.grpcMu.RUnlock()
+			Logger.Warn("⚠️  gRPC client not initialized, cannot report blocked packet")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := client.ReportBlockedPacket(ctx, req)
+		a.grpcMu.RUnlock()
+		cancel()
+
+		if err != nil {
+			Logger.Warnf("⚠️  Failed to report blocked packet from %s: %v", ip, err)
+		} else {
+			Logger.Debugf("📡 Reported blocked packet from %s:%d (reason: %d) to backend", ip, port, reason)
+		}
+	}()
 }
 
 // ReportBlockedIP sends a blocked IP event to the backend via gRPC
