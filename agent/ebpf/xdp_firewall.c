@@ -437,20 +437,17 @@ int xdp_firewall(struct xdp_md *ctx) {
         __u8 protocol = ip->protocol;
         __u16 dest_port = 0;
         
-        // Anchor l4_start from data - gives verifier a better reference point
-        __u32 l4_offset = (void *)ip - data + ip_hdr_len;
-        if (l4_offset + 8 <= pkt_len) {
-            void *l4_start = data + l4_offset;
-            if (l4_start + 8 <= data_end) {
-                if (protocol == 6) {
-                    struct tcphdr *tcp = l4_start;
-                    if ((void *)(tcp + 1) <= data_end)
-                        dest_port = bpf_ntohs(tcp->dest);
-                } else if (protocol == 17) {
-                    struct udphdr *udp = l4_start;
-                    if ((void *)(udp + 1) <= data_end)
-                        dest_port = bpf_ntohs(udp->dest);
-                }
+        // Derive L4 pointer directly from ip - both are already bounds-checked
+        void *l4_start = (void *)ip + ip_hdr_len;
+        if (l4_start + 8 <= data_end) {
+            if (protocol == 6) {
+                struct tcphdr *tcp = l4_start;
+                if ((void *)(tcp + 1) <= data_end)
+                    dest_port = bpf_ntohs(tcp->dest);
+            } else if (protocol == 17) {
+                struct udphdr *udp = l4_start;
+                if ((void *)(udp + 1) <= data_end)
+                    dest_port = bpf_ntohs(udp->dest);
             }
         }
         
