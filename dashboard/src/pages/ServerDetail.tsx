@@ -1,10 +1,12 @@
 import { useParams, Link } from '@tanstack/react-router'
-import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi } from 'lucide-react'
+import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal } from 'antd'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users } from 'lucide-react'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerTraffic, useDeleteServer } from '../hooks/useQueries'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useEffect, useState, useMemo } from 'react'
+import DataGrid from 'react-data-grid'
+import 'react-data-grid/lib/styles.css'
 
 const { Title, Text } = Typography
 
@@ -59,6 +61,8 @@ export default function ServerDetail() {
   const { id } = useParams({ strict: false })
   const { lastMessage, isConnected } = useWebSocket()
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [ipModalOpen, setIpModalOpen] = useState(false)
+  const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTraffic | null>(null)
   
   const { data: server, isLoading: serverLoading, error: serverError, refetch: refetchServer } = useServer(id)
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useServerStats(id)
@@ -207,10 +211,25 @@ export default function ServerDetail() {
       dataIndex: 'unique_ips',
       key: 'sources',
       width: 100,
-      render: (count) => (
-        <Tag color="blue" style={{ background: 'rgba(59, 130, 246, 0.15)', border: 'none' }}>
+      render: (count, record) => (
+        <Button
+          type="link"
+          size="small"
+          icon={<Users size={14} />}
+          onClick={() => {
+            setSelectedPortTraffic(record)
+            setIpModalOpen(true)
+          }}
+          style={{ 
+            padding: '2px 8px', 
+            height: 'auto',
+            color: '#3b82f6',
+            background: 'rgba(59, 130, 246, 0.15)',
+            borderRadius: 4,
+          }}
+        >
           {count} IP{count > 1 ? 's' : ''}
-        </Tag>
+        </Button>
       ),
     },
     {
@@ -377,16 +396,63 @@ export default function ServerDetail() {
     },
   ]
 
-  const expandedRowRender = (record: PortTraffic) => (
-    <Table
-      columns={sourceColumns}
-      dataSource={record.sources}
-      rowKey="id"
-      pagination={false}
-      size="small"
-      style={{ margin: '8px 0' }}
-    />
-  )
+  // DataGrid columns for the IP modal
+  const ipGridColumns = [
+    { key: 'source_ip', name: 'Remote IP', width: 140, frozen: true },
+    { 
+      key: 'direction', 
+      name: 'Dir', 
+      width: 70,
+      formatter: ({ row }: { row: TrafficEvent }) => (
+        row.direction === 'outbound' 
+          ? <Tag style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: 'none', fontSize: 10 }}>↑ OUT</Tag>
+          : <Tag style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', fontSize: 10 }}>↓ IN</Tag>
+      )
+    },
+    { key: 'country', name: 'Country', width: 100, formatter: ({ row }: { row: TrafficEvent }) => row.country || '-' },
+    { key: 'city', name: 'City', width: 100, formatter: ({ row }: { row: TrafficEvent }) => row.city || '-' },
+    { 
+      key: 'bytes_in', 
+      name: 'Bytes In', 
+      width: 90,
+      formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_in || 0)
+    },
+    { 
+      key: 'bytes_out', 
+      name: 'Bytes Out', 
+      width: 90,
+      formatter: ({ row }: { row: TrafficEvent }) => formatBytes(row.bytes_out || 0)
+    },
+    { 
+      key: 'syn_count', 
+      name: 'SYN', 
+      width: 60,
+      formatter: ({ row }: { row: TrafficEvent }) => (
+        <span style={{ color: row.syn_count > 10 ? '#ef4444' : 'inherit' }}>{row.syn_count}</span>
+      )
+    },
+    { key: 'ack_count', name: 'ACK', width: 60 },
+    { key: 'hit_count', name: 'Hits', width: 70 },
+    { 
+      key: 'threat_score', 
+      name: 'Score', 
+      width: 70,
+      formatter: ({ row }: { row: TrafficEvent }) => (
+        <span style={{ 
+          color: row.threat_score > 50 ? '#ef4444' : row.threat_score > 20 ? '#f59e0b' : '#10b981',
+          fontWeight: 600 
+        }}>
+          {row.threat_score}
+        </span>
+      )
+    },
+    { 
+      key: 'last_seen', 
+      name: 'Last Seen', 
+      width: 150,
+      formatter: ({ row }: { row: TrafficEvent }) => formatDate(row.last_seen)
+    },
+  ]
 
   if (loading) {
     return (
@@ -700,11 +766,7 @@ export default function ServerDetail() {
           pagination={{ pageSize: 15, size: 'small' }}
           size="small"
           scroll={{ x: 1100 }}
-          expandable={{
-            expandedRowRender,
-            rowExpandable: (record) => record.sources.length > 0,
-          }}
-          locale={{ 
+          locale:{ 
             emptyText: (
               <div style={{ padding: '60px 0', textAlign: 'center' }}>
                 <div style={{ marginBottom: 16 }}>
@@ -718,6 +780,40 @@ export default function ServerDetail() {
           }}
         />
       </Card>
+
+      {/* IP List Modal with react-data-grid */}
+      <Modal
+        title={
+          <Space>
+            <Users size={20} color="#3b82f6" />
+            <span>
+              Source IPs for Port {selectedPortTraffic?.port}/{selectedPortTraffic?.protocol}
+            </span>
+            <Badge 
+              count={selectedPortTraffic?.sources.length || 0} 
+              style={{ background: '#3b82f6' }}
+            />
+          </Space>
+        }
+        open={ipModalOpen}
+        onCancel={() => setIpModalOpen(false)}
+        footer={null}
+        width={1200}
+        style={{ top: 50 }}
+        bodyStyle={{ padding: 0, height: 600 }}
+      >
+        {selectedPortTraffic && (
+          <DataGrid
+            columns={ipGridColumns}
+            rows={selectedPortTraffic.sources}
+            rowKeyGetter={(row) => row.id}
+            style={{ height: '100%' }}
+            className="rdg-dark"
+            headerRowHeight={40}
+            rowHeight={36}
+          />
+        )}
+      </Modal>
     </div>
   )
 }

@@ -13,6 +13,7 @@
     "country-flag-icons": "^1.6.14",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
+    "react-data-grid": "^7.0.0-beta.59",
     "react-dom": "^19.2.3",
     "recharts": "^3.6.0"
   },

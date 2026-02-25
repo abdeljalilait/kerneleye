@@ -718,6 +718,47 @@ body {
   color: white;
 }
 
+/* ============================================
+   react-data-grid Dark Theme
+   ============================================ */
+
+.rdg-dark {
+  --rdg-color: var(--text-primary);
+  --rdg-border-color: var(--border-subtle);
+  --rdg-background-color: var(--bg-secondary);
+  --rdg-header-background-color: var(--bg-tertiary);
+  --rdg-row-hover-background-color: rgba(99, 102, 241, 0.1);
+  --rdg-selection-color: var(--primary-500);
+  --rdg-font-size: 13px;
+  --rdg-font-family: inherit;
+}
+
+.rdg-dark .rdg-header-row {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.rdg-dark .rdg-cell {
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+}
+
+.rdg-dark .rdg-cell-frozen {
+  background: var(--bg-secondary);
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.2);
+}
+
+.rdg-dark .rdg-row:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.rdg-dark .rdg-row:hover .rdg-cell-frozen {
+  background: rgba(99, 102, 241, 0.08);
+}
+
 /* Filter card styling */
 .blocked-filters .ant-select-selector,
 .blocked-filters .ant-input {
