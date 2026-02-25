@@ -57,7 +57,7 @@ export interface StatsOverview {
 }
 
 // WebSocket Message Types
-export type EventType = 'new_threat' | 'new_alert' | 'new_traffic' | 'stats_update' | 'new_server' | 'server_updated';
+export type EventType = 'new_threat' | 'new_alert' | 'new_traffic' | 'stats_update' | 'new_server' | 'server_updated' | 'blocked_packet';
 
 export interface WSMessage {
   type: EventType;

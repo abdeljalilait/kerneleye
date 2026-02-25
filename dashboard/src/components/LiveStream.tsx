@@ -17,6 +17,9 @@ interface TrafficLog {
   server_hostname: string
   timestamp: string
   severity: 'normal' | 'suspicious' | 'critical'
+  // Blocked packet specific fields
+  is_blocked?: boolean
+  block_reason?: 'blocklist' | 'cidr' | 'rate_limit' | 'unknown'
 }
 
 export default function LiveStream() {
@@ -45,6 +48,28 @@ export default function LiveStream() {
           server_hostname: log.server_hostname || '',
           timestamp: new Date().toLocaleTimeString([], { hour12: false }),
           severity,
+        }]
+        return newLogs.slice(-100)
+      })
+    } else if (lastMessage?.type === 'blocked_packet') {
+      // Handle XDP blocked packet events
+      const data = lastMessage.data as any
+      
+      setLogs((prev: TrafficLog[]) => {
+        const newLogs = [...prev, {
+          id: `${Date.now()}-${Math.random()}`,
+          source_ip: data.source_ip,
+          destination_ip: '',
+          destination_port: data.destination_port || 0,
+          protocol: data.protocol || 'TCP',
+          direction: 'inbound',
+          syn_count: 0,
+          server_ip: '',
+          server_hostname: data.server_hostname || '',
+          timestamp: new Date().toLocaleTimeString([], { hour12: false }),
+          severity: 'critical', // Blocked packets are always critical
+          is_blocked: true,
+          block_reason: data.reason || 'unknown',
         }]
         return newLogs.slice(-100)
       })
@@ -201,12 +226,18 @@ export default function LiveStream() {
                     padding: '0 6px',
                     fontSize: 10,
                     fontWeight: 600,
-                    background: colors.bg,
-                    color: colors.text,
+                    background: log.is_blocked ? 'rgba(239, 68, 68, 0.25)' : colors.bg,
+                    color: log.is_blocked ? '#ef4444' : colors.text,
                     border: 'none',
                   }}
                 >
-                  {log.severity === 'critical' ? 'FLAG' : log.severity === 'suspicious' ? 'WARN' : 'ALLOW'}
+                  {log.is_blocked 
+                    ? `BLOCK${log.block_reason ? ` (${log.block_reason.toUpperCase()})` : ''}` 
+                    : log.severity === 'critical' 
+                      ? 'FLAG' 
+                      : log.severity === 'suspicious' 
+                        ? 'WARN' 
+                        : 'ALLOW'}
                 </Tag>
                 
                 <span style={{ color: '#64748b' }}>{log.source_ip}</span>
