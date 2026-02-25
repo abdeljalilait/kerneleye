@@ -237,11 +237,20 @@ func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem
 		Logger.Info("\nServer deleted, shutting down...")
 	}
 	cancelAnalyzer() // Stop the analyzer cleanup goroutine
+	Logger.Debug("[Shutdown] Analyzer cancelled")
+	
 	agg.Close()      // This will flush and cleanup
+	Logger.Debug("[Shutdown] Aggregator closed")
+	
 	rd.Close()
+	Logger.Debug("[Shutdown] Ringbuf reader closed")
+	
 	if rem != nil {
+		Logger.Debug("[Shutdown] Tearing down remediator...")
 		rem.Teardown()
+		Logger.Debug("[Shutdown] Remediator torn down")
 	}
+	Logger.Info("[Shutdown] Complete, exiting...")
 	os.Exit(0)
 }
 

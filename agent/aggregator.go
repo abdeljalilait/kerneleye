@@ -531,7 +531,9 @@ func (a *Aggregator) Stop() {
 func (a *Aggregator) Close() error {
 	// Signal background goroutine to stop and wait for it to exit
 	a.Stop()
+	Logger.Debug("[Aggregator.Close] Waiting for background goroutines...")
 	a.wg.Wait()
+	Logger.Debug("[Aggregator.Close] Background goroutines stopped")
 
 	// Stop timers
 	if a.flushTicker != nil {
@@ -540,16 +542,21 @@ func (a *Aggregator) Close() error {
 	if a.heartbeatTicker != nil {
 		a.heartbeatTicker.Stop()
 	}
+	Logger.Debug("[Aggregator.Close] Timers stopped")
 
 	// Stop block command client (prevents reconnect attempts after shutdown)
 	if a.blockCmdClient != nil {
 		a.blockCmdClient.Stop()
 	}
+	Logger.Debug("[Aggregator.Close] BlockCommandClient stopped")
 
 	// Flush remaining data (safe now — goroutine has exited)
+	Logger.Debug("[Aggregator.Close] Flushing remaining data...")
 	a.FlushToAPI()
+	Logger.Debug("[Aggregator.Close] Flush complete")
 
 	// Close gRPC connection
+	Logger.Debug("[Aggregator.Close] Closing gRPC connection...")
 	a.grpcMu.Lock()
 	if a.grpcConn != nil {
 		if err := a.grpcConn.Close(); err != nil {
@@ -559,20 +566,26 @@ func (a *Aggregator) Close() error {
 		a.grpcClient = nil
 	}
 	a.grpcMu.Unlock()
+	Logger.Debug("[Aggregator.Close] gRPC connection closed")
 
 	// Close buffer database
 	if a.buffer != nil {
+		Logger.Debug("[Aggregator.Close] Closing buffer DB...")
 		if err := a.buffer.Close(); err != nil {
 			Logger.Warnf("⚠️  Error closing buffer DB: %v", err)
 		}
+		Logger.Debug("[Aggregator.Close] Buffer DB closed")
 	}
 
 	if a.history != nil {
+		Logger.Debug("[Aggregator.Close] Closing history DB...")
 		if err := a.history.Close(); err != nil {
 			Logger.Warnf("⚠️  Error closing history DB: %v", err)
 		}
+		Logger.Debug("[Aggregator.Close] History DB closed")
 	}
 
+	Logger.Info("[Aggregator] Closed successfully")
 	return nil
 }
 
