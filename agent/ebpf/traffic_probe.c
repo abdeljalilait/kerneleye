@@ -477,20 +477,22 @@ static __always_inline int emit_inbound_syn_from_ctx(struct sock *sk, struct sk_
 
 // Hook: TCP Connection Request (Incoming SYN)
 // Uses PT_REGS argument probing to tolerate kernel signature variants.
+// Note: Using non-CO-RE PT_REGS macros to avoid BTF relocation issues on some kernels.
 SEC("kprobe/tcp_v4_conn_request")
 int detect_tcp_conn_request(struct pt_regs *ctx) {
     if (!check_rate_limit())
         return 0;
 
     // Support multiple kernel signatures by probing likely (sock, skb) pairs.
-    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM1_CORE(ctx),
-                                  (struct sk_buff *)PT_REGS_PARM2_CORE(ctx)))
+    // Use standard PT_REGS_PARM* macros (not _CORE) for better compatibility.
+    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM1(ctx),
+                                  (struct sk_buff *)PT_REGS_PARM2(ctx)))
         return 0;
-    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM2_CORE(ctx),
-                                  (struct sk_buff *)PT_REGS_PARM3_CORE(ctx)))
+    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM2(ctx),
+                                  (struct sk_buff *)PT_REGS_PARM3(ctx)))
         return 0;
-    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM1_CORE(ctx),
-                                  (struct sk_buff *)PT_REGS_PARM3_CORE(ctx)))
+    if (emit_inbound_syn_from_ctx((struct sock *)PT_REGS_PARM1(ctx),
+                                  (struct sk_buff *)PT_REGS_PARM3(ctx)))
         return 0;
 
     return 0;
