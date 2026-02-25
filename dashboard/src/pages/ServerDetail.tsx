@@ -365,7 +365,7 @@ export default function ServerDetail() {
       minWidth: 75,
       width: '7%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => {
+      formatter: ({ row }: { row: PortSourceIP }) => {
         const isOutbound = row.direction === 'outbound';
         return (
           <div style={{ 
@@ -544,7 +544,7 @@ export default function ServerDetail() {
       minWidth: 75,
       width: '7%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => {
+      formatter: ({ row }: { row: PortSourceIP }) => {
         const colors = getThreatColor(row.threat_score);
         return (
           <div style={{ 
@@ -575,7 +575,7 @@ export default function ServerDetail() {
       minWidth: 140,
       width: '12%',
       sortable: true,
-      formatter: ({ row }: { row: TrafficEvent }) => {
+      formatter: ({ row }: { row: PortSourceIP }) => {
         const isRecent = new Date(row.last_seen).getTime() > Date.now() - 5 * 60 * 1000; // 5 minutes
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1021,7 +1021,7 @@ export default function ServerDetail() {
               <DataGrid
                 columns={ipGridColumns}
                 rows={filteredAndSortedRows}
-                rowKeyGetter={(row) => row.id}
+                rowKeyGetter={(row) => `${row.source_ip}-${row.destination_port || 0}`}
                 style={{ height: '100%', width: '100%' }}
                 className="rdg-dark"
                 headerRowHeight={40}
