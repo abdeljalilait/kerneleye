@@ -21,7 +21,7 @@ char __license[] SEC("license") = "GPL";
 
 #define ENABLE_CIDR_BLOCKING    // LPM Trie for IP range drops
 #define ENABLE_RATE_LIMITING    // Per-IP PPS/BPS tracking
-// #define ENABLE_IPV6          // IPv6 support (disabled for performance)
+#define ENABLE_IPV6             // IPv6 support
 
 // ============================================
 // Constants
