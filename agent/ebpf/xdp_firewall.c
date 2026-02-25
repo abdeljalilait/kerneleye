@@ -410,6 +410,12 @@ int xdp_firewall(struct xdp_md *ctx) {
             return XDP_PASS;
         }
         
+        // Check version first
+        if (ip->version != 4) {
+            update_stats(STATS_ERRORS, pkt_len);
+            return XDP_PASS;
+        }
+        
         __u8 ihl = ip->ihl & 0x0f;
         
         // Validate the RESULT of the multiplication, not just ihl
