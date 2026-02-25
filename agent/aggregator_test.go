@@ -25,6 +25,10 @@ func (r *recordingRemediator) RateLimit(_ net.IP, _ time.Duration) error {
 	return nil
 }
 
+func (r *recordingRemediator) Unblock(_ net.IP, _ remediation.BlockType) error {
+	return nil
+}
+
 func (r *recordingRemediator) Teardown() error { return nil }
 
 func TestTrackedPortForEvent(t *testing.T) {
