@@ -25,6 +25,9 @@ service IngestService {
 
   // Agent reports blocked IP events
   rpc ReportBlockedIP(BlockedIPEvent) returns (BlockedIPResponse);
+  
+  // Agent reports XDP blocked packet events (real-time)
+  rpc ReportBlockedPacket(BlockedPacketEvent) returns (BlockedPacketResponse);
 }
 
 message RegisterRequest {
@@ -228,5 +231,39 @@ message BlockedIPEvent {
 }
 
 message BlockedIPResponse {
+  bool success = 1;
+}
+
+// ============================================
+// XDP Blocked Packet Events (Real-time)
+// ============================================
+
+message BlockedPacketEvent {
+  string api_key = 1;
+  string server_id = 2;
+  
+  string source_ip = 3;
+  uint32 destination_port = 4;
+  Protocol protocol = 5;
+  
+  // Reason why packet was blocked
+  BlockReason reason = 6;
+  
+  // Timestamps
+  google.protobuf.Timestamp timestamp = 7;
+  uint64 timestamp_ns = 8;  // Raw nanoseconds from BPF
+  
+  // Optional: packet size info
+  uint32 packet_size = 9;
+}
+
+enum BlockReason {
+  BLOCK_REASON_UNKNOWN = 0;
+  BLOCK_REASON_BLOCKLIST = 1;    // IP was in blocklist
+  BLOCK_REASON_CIDR = 2;         // IP matched CIDR range
+  BLOCK_REASON_RATE_LIMIT = 3;   // Rate limit exceeded
+}
+
+message BlockedPacketResponse {
   bool success = 1;
 }

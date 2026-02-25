@@ -328,6 +328,58 @@ func (BlockAction) EnumDescriptor() ([]byte, []int) {
 	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{5}
 }
 
+type BlockReason int32
+
+const (
+	BlockReason_BLOCK_REASON_UNKNOWN    BlockReason = 0
+	BlockReason_BLOCK_REASON_BLOCKLIST  BlockReason = 1 // IP was in blocklist
+	BlockReason_BLOCK_REASON_CIDR       BlockReason = 2 // IP matched CIDR range
+	BlockReason_BLOCK_REASON_RATE_LIMIT BlockReason = 3 // Rate limit exceeded
+)
+
+// Enum value maps for BlockReason.
+var (
+	BlockReason_name = map[int32]string{
+		0: "BLOCK_REASON_UNKNOWN",
+		1: "BLOCK_REASON_BLOCKLIST",
+		2: "BLOCK_REASON_CIDR",
+		3: "BLOCK_REASON_RATE_LIMIT",
+	}
+	BlockReason_value = map[string]int32{
+		"BLOCK_REASON_UNKNOWN":    0,
+		"BLOCK_REASON_BLOCKLIST":  1,
+		"BLOCK_REASON_CIDR":       2,
+		"BLOCK_REASON_RATE_LIMIT": 3,
+	}
+)
+
+func (x BlockReason) Enum() *BlockReason {
+	p := new(BlockReason)
+	*p = x
+	return p
+}
+
+func (x BlockReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BlockReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_kerneleye_v1_ingest_proto_enumTypes[6].Descriptor()
+}
+
+func (BlockReason) Type() protoreflect.EnumType {
+	return &file_kerneleye_v1_ingest_proto_enumTypes[6]
+}
+
+func (x BlockReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BlockReason.Descriptor instead.
+func (BlockReason) EnumDescriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{6}
+}
+
 type RegisterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -1493,6 +1545,161 @@ func (x *BlockedIPResponse) GetSuccess() bool {
 	return false
 }
 
+type BlockedPacketEvent struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ApiKey          string                 `protobuf:"bytes,1,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	ServerId        string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	SourceIp        string                 `protobuf:"bytes,3,opt,name=source_ip,json=sourceIp,proto3" json:"source_ip,omitempty"`
+	DestinationPort uint32                 `protobuf:"varint,4,opt,name=destination_port,json=destinationPort,proto3" json:"destination_port,omitempty"`
+	Protocol        Protocol               `protobuf:"varint,5,opt,name=protocol,proto3,enum=kerneleye.v1.Protocol" json:"protocol,omitempty"`
+	// Reason why packet was blocked
+	Reason BlockReason `protobuf:"varint,6,opt,name=reason,proto3,enum=kerneleye.v1.BlockReason" json:"reason,omitempty"`
+	// Timestamps
+	Timestamp   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	TimestampNs uint64                 `protobuf:"varint,8,opt,name=timestamp_ns,json=timestampNs,proto3" json:"timestamp_ns,omitempty"` // Raw nanoseconds from BPF
+	// Optional: packet size info
+	PacketSize    uint32 `protobuf:"varint,9,opt,name=packet_size,json=packetSize,proto3" json:"packet_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockedPacketEvent) Reset() {
+	*x = BlockedPacketEvent{}
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockedPacketEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockedPacketEvent) ProtoMessage() {}
+
+func (x *BlockedPacketEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockedPacketEvent.ProtoReflect.Descriptor instead.
+func (*BlockedPacketEvent) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *BlockedPacketEvent) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+func (x *BlockedPacketEvent) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BlockedPacketEvent) GetSourceIp() string {
+	if x != nil {
+		return x.SourceIp
+	}
+	return ""
+}
+
+func (x *BlockedPacketEvent) GetDestinationPort() uint32 {
+	if x != nil {
+		return x.DestinationPort
+	}
+	return 0
+}
+
+func (x *BlockedPacketEvent) GetProtocol() Protocol {
+	if x != nil {
+		return x.Protocol
+	}
+	return Protocol_PROTOCOL_UNKNOWN
+}
+
+func (x *BlockedPacketEvent) GetReason() BlockReason {
+	if x != nil {
+		return x.Reason
+	}
+	return BlockReason_BLOCK_REASON_UNKNOWN
+}
+
+func (x *BlockedPacketEvent) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *BlockedPacketEvent) GetTimestampNs() uint64 {
+	if x != nil {
+		return x.TimestampNs
+	}
+	return 0
+}
+
+func (x *BlockedPacketEvent) GetPacketSize() uint32 {
+	if x != nil {
+		return x.PacketSize
+	}
+	return 0
+}
+
+type BlockedPacketResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockedPacketResponse) Reset() {
+	*x = BlockedPacketResponse{}
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockedPacketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockedPacketResponse) ProtoMessage() {}
+
+func (x *BlockedPacketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kerneleye_v1_ingest_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockedPacketResponse.ProtoReflect.Descriptor instead.
+func (*BlockedPacketResponse) Descriptor() ([]byte, []int) {
+	return file_kerneleye_v1_ingest_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *BlockedPacketResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_kerneleye_v1_ingest_proto protoreflect.FileDescriptor
 
 const file_kerneleye_v1_ingest_proto_rawDesc = "" +
@@ -1604,6 +1811,19 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\n" +
 	"blocked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tblockedAt\"-\n" +
 	"\x11BlockedIPResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xf7\x02\n" +
+	"\x12BlockedPacketEvent\x12\x17\n" +
+	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12\x1b\n" +
+	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x1b\n" +
+	"\tsource_ip\x18\x03 \x01(\tR\bsourceIp\x12)\n" +
+	"\x10destination_port\x18\x04 \x01(\rR\x0fdestinationPort\x122\n" +
+	"\bprotocol\x18\x05 \x01(\x0e2\x16.kerneleye.v1.ProtocolR\bprotocol\x121\n" +
+	"\x06reason\x18\x06 \x01(\x0e2\x19.kerneleye.v1.BlockReasonR\x06reason\x128\n" +
+	"\ttimestamp\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12!\n" +
+	"\ftimestamp_ns\x18\b \x01(\x04R\vtimestampNs\x12\x1f\n" +
+	"\vpacket_size\x18\t \x01(\rR\n" +
+	"packetSize\"1\n" +
+	"\x15BlockedPacketResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess*_\n" +
 	"\vThreatLevel\x12\x17\n" +
 	"\x13THREAT_LEVEL_NORMAL\x10\x00\x12\x1b\n" +
@@ -1633,14 +1853,20 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\vBlockAction\x12\x16\n" +
 	"\x12BLOCK_ACTION_ALLOW\x10\x00\x12\x16\n" +
 	"\x12BLOCK_ACTION_BLOCK\x10\x01\x12\x1b\n" +
-	"\x17BLOCK_ACTION_RATE_LIMIT\x10\x022\xe5\x03\n" +
+	"\x17BLOCK_ACTION_RATE_LIMIT\x10\x02*w\n" +
+	"\vBlockReason\x12\x18\n" +
+	"\x14BLOCK_REASON_UNKNOWN\x10\x00\x12\x1a\n" +
+	"\x16BLOCK_REASON_BLOCKLIST\x10\x01\x12\x15\n" +
+	"\x11BLOCK_REASON_CIDR\x10\x02\x12\x1b\n" +
+	"\x17BLOCK_REASON_RATE_LIMIT\x10\x032\xc3\x04\n" +
 	"\rIngestService\x12L\n" +
 	"\tHeartbeat\x12\x1e.kerneleye.v1.HeartbeatRequest\x1a\x1f.kerneleye.v1.HeartbeatResponse\x12J\n" +
 	"\rSubmitTraffic\x12\x1a.kerneleye.v1.TrafficBatch\x1a\x1d.kerneleye.v1.TrafficResponse\x12I\n" +
 	"\bRegister\x12\x1d.kerneleye.v1.RegisterRequest\x1a\x1e.kerneleye.v1.RegisterResponse\x12L\n" +
 	"\tGetStatus\x12\x1e.kerneleye.v1.GetStatusRequest\x1a\x1f.kerneleye.v1.GetStatusResponse\x12O\n" +
 	"\fGetBlockList\x12\x1e.kerneleye.v1.BlockListRequest\x1a\x1f.kerneleye.v1.BlockListResponse\x12P\n" +
-	"\x0fReportBlockedIP\x12\x1c.kerneleye.v1.BlockedIPEvent\x1a\x1f.kerneleye.v1.BlockedIPResponseB<Z:github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1b\x06proto3"
+	"\x0fReportBlockedIP\x12\x1c.kerneleye.v1.BlockedIPEvent\x1a\x1f.kerneleye.v1.BlockedIPResponse\x12\\\n" +
+	"\x13ReportBlockedPacket\x12 .kerneleye.v1.BlockedPacketEvent\x1a#.kerneleye.v1.BlockedPacketResponseB<Z:github.com/kerneleye/proto/gen/go/kerneleye/v1;kerneleyev1b\x06proto3"
 
 var (
 	file_kerneleye_v1_ingest_proto_rawDescOnce sync.Once
@@ -1654,8 +1880,8 @@ func file_kerneleye_v1_ingest_proto_rawDescGZIP() []byte {
 	return file_kerneleye_v1_ingest_proto_rawDescData
 }
 
-var file_kerneleye_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_kerneleye_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_kerneleye_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
+var file_kerneleye_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_kerneleye_v1_ingest_proto_goTypes = []any{
 	(ThreatLevel)(0),              // 0: kerneleye.v1.ThreatLevel
 	(ThreatType)(0),               // 1: kerneleye.v1.ThreatType
@@ -1663,60 +1889,68 @@ var file_kerneleye_v1_ingest_proto_goTypes = []any{
 	(Direction)(0),                // 3: kerneleye.v1.Direction
 	(Severity)(0),                 // 4: kerneleye.v1.Severity
 	(BlockAction)(0),              // 5: kerneleye.v1.BlockAction
-	(*RegisterRequest)(nil),       // 6: kerneleye.v1.RegisterRequest
-	(*RegisterResponse)(nil),      // 7: kerneleye.v1.RegisterResponse
-	(*GetStatusRequest)(nil),      // 8: kerneleye.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),     // 9: kerneleye.v1.GetStatusResponse
-	(*HeartbeatRequest)(nil),      // 10: kerneleye.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),     // 11: kerneleye.v1.HeartbeatResponse
-	(*ConfigUpdate)(nil),          // 12: kerneleye.v1.ConfigUpdate
-	(*TrafficBatch)(nil),          // 13: kerneleye.v1.TrafficBatch
-	(*ConnectionEvent)(nil),       // 14: kerneleye.v1.ConnectionEvent
-	(*TrafficResponse)(nil),       // 15: kerneleye.v1.TrafficResponse
-	(*Alert)(nil),                 // 16: kerneleye.v1.Alert
-	(*BlockListRequest)(nil),      // 17: kerneleye.v1.BlockListRequest
-	(*BlockListResponse)(nil),     // 18: kerneleye.v1.BlockListResponse
-	(*BlockDirective)(nil),        // 19: kerneleye.v1.BlockDirective
-	(*BlockedIPEvent)(nil),        // 20: kerneleye.v1.BlockedIPEvent
-	(*BlockedIPResponse)(nil),     // 21: kerneleye.v1.BlockedIPResponse
-	(*timestamppb.Timestamp)(nil), // 22: google.protobuf.Timestamp
+	(BlockReason)(0),              // 6: kerneleye.v1.BlockReason
+	(*RegisterRequest)(nil),       // 7: kerneleye.v1.RegisterRequest
+	(*RegisterResponse)(nil),      // 8: kerneleye.v1.RegisterResponse
+	(*GetStatusRequest)(nil),      // 9: kerneleye.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),     // 10: kerneleye.v1.GetStatusResponse
+	(*HeartbeatRequest)(nil),      // 11: kerneleye.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),     // 12: kerneleye.v1.HeartbeatResponse
+	(*ConfigUpdate)(nil),          // 13: kerneleye.v1.ConfigUpdate
+	(*TrafficBatch)(nil),          // 14: kerneleye.v1.TrafficBatch
+	(*ConnectionEvent)(nil),       // 15: kerneleye.v1.ConnectionEvent
+	(*TrafficResponse)(nil),       // 16: kerneleye.v1.TrafficResponse
+	(*Alert)(nil),                 // 17: kerneleye.v1.Alert
+	(*BlockListRequest)(nil),      // 18: kerneleye.v1.BlockListRequest
+	(*BlockListResponse)(nil),     // 19: kerneleye.v1.BlockListResponse
+	(*BlockDirective)(nil),        // 20: kerneleye.v1.BlockDirective
+	(*BlockedIPEvent)(nil),        // 21: kerneleye.v1.BlockedIPEvent
+	(*BlockedIPResponse)(nil),     // 22: kerneleye.v1.BlockedIPResponse
+	(*BlockedPacketEvent)(nil),    // 23: kerneleye.v1.BlockedPacketEvent
+	(*BlockedPacketResponse)(nil), // 24: kerneleye.v1.BlockedPacketResponse
+	(*timestamppb.Timestamp)(nil), // 25: google.protobuf.Timestamp
 }
 var file_kerneleye_v1_ingest_proto_depIdxs = []int32{
-	12, // 0: kerneleye.v1.HeartbeatResponse.config:type_name -> kerneleye.v1.ConfigUpdate
-	22, // 1: kerneleye.v1.TrafficBatch.timestamp_start:type_name -> google.protobuf.Timestamp
-	22, // 2: kerneleye.v1.TrafficBatch.timestamp_end:type_name -> google.protobuf.Timestamp
-	14, // 3: kerneleye.v1.TrafficBatch.events:type_name -> kerneleye.v1.ConnectionEvent
+	13, // 0: kerneleye.v1.HeartbeatResponse.config:type_name -> kerneleye.v1.ConfigUpdate
+	25, // 1: kerneleye.v1.TrafficBatch.timestamp_start:type_name -> google.protobuf.Timestamp
+	25, // 2: kerneleye.v1.TrafficBatch.timestamp_end:type_name -> google.protobuf.Timestamp
+	15, // 3: kerneleye.v1.TrafficBatch.events:type_name -> kerneleye.v1.ConnectionEvent
 	2,  // 4: kerneleye.v1.ConnectionEvent.protocol:type_name -> kerneleye.v1.Protocol
-	22, // 5: kerneleye.v1.ConnectionEvent.first_seen:type_name -> google.protobuf.Timestamp
-	22, // 6: kerneleye.v1.ConnectionEvent.last_seen:type_name -> google.protobuf.Timestamp
+	25, // 5: kerneleye.v1.ConnectionEvent.first_seen:type_name -> google.protobuf.Timestamp
+	25, // 6: kerneleye.v1.ConnectionEvent.last_seen:type_name -> google.protobuf.Timestamp
 	3,  // 7: kerneleye.v1.ConnectionEvent.direction:type_name -> kerneleye.v1.Direction
 	0,  // 8: kerneleye.v1.ConnectionEvent.threat_level:type_name -> kerneleye.v1.ThreatLevel
 	1,  // 9: kerneleye.v1.ConnectionEvent.threat_type:type_name -> kerneleye.v1.ThreatType
-	16, // 10: kerneleye.v1.TrafficResponse.alerts:type_name -> kerneleye.v1.Alert
+	17, // 10: kerneleye.v1.TrafficResponse.alerts:type_name -> kerneleye.v1.Alert
 	4,  // 11: kerneleye.v1.Alert.severity:type_name -> kerneleye.v1.Severity
-	22, // 12: kerneleye.v1.BlockListRequest.since:type_name -> google.protobuf.Timestamp
-	19, // 13: kerneleye.v1.BlockListResponse.directives:type_name -> kerneleye.v1.BlockDirective
+	25, // 12: kerneleye.v1.BlockListRequest.since:type_name -> google.protobuf.Timestamp
+	20, // 13: kerneleye.v1.BlockListResponse.directives:type_name -> kerneleye.v1.BlockDirective
 	5,  // 14: kerneleye.v1.BlockDirective.action:type_name -> kerneleye.v1.BlockAction
-	22, // 15: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
+	25, // 15: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
 	5,  // 16: kerneleye.v1.BlockedIPEvent.action:type_name -> kerneleye.v1.BlockAction
-	22, // 17: kerneleye.v1.BlockedIPEvent.blocked_at:type_name -> google.protobuf.Timestamp
-	10, // 18: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
-	13, // 19: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
-	6,  // 20: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
-	8,  // 21: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
-	17, // 22: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
-	20, // 23: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
-	11, // 24: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
-	15, // 25: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
-	7,  // 26: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
-	9,  // 27: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
-	18, // 28: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
-	21, // 29: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
-	24, // [24:30] is the sub-list for method output_type
-	18, // [18:24] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	25, // 17: kerneleye.v1.BlockedIPEvent.blocked_at:type_name -> google.protobuf.Timestamp
+	2,  // 18: kerneleye.v1.BlockedPacketEvent.protocol:type_name -> kerneleye.v1.Protocol
+	6,  // 19: kerneleye.v1.BlockedPacketEvent.reason:type_name -> kerneleye.v1.BlockReason
+	25, // 20: kerneleye.v1.BlockedPacketEvent.timestamp:type_name -> google.protobuf.Timestamp
+	11, // 21: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
+	14, // 22: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
+	7,  // 23: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
+	9,  // 24: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
+	18, // 25: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
+	21, // 26: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
+	23, // 27: kerneleye.v1.IngestService.ReportBlockedPacket:input_type -> kerneleye.v1.BlockedPacketEvent
+	12, // 28: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
+	16, // 29: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
+	8,  // 30: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
+	10, // 31: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
+	19, // 32: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
+	22, // 33: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
+	24, // 34: kerneleye.v1.IngestService.ReportBlockedPacket:output_type -> kerneleye.v1.BlockedPacketResponse
+	28, // [28:35] is the sub-list for method output_type
+	21, // [21:28] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_kerneleye_v1_ingest_proto_init() }
@@ -1731,8 +1965,8 @@ func file_kerneleye_v1_ingest_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kerneleye_v1_ingest_proto_rawDesc), len(file_kerneleye_v1_ingest_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   16,
+			NumEnums:      7,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
