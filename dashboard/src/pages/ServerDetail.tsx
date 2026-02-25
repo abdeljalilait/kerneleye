@@ -766,7 +766,7 @@ export default function ServerDetail() {
           pagination={{ pageSize: 15, size: 'small' }}
           size="small"
           scroll={{ x: 1100 }}
-          locale:{ 
+          locale={{ 
             emptyText: (
               <div style={{ padding: '60px 0', textAlign: 'center' }}>
                 <div style={{ marginBottom: 16 }}>
