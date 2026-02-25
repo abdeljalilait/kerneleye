@@ -208,13 +208,10 @@ func main() {
 				go func() {
 					ticker := time.NewTicker(1 * time.Minute)
 					defer ticker.Stop()
-					for {
-						select {
-						case <-ticker.C:
-							if blockCmdClient.IsConnected() {
-								if err := blockCmdClient.Reconcile(context.Background()); err != nil {
-									Logger.Warnf("⚠️  Failed to reconcile block list: %v", err)
-								}
+					for range ticker.C {
+						if blockCmdClient.IsConnected() {
+							if err := blockCmdClient.Reconcile(context.Background()); err != nil {
+								Logger.Warnf("⚠️  Failed to reconcile block list: %v", err)
 							}
 						}
 					}
