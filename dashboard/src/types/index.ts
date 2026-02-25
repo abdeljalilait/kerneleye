@@ -101,6 +101,8 @@ export interface PaginatedResponse<T> {
 // Port Traffic (aggregated by port/protocol)
 export interface PortSourceIP {
   source_ip: string;
+  destination_port?: number;
+  destination_ip?: string | null;
   bytes_in: number;
   bytes_out: number;
   syn_count: number;
@@ -119,6 +121,22 @@ export interface PortTraffic {
   port: number;
   protocol: string;
   unique_ips: number;
+  total_bytes_in: number;
+  total_bytes_out: number;
+  total_hits: number;
+  total_syn: number;
+  total_ack: number;
+  max_threat_score: number;
+  max_threat_level: string;
+  last_seen: string;
+  sources: PortSourceIP[];
+}
+
+// Protocol Traffic (aggregated by protocol only)
+export interface ProtocolTraffic {
+  protocol: string;
+  unique_ips: number;
+  unique_ports: number;
   total_bytes_in: number;
   total_bytes_out: number;
   total_hits: number;

@@ -210,6 +210,7 @@ type PortTrafficResponse struct {
 type PortSourceIP struct {
 	SourceIP        string    `json:"source_ip"`
 	DestinationPort int32     `json:"destination_port,omitempty"`
+	DestinationIP   *string   `json:"destination_ip,omitempty"`
 	BytesIn         int64     `json:"bytes_in"`
 	BytesOut        int64     `json:"bytes_out"`
 	SynCount        int32     `json:"syn_count"`
@@ -549,6 +550,9 @@ func HandleServerProtocolTraffic(queries *database.Queries) fiber.Handler {
 							ThreatScore:     getInt32(raw, "threat_score"),
 							ThreatLevel:     getString(raw, "threat_level"),
 							Direction:       getString(raw, "direction"),
+						}
+						if destIP, ok := raw["destination_ip"].(string); ok && destIP != "" {
+							source.DestinationIP = &destIP
 						}
 						if country, ok := raw["country"].(string); ok && country != "" {
 							source.Country = &country

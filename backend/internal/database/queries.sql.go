@@ -2303,6 +2303,7 @@ SELECT
         jsonb_agg(
             DISTINCT jsonb_build_object(
                 'source_ip', source_ip,
+                'destination_ip', destination_ip,
                 'bytes_in', bytes_in,
                 'bytes_out', bytes_out,
                 'syn_count', syn_count,
@@ -2421,6 +2422,7 @@ SELECT
             DISTINCT jsonb_build_object(
                 'source_ip', source_ip,
                 'destination_port', destination_port,
+                'destination_ip', destination_ip,
                 'bytes_in', bytes_in,
                 'bytes_out', bytes_out,
                 'syn_count', syn_count,

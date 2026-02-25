@@ -21,7 +21,7 @@ const formatDate = (date: string | null | undefined): string => {
 
 
 
-interface PortTrafficRow extends PortTraffic {
+interface PortTrafficWithKey extends PortTraffic {
   key: string
 }
 
@@ -30,7 +30,7 @@ export default function ServerDetail() {
   const { lastMessage, isConnected } = useWebSocket()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [ipModalOpen, setIpModalOpen] = useState(false)
-  const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTrafficRow | null>(null)
+  const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTraffic | null>(null)
   const [ipFilter, setIpFilter] = useState('')
   const [sortColumns, setSortColumns] = useState<readonly SortColumn[]>([])
   
@@ -38,7 +38,7 @@ export default function ServerDetail() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useServerStats(id)
   const [trafficParams, setTrafficParams] = useState({ page: 1, page_size: 50, search: '', sort_by: 'last_seen' })
   const { data: trafficResponse, isLoading: trafficLoading, refetch: refetchTraffic } = useServerPortTraffic(id, trafficParams)
-  const portTraffic: PortTrafficRow[] = useMemo(() => {
+  const portTraffic: PortTrafficWithKey[] = useMemo(() => {
     return (trafficResponse?.data || []).map(p => ({
       ...p,
       key: `${p.port}-${p.protocol}`,
@@ -234,99 +234,6 @@ export default function ServerDetail() {
       width: 170,
       sorter: (a, b) => new Date(a.last_seen).getTime() - new Date(b.last_seen).getTime(),
       defaultSortOrder: 'descend',
-    },
-  ]
-
-  const sourceColumns: ColumnsType<PortSourceIP> = [
-    {
-      title: 'Remote IP',
-      key: 'remote_ip',
-      width: 150,
-      render: (_: unknown, record: PortSourceIP) => {
-        const remoteIP = record.direction === 'outbound' ? (record.destination_ip || record.source_ip) : record.source_ip
-        const isYou = server?.ip_address && remoteIP === server.ip_address
-        return (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Text code style={{ fontSize: 13, background: 'var(--bg-tertiary)' }}>{remoteIP}</Text>
-            {isYou && <Tag color="purple" style={{ margin: 0, fontSize: 10 }}>YOU</Tag>}
-          </span>
-        )
-      },
-    },
-    {
-      title: 'Dir',
-      dataIndex: 'direction',
-      key: 'direction',
-      width: 80,
-      render: (dir: string) => (
-        dir === 'outbound' 
-          ? <Tag style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: 'none' }}>↑ OUT</Tag>
-          : <Tag style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none' }}>↓ IN</Tag>
-      ),
-    },
-    {
-      title: 'Location',
-      key: 'location',
-      width: 150,
-      render: (_, record) => (
-        <Space size={4}>
-          <MapPin size={12} style={{ opacity: 0.5 }} />
-          <span>
-            {record.country ? <Text style={{ color: 'var(--text-secondary)' }}>{record.country}</Text> : <Text type="secondary">-</Text>}
-            {record.city && <Text type="secondary"> / {record.city}</Text>}
-          </span>
-        </Space>
-      ),
-    },
-    {
-      title: 'Bytes In',
-      dataIndex: 'bytes_in',
-      key: 'bytes_in',
-      width: 100,
-      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
-    },
-    {
-      title: 'Bytes Out',
-      dataIndex: 'bytes_out',
-      key: 'bytes_out',
-      width: 100,
-      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
-    },
-    {
-      title: 'SYN/ACK',
-      key: 'syn_ack',
-      width: 90,
-      render: (_, record) => (
-        <span>
-          <Text style={{ color: record.syn_count > 10 ? '#ef4444' : 'var(--text-secondary)' }}>{record.syn_count}</Text>
-          <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
-          {record.ack_count}
-        </span>
-      ),
-    },
-    {
-      title: 'Hits',
-      dataIndex: 'hit_count',
-      key: 'hits',
-      width: 70,
-    },
-    {
-      title: 'Score',
-      dataIndex: 'threat_score',
-      key: 'score',
-      width: 70,
-      render: (score) => (
-        <Text style={{ color: score > 50 ? '#ef4444' : score > 20 ? '#f59e0b' : '#10b981', fontWeight: 600 }}>
-          {score}
-        </Text>
-      ),
-    },
-    {
-      title: 'Last Seen',
-      dataIndex: 'last_seen',
-      key: 'last_seen',
-      width: 160,
-      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{formatDate(date)}</Text>,
     },
   ]
 

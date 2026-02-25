@@ -264,7 +264,17 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		log.Printf("[BlockManager] Failed to create alert for %s: %v", ipStr, err)
 	}
 
-	bm.sendBlockCommand(ipStr, duration, row.ThreatType, block.ID.String())
+	// Determine block type based on threat score
+	blockType := "blocklist"
+	if row.ThreatScore >= 50 && row.ThreatScore < 70 {
+		blockType = "ratelimit"
+	} else if row.ThreatScore >= 70 {
+		blockType = "blocklist"
+	} else {
+		blockType = "ratelimit"
+	}
+
+	bm.sendBlockCommand(ipStr, duration, row.ThreatType, blockType, block.ID.String())
 
 	if bm.hub != nil && row.UserID.Valid {
 		bm.hub.BroadcastToUser(database.FromPgUUID(row.UserID), "new_block", map[string]interface{}{
@@ -276,7 +286,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 			"threat_type":  row.ThreatType,
 			"duration":     duration.Seconds(),
 			"expires_at":   expiresAt,
-			"block_type":   "blocklist",
+			"block_type":   blockType,
 		})
 	}
 
@@ -284,7 +294,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ipStr, row.ThreatScore, duration)
 }
 
-func (bm *BlockManager) sendBlockCommand(ip string, duration time.Duration, reason, blockID string) {
+func (bm *BlockManager) sendBlockCommand(ip string, duration time.Duration, reason, blockType, blockID string) {
 	if bm.hub == nil {
 		return
 	}
@@ -300,11 +310,12 @@ func (bm *BlockManager) sendBlockCommand(ip string, duration time.Duration, reas
 	agentID := block.ServerID.String()
 
 	bm.hub.SendCommandToAgent(agentID, map[string]interface{}{
-		"action":   "block",
-		"ip":       ip,
-		"duration": int64(duration.Seconds()),
-		"reason":   reason,
-		"block_id": blockID,
+		"action":     "block",
+		"ip":         ip,
+		"duration":   int64(duration.Seconds()),
+		"reason":     reason,
+		"block_id":   blockID,
+		"block_type": blockType,
 	})
 }
 
