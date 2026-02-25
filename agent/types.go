@@ -5,17 +5,32 @@ import (
 	"time"
 )
 
-// Event matches the C struct in traffic_probe.c
+// Event matches the C struct event_t in traffic_probe.c (84 bytes)
+// C struct layout:
+//   - saddr: 16 bytes (union of uint32 and in6_addr)
+//   - daddr: 16 bytes (union of uint32 and in6_addr)
+//   - lport: 2 bytes
+//   - rport: 2 bytes
+//   - family: 2 bytes
+//   - protocol: 1 byte
+//   - flags: 1 byte
+//   - direction: 1 byte
+//   - _pad: 1 byte + 6 bytes padding (to align timestamp to 8 bytes)
+//   - timestamp: 8 bytes
+//   - pid: 4 bytes
+//   - tgid: 4 bytes
+//   - uid: 4 bytes
+//   - comm: 16 bytes
 type Event struct {
-	Saddr     uint32
-	Daddr     uint32
+	Saddr     [16]byte // 16-byte union (IPv4 uses first 4 bytes, IPv6 uses all 16)
+	Daddr     [16]byte // 16-byte union (IPv4 uses first 4 bytes, IPv6 uses all 16)
 	Lport     uint16
 	Rport     uint16
 	Family    uint16
 	Protocol  uint8
 	Flags     uint8
 	Direction uint8
-	_         [3]byte // Alignment padding
+	_         [7]byte // Padding: 1 byte explicit + 6 bytes to align timestamp to offset 48
 	Timestamp uint64
 	Pid       uint32
 	Tgid      uint32

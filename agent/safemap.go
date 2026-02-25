@@ -55,12 +55,13 @@ func (s *SafeStats) Set(ip string, stats *IPStats) {
 }
 
 // GetOrCreate returns existing stats or creates new ones atomically
+// The second return value indicates if the entry was newly created (first time we've seen this IP)
 // Enforces maxItems limit by evicting oldest entry if at capacity
-func (s *SafeStats) GetOrCreate(ip string, creator func() *IPStats) *IPStats {
+func (s *SafeStats) GetOrCreate(ip string, creator func() *IPStats) (*IPStats, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if stats, ok := s.items[ip]; ok {
-		return stats
+		return stats, false
 	}
 
 	// Enforce capacity limit
@@ -82,7 +83,7 @@ func (s *SafeStats) GetOrCreate(ip string, creator func() *IPStats) *IPStats {
 
 	stats := creator()
 	s.items[ip] = stats
-	return stats
+	return stats, true
 }
 
 // Len returns the number of entries (read lock)

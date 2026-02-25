@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/link"
 	"github.com/vishvananda/netlink"
@@ -73,6 +75,7 @@ func loadBPFObjectsWithInboundSynFallback(objects *bpfObjects) (inboundSynProbeS
 		}
 
 		if err := spec.LoadAndAssign(objects, nil); err == nil {
+			Logger.Info("✅ eBPF objects loaded successfully")
 			if status.ConnRequestDisabled {
 				Logger.Warn("⚠️  detect_tcp_conn_request was disabled due to kernel verifier rejection")
 			}
@@ -81,6 +84,7 @@ func loadBPFObjectsWithInboundSynFallback(objects *bpfObjects) (inboundSynProbeS
 			}
 			return status, nil
 		} else {
+			Logger.Warnf("⚠️  eBPF load attempt %d failed: %v", attempt+1, err)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -131,6 +135,14 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Initialize rate_limiter map (required for event rate limiting)
+	// The BPF code expects this map to be initialized with zero values
+	if err := initRateLimiterMap(res.Objects.RateLimiter); err != nil {
+		Logger.Warnf("⚠️  Failed to initialize rate limiter map: %v", err)
+		// Non-fatal, continue without rate limiting
+	}
+
 	var linkErr error
 
 	// TCP Accept (incoming connections)
@@ -139,6 +151,7 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 		res.Close()
 		return nil, linkErr
 	}
+	Logger.Info("✅ TCP accept probe attached: inet_csk_accept")
 
 	// Prefer tcp_v4_conn_request kprobe for inbound SYNs.
 	if !synProbeStatus.ConnRequestDisabled {
@@ -152,6 +165,7 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 
 	// Fallback: tracepoint-based inbound SYN detection.
 	if res.KpConnRequest == nil && !synProbeStatus.TracepointDisabled {
+		Logger.Info("🔄 Attempting tracepoint attachment: sock:inet_sock_set_state")
 		res.KpConnRequest, linkErr = link.Tracepoint("sock", "inet_sock_set_state", res.Objects.DetectInboundSyn, nil)
 		if linkErr != nil {
 			Logger.Warnf("⚠️  tracepoint sock:inet_sock_set_state not available (non-critical): %v", linkErr)
@@ -174,12 +188,15 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 		res.Close()
 		return nil, linkErr
 	}
+	Logger.Info("✅ TCP connect probe attached: tcp_connect")
 
 	// TCP State Change (clean SYN tracker on ESTABLISHED)
 	res.KpSetState, linkErr = link.Kprobe("tcp_set_state", res.Objects.DetectTcpStateChange, nil)
 	if linkErr != nil {
 		Logger.Warnf("⚠️  tcp_set_state probe not available (non-critical): %v", linkErr)
 		// Non-fatal: tcp_close will still clean up, just less efficiently
+	} else {
+		Logger.Info("✅ TCP state probe attached: tcp_set_state")
 	}
 
 	// TCP Close (detect failed handshakes)
@@ -188,13 +205,18 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 		res.Close()
 		return nil, linkErr
 	}
+	Logger.Info("✅ TCP close probe attached: tcp_close")
 
 	// UDP Receive
 	res.KpUdpRecv, linkErr = link.Kprobe("udp_recvmsg", res.Objects.DetectUdpRecv, nil)
 	if linkErr != nil {
 		Logger.Warnf("⚠️  udp_recvmsg probe not available (non-critical): %v", linkErr)
 		// Non-fatal: UDP monitoring optional
+	} else {
+		Logger.Info("✅ UDP recv probe attached: udp_recvmsg")
 	}
+
+	Logger.Infof("✅ All traffic probe attachments complete")
 
 	return res, nil
 }
@@ -212,4 +234,32 @@ func SetupBandwidthTracking(res *EBPFResources) {
 		return
 	}
 	byteCounterMap = res.Objects.IpByteCounters
+}
+
+// rateLimitState matches the C struct in traffic_probe.c
+type rateLimitState struct {
+	WindowStart  uint64
+	EventCount   uint32
+	DroppedCount uint32
+}
+
+// initRateLimiterMap initializes the rate limiter map with a single zero-valued entry
+// This is required because the BPF code reads from this map and expects it to exist
+// Note: rate_limiter is a PERCPU_ARRAY map, so we need to provide values for all CPUs
+func initRateLimiterMap(m *ebpf.Map) error {
+	if m == nil {
+		return nil
+	}
+	key := uint32(0)
+	numCPU := runtime.NumCPU()
+	// Create a slice with one entry per CPU
+	states := make([]rateLimitState, numCPU)
+	for i := range states {
+		states[i] = rateLimitState{
+			WindowStart:  0,
+			EventCount:   0,
+			DroppedCount: 0,
+		}
+	}
+	return m.Put(key, states)
 }

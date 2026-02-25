@@ -71,6 +71,34 @@ func intToIP(ipNum uint32) net.IP {
 	return ip
 }
 
+// bytesToIP converts the 16-byte address array from the eBPF event to net.IP
+// Family: AF_INET (2) for IPv4, AF_INET6 (10) for IPv6
+func bytesToIP(addr []byte, family uint16) net.IP {
+	if len(addr) < 4 {
+		return nil
+	}
+
+	// AF_INET = 2, AF_INET6 = 10
+	if family == 2 { // IPv4
+		// BPF stores IP as host byte order (after bpf_ntohl)
+		// On little-endian, this is stored LSB first in memory
+		// We read it back as little-endian to get the host-order value,
+		// then convert to network byte order for net.IP
+		hostOrder := uint32(addr[0]) | uint32(addr[1])<<8 | uint32(addr[2])<<16 | uint32(addr[3])<<24
+		ip := make(net.IP, 4)
+		ip[0] = byte(hostOrder >> 24)
+		ip[1] = byte(hostOrder >> 16)
+		ip[2] = byte(hostOrder >> 8)
+		ip[3] = byte(hostOrder)
+		return ip
+	} else { // IPv6
+		// addr contains network-byte-order IPv6
+		ip := make(net.IP, 16)
+		copy(ip, addr[:16])
+		return ip
+	}
+}
+
 // getProtocolFromNumber maps IP protocol numbers to protobuf enum values.
 func getProtocolFromNumber(proto uint8) pb.Protocol {
 	switch proto {
@@ -135,4 +163,25 @@ func ipToNetworkOrder(ipStr string) uint32 {
 		return 0
 	}
 	return binary.BigEndian.Uint32(ip)
+}
+
+// ipv4ToBytes converts an IPv4 address string to a 16-byte array (first 4 bytes used)
+// This is for creating test events that match the Event struct format
+// The BPF code stores IPs in host byte order (after bpf_ntohl), which means on little-endian
+// systems the bytes appear reversed in memory compared to network byte order
+func ipv4ToBytes(ipStr string) [16]byte {
+	var result [16]byte
+	ip := net.ParseIP(ipStr).To4()
+	if ip == nil {
+		return result
+	}
+	// net.IP is in network byte order: [46, 224, 59, 11] = 0x2EE03B0B
+	// Convert to host byte order (same as bpf_ntohl does): 0x0B3BE02E
+	// On little-endian, this value in memory is: [0x0E, 0xE0, 0x3B, 0x0B] (LSB first)
+	// Store exactly these bytes so binary.Read with LittleEndian gives us back 0x0B3BE02E
+	result[0] = ip[3] // LSB of network order = MSB of host order
+	result[1] = ip[2]
+	result[2] = ip[1]
+	result[3] = ip[0]
+	return result
 }

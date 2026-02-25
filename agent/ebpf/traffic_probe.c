@@ -88,6 +88,36 @@ struct {
     __uint(max_entries, 1 << 24); // 16MB buffer
 } events SEC(".maps");
 
+// Debug counters to track event sources
+// Userspace can read via: bpftool map dump name debug_counters
+struct debug_stats {
+    u64 syn_recv_events;  // tracepoint SYN_RECV events
+    u64 accept_events;    // inet_csk_accept events
+    u64 connect_events;   // tcp_connect events
+    u64 close_events;    // tcp_close events
+    u64 udp_events;      // udp_recv events
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, struct debug_stats);
+} debug_counters SEC(".maps");
+
+// Helper to increment debug counter
+static __always_inline void inc_debug_counter(u64 idx) {
+    u32 key = 0;
+    struct debug_stats *stats = bpf_map_lookup_elem(&debug_counters, &key);
+    if (stats) {
+        if (idx == 0) stats->syn_recv_events++;
+        else if (idx == 1) stats->accept_events++;
+        else if (idx == 2) stats->connect_events++;
+        else if (idx == 3) stats->close_events++;
+        else if (idx == 4) stats->udp_events++;
+    }
+}
+
 // ============================================
 // Rate Limiting (Event Flooding Protection)
 // ============================================
@@ -334,6 +364,9 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
         return 0;
     }
 
+    // Debug counter for accept events
+    inc_debug_counter(1);
+
     struct inet_sock *inet = (struct inet_sock *)newsk;
     
     u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
@@ -512,8 +545,8 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     if (ctx->family != AF_INET && ctx->family != AF_INET6)
         return 0;
 
-    if (!check_rate_limit())
-        return 0;
+    // Debug counter for SYN_RECV events
+    inc_debug_counter(0);
 
     struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e)
@@ -554,6 +587,9 @@ int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
     if (!check_rate_limit()) {
         return 0;
     }
+
+    // Debug counter for connect events
+    inc_debug_counter(2);
 
     struct inet_sock *inet = (struct inet_sock *)sk;
     
@@ -804,6 +840,9 @@ int BPF_KPROBE(detect_udp_recv, struct sock *sk) {
     if (!check_rate_limit()) {
         return 0;
     }
+
+    // Debug counter for UDP events
+    inc_debug_counter(4);
 
     struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) {

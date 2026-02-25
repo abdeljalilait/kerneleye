@@ -260,15 +260,21 @@ func runEventLoop(rd *ringbuf.Reader, agg *Aggregator) {
 		}
 
 		if err := validateEvent(&event); err != nil {
-			// log.Printf("Dropping malformed event: %v", err)
+			Logger.Debugf("Dropping malformed event: %v", err)
 			continue
 		}
+
+		// Debug: log all events with their flags
+		Logger.Debugf("Event received: saddr=%v, family=%d, protocol=%d, flags=0x%02x, dir=%d, lport=%d, rport=%d",
+			event.Saddr[:4], event.Family, event.Protocol, event.Flags, event.Direction, event.Lport, event.Rport)
+
 		agg.ProcessEvent(event)
 	}
 }
 
 func validateEvent(e *Event) error {
-	if e.Saddr == 0 {
+	// Check if source IP is set (first 4 bytes for IPv4)
+	if e.Saddr[0] == 0 && e.Saddr[1] == 0 && e.Saddr[2] == 0 && e.Saddr[3] == 0 {
 		return errors.New("missing source IP")
 	}
 	if e.Lport == 0 && e.Rport == 0 {

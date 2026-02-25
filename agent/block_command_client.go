@@ -268,12 +268,29 @@ func (b *BlockCommandClient) connectAndStream(ctx context.Context) error {
 		default:
 		}
 
-		cmd, err := stream.Recv()
-		if err != nil {
-			return fmt.Errorf("failed to receive command: %w", err)
-		}
+		// Use a goroutine to make stream.Recv() cancellable via stopChan
+		// This prevents the receiveLoop from hanging indefinitely during shutdown
+		recvChan := make(chan *pb.BlockCommand, 1)
+		recvErrChan := make(chan error, 1)
+		go func() {
+			cmd, err := stream.Recv()
+			if err != nil {
+				recvErrChan <- err
+			} else {
+				recvChan <- cmd
+			}
+		}()
 
-		b.processCommand(cmd)
+		select {
+		case <-b.stopChan:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-recvErrChan:
+			return fmt.Errorf("failed to receive command: %w", err)
+		case cmd := <-recvChan:
+			b.processCommand(cmd)
+		}
 	}
 }
 

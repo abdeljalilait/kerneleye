@@ -51,10 +51,11 @@ func TestProcessEventOutboundTracksRemoteServicePort(t *testing.T) {
 	}
 
 	agg.ProcessEvent(Event{
-		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Saddr:     ipv4ToBytes("46.224.59.11"),
 		Lport:     40616,
 		Rport:     443,
 		Protocol:  6,
+		Family:    2, // AF_INET
 		Direction: DirOutbound,
 		Flags:     0x01,
 		Timestamp: uint64((10 * time.Second).Nanoseconds()),
@@ -106,10 +107,11 @@ func TestProcessEventOutboundEphemeralPortsDoNotTriggerPortScan(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		agg.ProcessEvent(Event{
-			Saddr:     ipToNetworkOrder("46.224.59.11"),
+			Saddr:     ipv4ToBytes("46.224.59.11"),
 			Lport:     uint16(40000 + i),
 			Rport:     443,
 			Protocol:  6,
+			Family:    2,
 			Direction: DirOutbound,
 			Flags:     0,
 			Timestamp: uint64((time.Duration(11+i) * time.Second).Nanoseconds()),
@@ -147,10 +149,11 @@ func TestProcessEventIgnoresAgentSelfTraffic(t *testing.T) {
 	}
 
 	agg.ProcessEvent(Event{
-		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Saddr:     ipv4ToBytes("46.224.59.11"),
 		Lport:     51612,
 		Rport:     9091,
 		Protocol:  6,
+		Family:    2,
 		Direction: DirOutbound,
 		Tgid:      9999,
 	})
@@ -172,10 +175,11 @@ func TestProcessEventIgnoresControlPlaneIPTraffic(t *testing.T) {
 
 	// Outbound call to control-plane host should be ignored.
 	agg.ProcessEvent(Event{
-		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Saddr:     ipv4ToBytes("46.224.59.11"),
 		Lport:     51612,
 		Rport:     9091,
 		Protocol:  6,
+		Family:    2,
 		Direction: DirOutbound,
 		Tgid:      1234,
 	})
@@ -186,10 +190,11 @@ func TestProcessEventIgnoresControlPlaneIPTraffic(t *testing.T) {
 
 	// Inbound from same IP should still be processed.
 	agg.ProcessEvent(Event{
-		Saddr:     ipToNetworkOrder("46.224.59.11"),
+		Saddr:     ipv4ToBytes("46.224.59.11"),
 		Lport:     22,
 		Rport:     58086,
 		Protocol:  6,
+		Family:    2,
 		Direction: DirInbound,
 		Tgid:      5678,
 	})
