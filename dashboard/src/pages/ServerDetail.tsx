@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerTraffic, useDeleteServer } from '../hooks/useQueries'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useEffect, useState, useMemo } from 'react'
-import DataGrid from 'react-data-grid'
+import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
 
 const { Title, Text } = Typography
