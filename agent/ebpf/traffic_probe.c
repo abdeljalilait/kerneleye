@@ -47,17 +47,34 @@ char __license[] SEC("license") = "GPL";
 #define AF_INET  2
 #define AF_INET6 10
 
+// IPv6 header definition
+struct ipv6hdr_t {
+    __u8  priority:4, version:4;
+    __u8  flow_lbl[3];
+    __be16 payload_len;
+    __u8  nexthdr;
+    __u8  hop_limit;
+    struct in6_addr saddr;
+    struct in6_addr daddr;
+};
+
 // Event structure sent to userspace
 typedef struct event_t {
-    u32 saddr;       // Source IP (Remote)
-    u32 daddr;       // Dest IP (Local)
+    union {
+        u32 addr4;           // IPv4 address (host order)
+        struct in6_addr addr6; // IPv6 address (network order)
+    } saddr;
+    union {
+        u32 addr4;
+        struct in6_addr addr6;
+    } daddr;
     u16 lport;       // Local Port (e.g., 80, 443)
     u16 rport;       // Remote Port
     u16 family;      // AF_INET or AF_INET6
     u8 protocol;     // TCP=6, UDP=17
     u8 flags;        // SYN=0x01, ACK=0x02, ESTABLISHED=0x04, FAILED=0x08
     u8 direction;    // DIR_INBOUND or DIR_OUTBOUND
-    u8 _pad[3];      // Alignment padding
+    u8 _pad[1];      // Alignment padding
     u64 timestamp;   // Nanoseconds since boot
     u32 pid;         // Process ID
     u32 tgid;        // Thread Group ID (main process)
@@ -106,10 +123,17 @@ struct {
 // Using LRU_HASH to auto-evict stale entries (e.g., connections that timeout
 // without tcp_close being called due to killed processes or kernel cleanup)
 struct conn_key {
-    u32 saddr;  // Local IP
-    u32 daddr;  // Remote IP
+    u32 saddr;  // Local IP (host order for IPv4)
+    u32 daddr;  // Remote IP (host order for IPv4)
     u16 sport;  // Local port
     u16 dport;  // Remote port
+};
+
+struct conn_key_v6 {
+    struct in6_addr saddr;  // Local IP (network order for IPv6)
+    struct in6_addr daddr;  // Remote IP (network order for IPv6)
+    u16 sport;              // Local port
+    u16 dport;              // Remote port
 };
 
 struct {
@@ -118,6 +142,13 @@ struct {
     __type(key, struct conn_key); // Full 4-tuple as key
     __type(value, u64);           // Timestamp of SYN
 } tcp_syn_tracker SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 65536);   // 64K entries for IPv6
+    __type(key, struct conn_key_v6);
+    __type(value, u64);           // Timestamp of SYN
+} tcp_syn_tracker_v6 SEC(".maps");
 
 // ============================================
 // Bandwidth Tracking (TC Hooks - Safe Pattern)
@@ -173,12 +204,73 @@ struct {
     __type(value, struct ip_bytes);
 } ip_byte_counters SEC(".maps");
 
+// IPv6 byte counters (network order struct in6_addr as key)
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 65536);   // 64K entries for IPv6
+    __type(key, struct in6_addr); // IPv6 address (network order)
+    __type(value, struct ip_bytes);
+} ip_byte_counters_v6 SEC(".maps");
+
+// ============================================
+// Configurable Map Sizes (.rodata)
+// ============================================
+static volatile const u32 CONFIG_TCP_TRACKER_MAX = 262144;
+static volatile const u32 CONFIG_IPV4_COUNTERS_MAX = 262144;
+static volatile const u32 CONFIG_IPV6_COUNTERS_MAX = 65536;
+static volatile const u32 CONFIG_TCP_TRACKER_V6_MAX = 65536;
+
+// Interface filter: if non-zero, only count packets on this interface
+// 0 means all interfaces (default for backward compatibility)
+static volatile const u32 CONFIG_ALLOWED_IFINDEX = 0;
+
+// ============================================
+// Interface Filtering
+// ============================================
+static __always_inline int is_iface_allowed(struct __sk_buff *skb) {
+    if (CONFIG_ALLOWED_IFINDEX == 0) {
+        return 1; // No filter, allow all
+    }
+    // For ingress, use ingress_ifindex; for egress, use ifindex
+    u32 ifindex = skb->ingress_ifindex ? skb->ingress_ifindex : skb->ifindex;
+    return ifindex == CONFIG_ALLOWED_IFINDEX;
+}
+
 // Helper: Create 4-tuple connection key
 static __always_inline void make_conn_key(struct conn_key *key, u32 saddr, u16 sport, u32 daddr, u16 dport) {
     key->saddr = saddr;
     key->daddr = daddr;
     key->sport = sport;
     key->dport = dport;
+}
+
+// Helper: Create IPv6 4-tuple connection key
+static __always_inline void make_conn_key_v6(struct conn_key_v6 *key, struct in6_addr *saddr, u16 sport, struct in6_addr *daddr, u16 dport) {
+    key->saddr = *saddr;
+    key->daddr = *daddr;
+    key->sport = sport;
+    key->dport = dport;
+}
+
+// Helper: Extract addresses from socket (supports both IPv4 and IPv6)
+static __always_inline int get_sock_addrs(struct sock *sk, u16 family,
+                                          u32 *saddr4, u32 *daddr4,
+                                          struct in6_addr *saddr6, struct in6_addr *daddr6,
+                                          u16 *sport, u16 *dport) {
+    if (family == AF_INET) {
+        *saddr4 = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr));
+        *daddr4 = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_daddr));
+        *sport = BPF_CORE_READ(sk, __sk_common.skc_num);
+        *dport = bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
+    } else if (family == AF_INET6) {
+        bpf_core_read(saddr6, sizeof(*saddr6), &sk->__sk_common.skc_v6_rcv_saddr);
+        bpf_core_read(daddr6, sizeof(*daddr6), &sk->__sk_common.skc_v6_daddr);
+        *sport = BPF_CORE_READ(sk, __sk_common.skc_num);
+        *dport = bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
+    } else {
+        return 0;
+    }
+    return 1;
 }
 
 // Helper: Fill process info
@@ -192,49 +284,38 @@ static __always_inline void fill_process_info(struct event_t *e) {
 
 // Helper: Check rate limit before emitting event
 // Returns 1 if event should be emitted, 0 if rate limited
-// NOTE: This is a lightweight check - call EARLY in hooks before expensive operations
-// Uses BPF-compatible atomic operations
+// NOTE: Uses simple read-modify-write which is verifier-friendly.
+// Since kprobes run with preemption disabled on the current CPU,
+// simple operations are sufficient for per-CPU rate limiting.
 static __always_inline int check_rate_limit(void) {
     u32 key = 0;
     struct rate_limit_state *state = bpf_map_lookup_elem(&rate_limiter, &key);
     if (!state) {
-        return 1; // Array map lookup should never fail, but allow if it does
+        return 1;
     }
     
     u64 now = bpf_ktime_get_ns();
-    
-    // Read current window_start (not fully atomic but good enough for rate limiting)
-    // The worst case is we reset slightly late or have a slightly stale read
     u64 window_start = state->window_start;
     
-    // Check if we're in a new time window (or uninitialized: window_start=0)
-    // When window_start is 0 (uninitialized), now - 0 >= 1s is always true
-    if (now - window_start >= RATE_LIMIT_WINDOW_NS) {
-        // Try to reset - use compare-and-swap
-        // This is a best-effort reset; if multiple CPUs race, they may both reset
-        // The key is that we always advance the window, never go backwards
-        u64 old = __sync_val_compare_and_swap(&state->window_start, window_start, now);
-        if (old == window_start) {
-            // We successfully reset - also reset count
-            state->event_count = 1;
-            return 1;
-        }
-        // Another CPU reset - fall through with new window
+    // Initialize window if uninitialized (window_start = 0)
+    if (window_start == 0) {
+        state->window_start = now;
+        state->event_count = 1;
+        return 1;
     }
     
-    // Increment count atomically first (eBPF doesn't support using XADD return value)
-    __sync_fetch_and_add(&state->event_count, 1);
+    // Check if we're in a new time window
+    if (now - window_start >= RATE_LIMIT_WINDOW_NS) {
+        // Reset window - simple write is safe since we're per-CPU
+        state->window_start = now;
+        state->event_count = 1;
+        return 1;
+    }
     
-    // Now read the count (it's >= what we just added)
-    // This is slightly racy but acceptable for rate limiting
-    // The worst case is we allow slightly more or fewer events
-    u32 count = state->event_count;
-    
-    // Check if we've exceeded the rate limit
-    if (count >= RATE_LIMIT_EVENTS_PER_SEC) {
-        // Note: dropped_count is approximate under high contention
-        // but that's acceptable for rate limiting stats
-        return 0; // Rate limited
+    // Increment count and check limit
+    state->event_count++;
+    if (state->event_count >= RATE_LIMIT_EVENTS_PER_SEC) {
+        return 0;
     }
     
     return 1;
@@ -255,9 +336,8 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
 
     struct inet_sock *inet = (struct inet_sock *)newsk;
     
-    // Early filter: Only IPv4 (avoid ringbuf allocation for IPv6)
     u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
-    if (family != AF_INET) {
+    if (family != AF_INET && family != AF_INET6) {
         return 0;
     }
 
@@ -271,12 +351,15 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
     // - daddr = local server IP
     // - lport = local service port (e.g., 80, 443)
     // - rport = remote client's ephemeral port
-    // NOTE: IP addresses are stored in network byte order (big-endian) in the kernel.
-    // Convert to host byte order using bpf_ntohl() for correct display in userspace.
-    e->saddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_daddr));     // Remote IP (network -> host order)
-    e->daddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_rcv_saddr)); // Local IP (network -> host order)
-    e->lport = BPF_CORE_READ(inet, sk.__sk_common.skc_num);       // Local port (already host order)
-    e->rport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport)); // Remote port (network order -> host)
+    if (family == AF_INET) {
+        e->saddr.addr4 = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_daddr));
+        e->daddr.addr4 = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_rcv_saddr));
+    } else {
+        bpf_core_read(&e->saddr.addr6, sizeof(e->saddr.addr6), &inet->sk.__sk_common.skc_v6_daddr);
+        bpf_core_read(&e->daddr.addr6, sizeof(e->daddr.addr6), &inet->sk.__sk_common.skc_v6_rcv_saddr);
+    }
+    e->lport = BPF_CORE_READ(inet, sk.__sk_common.skc_num);
+    e->rport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport));
     e->family = family;
     e->protocol = IPPROTO_TCP;
     e->flags = FLAG_ACK | FLAG_ESTABLISHED; // Connection completed
@@ -300,57 +383,96 @@ static __always_inline int emit_inbound_syn_from_ctx(struct sock *sk, struct sk_
         return 0;
 
     u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
-    if (family != AF_INET)
+    if (family != AF_INET && family != AF_INET6)
         return 0;
 
-    // tcp_v4_conn_request should run on listening sockets.
-    // This also helps reject wrong argument positions safely.
     u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
     if (sk_state != TCP_LISTEN)
         return 0;
 
-    // Extract remote/local addresses from skb packet headers.
     void *head = (void *)BPF_CORE_READ(skb, head);
     u16 network_header = BPF_CORE_READ(skb, network_header);
     u16 transport_header = BPF_CORE_READ(skb, transport_header);
     if (!head)
         return 0;
 
-    struct iphdr ip = {};
-    if (bpf_probe_read_kernel(&ip, sizeof(ip), (char *)head + network_header) < 0)
-        return 0;
-    if (ip.version != 4 || ip.ihl < 5)
-        return 0;
+    u8 ip_version = 0;
+    bpf_probe_read_kernel(&ip_version, 1, (char *)head + network_header);
+    ip_version = (ip_version >> 4) & 0xF;
 
-    struct tcphdr tcp = {};
-    if (bpf_probe_read_kernel(&tcp, sizeof(tcp), (char *)head + transport_header) < 0)
-        return 0;
+    if (family == AF_INET) {
+        struct iphdr ip = {};
+        if (bpf_probe_read_kernel(&ip, sizeof(ip), (char *)head + network_header) < 0)
+            return 0;
+        if (ip.version != 4 || ip.ihl < 5)
+            return 0;
 
-    u32 saddr = bpf_ntohl(ip.saddr);               // Remote source IP
-    u32 daddr = bpf_ntohl(ip.daddr);               // Local destination IP
-    u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);  // Local service port
-    u16 rport = bpf_ntohs(tcp.source);             // Remote source port
+        struct tcphdr tcp = {};
+        if (bpf_probe_read_kernel(&tcp, sizeof(tcp), (char *)head + transport_header) < 0)
+            return 0;
 
-    if (saddr == 0 || lport == 0)
-        return 0;
+        u32 saddr = bpf_ntohl(ip.saddr);
+        u32 daddr = bpf_ntohl(ip.daddr);
+        u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);
+        u16 rport = bpf_ntohs(tcp.source);
 
-    struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-    if (!e)
-        return 0;
+        if (saddr == 0 || lport == 0)
+            return 0;
 
-    e->saddr = saddr;
-    e->daddr = daddr;
-    e->lport = lport;
-    e->rport = rport;
-    e->family = family;
-    e->protocol = IPPROTO_TCP;
-    e->flags = FLAG_SYN;
-    e->direction = DIR_INBOUND;
-    e->timestamp = bpf_ktime_get_ns();
+        struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+        if (!e)
+            return 0;
 
-    fill_process_info(e);
-    bpf_ringbuf_submit(e, 0);
-    return 1;
+        e->saddr.addr4 = saddr;
+        e->daddr.addr4 = daddr;
+        e->lport = lport;
+        e->rport = rport;
+        e->family = family;
+        e->protocol = IPPROTO_TCP;
+        e->flags = FLAG_SYN;
+        e->direction = DIR_INBOUND;
+        e->timestamp = bpf_ktime_get_ns();
+
+        fill_process_info(e);
+        bpf_ringbuf_submit(e, 0);
+        return 1;
+    } else if (family == AF_INET6) {
+        struct ipv6hdr_t ip6 = {};
+        if (bpf_probe_read_kernel(&ip6, sizeof(ip6), (char *)head + network_header) < 0)
+            return 0;
+        if (ip6.version != 6)
+            return 0;
+
+        struct tcphdr tcp = {};
+        if (bpf_probe_read_kernel(&tcp, sizeof(tcp), (char *)head + transport_header) < 0)
+            return 0;
+
+        u16 lport = BPF_CORE_READ(sk, __sk_common.skc_num);
+        u16 rport = bpf_ntohs(tcp.source);
+
+        if (lport == 0)
+            return 0;
+
+        struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+        if (!e)
+            return 0;
+
+        bpf_core_read(&e->saddr.addr6, sizeof(e->saddr.addr6), &ip6.saddr);
+        bpf_core_read(&e->daddr.addr6, sizeof(e->daddr.addr6), &ip6.daddr);
+        e->lport = lport;
+        e->rport = rport;
+        e->family = family;
+        e->protocol = IPPROTO_TCP;
+        e->flags = FLAG_SYN;
+        e->direction = DIR_INBOUND;
+        e->timestamp = bpf_ktime_get_ns();
+
+        fill_process_info(e);
+        bpf_ringbuf_submit(e, 0);
+        return 1;
+    }
+
+    return 0;
 }
 
 // Hook: TCP Connection Request (Incoming SYN)
@@ -385,7 +507,7 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     if (ctx->protocol != IPPROTO_TCP)
         return 0;
 
-    if (ctx->family != AF_INET)
+    if (ctx->family != AF_INET && ctx->family != AF_INET6)
         return 0;
 
     if (!check_rate_limit())
@@ -395,16 +517,18 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     if (!e)
         return 0;
 
-    // Tracepoint addresses are byte arrays in network order.
-    // Store as host-order u32 to match intToIP() usage in userspace.
-    e->saddr = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
-               ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
-    e->daddr = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
-               ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
+    if (ctx->family == AF_INET) {
+        e->saddr.addr4 = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
+                   ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
+        e->daddr.addr4 = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
+                   ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
+    } else {
+        bpf_core_read(&e->saddr.addr6, sizeof(e->saddr.addr6), ctx->saddr_v6);
+        bpf_core_read(&e->daddr.addr6, sizeof(e->daddr.addr6), ctx->daddr_v6);
+    }
 
-    // For inbound traffic, destination port is local service port.
-    e->lport = bpf_ntohs(ctx->dport);      // Local listening/service port
-    e->rport = bpf_ntohs(ctx->sport);      // Remote ephemeral/source port
+    e->lport = bpf_ntohs(ctx->dport);
+    e->rport = bpf_ntohs(ctx->sport);
     e->family = ctx->family;
     e->protocol = IPPROTO_TCP;
     e->flags = FLAG_SYN;
@@ -431,48 +555,52 @@ int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
 
     struct inet_sock *inet = (struct inet_sock *)sk;
     
-    // Early filter: Only IPv4 (avoid ringbuf allocation for IPv6)
     u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
-    if (family != AF_INET) {
+    if (family != AF_INET && family != AF_INET6) {
         return 0;
     }
     
-    // Read all socket fields once (minimize BPF_CORE_READ calls)
-    // NOTE: IP addresses are stored in network byte order (big-endian) in the kernel.
-    // Convert to host byte order using bpf_ntohl() for correct display in userspace.
-    u32 daddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_daddr));     // Remote IP (network -> host order)
-    u32 saddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_rcv_saddr)); // Local IP (network -> host order)
-    u16 dport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport)); // Remote port
-    u16 sport = BPF_CORE_READ(inet, sk.__sk_common.skc_num);       // Local port (host order)
+    u32 saddr4 = 0, daddr4 = 0;
+    struct in6_addr saddr6 = {}, daddr6 = {};
+    u16 sport = 0, dport = 0;
+    
+    if (!get_sock_addrs((struct sock *)sk, family, &saddr4, &daddr4, &saddr6, &daddr6, &sport, &dport)) {
+        return 0;
+    }
 
     struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) {
         return 0;
     }
 
-    // For outgoing connections:
-    // - saddr = destination IP (where we're connecting TO)
-    // - daddr = local IP  
-    // - lport = local ephemeral port
-    // - rport = destination port (the service we're connecting to)
-    e->saddr = daddr;  // Remote/Destination IP
-    e->daddr = saddr;  // Local IP
-    e->lport = sport;  // Local ephemeral port (FIXED: was incorrectly dport)
-    e->rport = dport;  // Remote service port (FIXED: was incorrectly sport)
+    if (family == AF_INET) {
+        e->saddr.addr4 = daddr4;
+        e->daddr.addr4 = saddr4;
+    } else {
+        e->saddr.addr6 = daddr6;
+        e->daddr.addr6 = saddr6;
+    }
+    e->lport = sport;
+    e->rport = dport;
     e->family = family;
     e->protocol = IPPROTO_TCP;
     e->flags = FLAG_SYN;
-    e->direction = DIR_OUTBOUND;  // Connect = outgoing connection
+    e->direction = DIR_OUTBOUND;
     e->timestamp = bpf_ktime_get_ns();
     
-    // Fill process info
     fill_process_info(e);
 
-    // Track SYN for failed handshake detection using 4-tuple key
-    struct conn_key key = {};
-    make_conn_key(&key, saddr, sport, daddr, dport);
-    u64 ts = e->timestamp;
-    bpf_map_update_elem(&tcp_syn_tracker, &key, &ts, BPF_ANY);
+    if (family == AF_INET) {
+        struct conn_key key = {};
+        make_conn_key(&key, saddr4, sport, daddr4, dport);
+        u64 ts = e->timestamp;
+        bpf_map_update_elem(&tcp_syn_tracker, &key, &ts, BPF_ANY);
+    } else {
+        struct conn_key_v6 key = {};
+        make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
+        u64 ts = e->timestamp;
+        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &ts, BPF_ANY);
+    }
 
     bpf_ringbuf_submit(e, 0);
     return 0;
@@ -487,33 +615,34 @@ int BPF_KPROBE(detect_tcp_state_change, struct sock *sk, int state) {
         return 0;
     }
     
-    // Only interested in transitions TO established state
     if (state != TCP_ESTABLISHED) {
         return 0;
     }
     
     struct inet_sock *inet = (struct inet_sock *)sk;
     
-    // Early filter: Only IPv4
     u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
-    if (family != AF_INET) {
+    if (family != AF_INET && family != AF_INET6) {
         return 0;
     }
     
-    // Read socket fields
-    // NOTE: For map key lookups, we need to use the same byte order as when the key was created.
-    // Since detect_tcp_connect now stores keys in host byte order, we must convert here too.
-    u32 daddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_daddr));
-    u32 saddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_rcv_saddr));
-    u16 dport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport));
-    u16 sport = BPF_CORE_READ(inet, sk.__sk_common.skc_num);
+    u32 saddr4 = 0, daddr4 = 0;
+    struct in6_addr saddr6 = {}, daddr6 = {};
+    u16 sport = 0, dport = 0;
     
-    // Build 4-tuple key and clean up SYN tracker entry
-    struct conn_key key = {};
-    make_conn_key(&key, saddr, sport, daddr, dport);
+    if (!get_sock_addrs((struct sock *)sk, family, &saddr4, &daddr4, &saddr6, &daddr6, &sport, &dport)) {
+        return 0;
+    }
     
-    // Remove from SYN tracker - connection successfully established
-    bpf_map_delete_elem(&tcp_syn_tracker, &key);
+    if (family == AF_INET) {
+        struct conn_key key = {};
+        make_conn_key(&key, saddr4, sport, daddr4, dport);
+        bpf_map_delete_elem(&tcp_syn_tracker, &key);
+    } else {
+        struct conn_key_v6 key = {};
+        make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
+        bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
+    }
     
     return 0;
 }
@@ -527,64 +656,99 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
 
     struct inet_sock *inet = (struct inet_sock *)sk;
     
-    // Early filter: Only IPv4
     u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
-    if (family != AF_INET) {
+    if (family != AF_INET && family != AF_INET6) {
         return 0;
     }
     
-    // Read socket fields once
-    // NOTE: For map key lookups and event emission, convert IP addresses from network
-    // to host byte order to match the format used in detect_tcp_connect.
-    u32 daddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_daddr));
-    u32 saddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_rcv_saddr));
-    u16 dport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport));
-    u16 sport = BPF_CORE_READ(inet, sk.__sk_common.skc_num);
+    u32 saddr4 = 0, daddr4 = 0;
+    struct in6_addr saddr6 = {}, daddr6 = {};
+    u16 sport = 0, dport = 0;
     
-    // Build 4-tuple key for lookup
-    struct conn_key key = {};
-    make_conn_key(&key, saddr, sport, daddr, dport);
+    if (!get_sock_addrs((struct sock *)sk, family, &saddr4, &daddr4, &saddr6, &daddr6, &sport, &dport)) {
+        return 0;
+    }
     
-    u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker, &key);
+    int tracked = 0;
     
-    if (syn_ts) {
-        // Only emit FAILED if the socket is not established
-        // This prevents false positives from normal close sequences
-        u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
-        if (sk_state == TCP_ESTABLISHED) {
-            // Normal close of established connection - just cleanup
+    if (family == AF_INET) {
+        struct conn_key key = {};
+        make_conn_key(&key, saddr4, sport, daddr4, dport);
+        
+        u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker, &key);
+        if (syn_ts) {
+            tracked = 1;
+            u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
+            if (sk_state == TCP_ESTABLISHED) {
+                bpf_map_delete_elem(&tcp_syn_tracker, &key);
+                return 0;
+            }
+            
+            if (!check_rate_limit()) {
+                bpf_map_delete_elem(&tcp_syn_tracker, &key);
+                return 0;
+            }
+            
+            struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+            if (!e) {
+                bpf_map_delete_elem(&tcp_syn_tracker, &key);
+                return 0;
+            }
+            
+            e->saddr.addr4 = daddr4;
+            e->daddr.addr4 = saddr4;
+            e->lport = sport;
+            e->rport = dport;
+            e->family = family;
+            e->protocol = IPPROTO_TCP;
+            e->flags = FLAG_FAILED;
+            e->direction = DIR_OUTBOUND;
+            e->timestamp = bpf_ktime_get_ns();
+            
+            fill_process_info(e);
+            
             bpf_map_delete_elem(&tcp_syn_tracker, &key);
-            return 0;
+            bpf_ringbuf_submit(e, 0);
         }
+    } else {
+        struct conn_key_v6 key = {};
+        make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
         
-        // SYN was sent but connection was never established -> failed handshake
-        // Rate limit check for failed connection events
-        if (!check_rate_limit()) {
-            bpf_map_delete_elem(&tcp_syn_tracker, &key);
-            return 0;
+        u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker_v6, &key);
+        if (syn_ts) {
+            tracked = 1;
+            u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
+            if (sk_state == TCP_ESTABLISHED) {
+                bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
+                return 0;
+            }
+            
+            if (!check_rate_limit()) {
+                bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
+                return 0;
+            }
+            
+            struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+            if (!e) {
+                bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
+                return 0;
+            }
+            
+            e->saddr.addr6 = daddr6;
+            e->daddr.addr6 = saddr6;
+            e->lport = sport;
+            e->rport = dport;
+            e->family = family;
+            e->protocol = IPPROTO_TCP;
+            e->flags = FLAG_FAILED;
+            e->direction = DIR_OUTBOUND;
+            e->timestamp = bpf_ktime_get_ns();
+            
+            fill_process_info(e);
+            
+            bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
+            bpf_ringbuf_submit(e, 0);
         }
-        
-        struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-        if (!e) {
-            bpf_map_delete_elem(&tcp_syn_tracker, &key);
-            return 0;
-        }
-        
-        e->saddr = daddr;   // Remote IP (already in host order)
-        e->daddr = saddr;   // Local IP (already in host order)
-        e->lport = sport;   // Local port
-        e->rport = dport;   // Remote port
-        e->family = family;
-        e->protocol = IPPROTO_TCP;
-        e->flags = FLAG_FAILED;
-        e->direction = DIR_OUTBOUND;  // Failed outgoing connection
-        e->timestamp = bpf_ktime_get_ns();
-        
-        fill_process_info(e);
-        
-        bpf_map_delete_elem(&tcp_syn_tracker, &key);
-        
-        bpf_ringbuf_submit(e, 0);
     }
     
     return 0;
@@ -605,31 +769,36 @@ int BPF_KPROBE(detect_udp_recv, struct sock *sk) {
 
     struct inet_sock *inet = (struct inet_sock *)sk;
     
-    // Early filter: Only IPv4 (avoid ringbuf allocation for IPv6)
     u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
-    if (family != AF_INET) {
+    if (family != AF_INET && family != AF_INET6) {
         return 0;
     }
     
-    // Read socket fields
-    // NOTE: IP addresses are stored in network byte order (big-endian) in the kernel.
-    // Convert to host byte order using bpf_ntohl() for correct display in userspace.
-    u32 daddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_daddr));  // Remote IP (0 if unconnected)
-    u32 saddr = bpf_ntohl(BPF_CORE_READ(inet, sk.__sk_common.skc_rcv_saddr)); // Local IP
-    u16 lport = BPF_CORE_READ(inet, sk.__sk_common.skc_num);    // Local port (host order)
-    u16 rport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport)); // Remote port (0 if unconnected)
+    u32 saddr4 = 0, daddr4 = 0;
+    struct in6_addr saddr6 = {}, daddr6 = {};
+    u16 lport = 0, rport = 0;
     
-    // Skip only truly unconnected sockets (no remote info AND no local binding)
-    // This filters out sockets that haven't been bound or connected at all.
-    // We now capture:
-    // - UDP servers bound to specific interfaces (saddr != 0, daddr may be 0)
-    // - Connected UDP clients (daddr != 0)
-    // - Multicast listeners (daddr = multicast group)
-    if (daddr == 0 && lport == 0) {
+    if (!get_sock_addrs((struct sock *)sk, family, &saddr4, &daddr4, &saddr6, &daddr6, &lport, &rport)) {
         return 0;
     }
     
-    // Rate limit check to prevent event flooding
+    if (family == AF_INET) {
+        if (daddr4 == 0 && lport == 0) {
+            return 0;
+        }
+    } else {
+        int is_zero = 1;
+        for (int i = 0; i < 4; i++) {
+            if (daddr6.in6_u.u6_addr32[i] != 0) {
+                is_zero = 0;
+                break;
+            }
+        }
+        if (is_zero && lport == 0) {
+            return 0;
+        }
+    }
+    
     if (!check_rate_limit()) {
         return 0;
     }
@@ -639,17 +808,21 @@ int BPF_KPROBE(detect_udp_recv, struct sock *sk) {
         return 0;
     }
 
-    e->saddr = daddr;   // Remote IP
-    e->daddr = saddr;   // Local IP
-    e->lport = lport;   // Local port
-    e->rport = rport;   // Remote port
+    if (family == AF_INET) {
+        e->saddr.addr4 = daddr4;
+        e->daddr.addr4 = saddr4;
+    } else {
+        e->saddr.addr6 = daddr6;
+        e->daddr.addr6 = saddr6;
+    }
+    e->lport = lport;
+    e->rport = rport;
     e->family = family;
     e->protocol = IPPROTO_UDP;
     e->flags = 0;
-    e->direction = DIR_INBOUND;  // UDP recv = incoming data
+    e->direction = DIR_INBOUND;
     e->timestamp = bpf_ktime_get_ns();
     
-    // Fill process info
     fill_process_info(e);
 
     bpf_ringbuf_submit(e, 0);
@@ -696,67 +869,85 @@ int tc_ingress(struct __sk_buff *skb) {
         }
     }
     
-    // Only process IPv4
-    if (proto != bpf_htons(ETH_P_IP))
+    // Interface filtering
+    if (!is_iface_allowed(skb))
         return TC_ACT_OK;
     
-    // Parse IPv4 header
-    struct iphdr_t *ip = l3_start;
-    if ((void *)(ip + 1) > data_end)
-        return TC_ACT_OK;
-    
-    // Validate IP header length (ihl is in 32-bit words, minimum 5 = 20 bytes)
-    // Also verify the packet is large enough to contain a valid IP header
-    if (ip->version != 4 || ip->ihl < 5)
-        return TC_ACT_OK;
-    
-    // Additional bounds check: ensure header doesn't extend past packet data
-    void *ip_end = (void *)ip + (ip->ihl * 4);
-    if (ip_end > data_end)
-        return TC_ACT_OK;
-    
-    // Validate tot_len doesn't exceed actual packet data (prevents malformed packet attacks)
-    __u16 tot_len = bpf_ntohs(ip->tot_len);
-    if (tot_len < (ip->ihl * 4) || tot_len > (u32)(data_end - data))
-        return TC_ACT_OK;
-    
-    // Get source IP (remote sender) - convert to HOST byte order
-    // This matches connection event IPs, allowing userspace to correlate:
-    //   ip_byte_counters[event.saddr] gives bandwidth for that connection's remote IP
-    u32 src_ip = bpf_ntohl(ip->saddr);
-    
-    // Use validated tot_len for accurate L3 byte count (excludes L2 headers)
-    u32 pkt_len = tot_len;
-    
-    // Lookup or create counter for this IP
-    // Race condition handling:
-    // 1. First lookup - if found, atomic add (fast path)
-    // 2. If not found, try BPF_NOEXIST to create atomically
-    // 3. If EEXIST (race: another CPU created it), re-lookup and atomic add
-    // 4. If other error (map full), force update with BPF_ANY
-    struct ip_bytes *counters = bpf_map_lookup_elem(&ip_byte_counters, &src_ip);
-    if (counters) {
-        __sync_fetch_and_add(&counters->bytes_in, pkt_len);
-    } else {
-        struct ip_bytes new_counters = {
-            .bytes_in = pkt_len,
-            .bytes_out = 0,
-        };
-        long ret = bpf_map_update_elem(&ip_byte_counters, &src_ip, &new_counters, BPF_NOEXIST);
-        if (ret == -17) { // EEXIST: race condition, entry was just created by another CPU
-            // Re-lookup and do atomic add to preserve the other CPU's count
-            counters = bpf_map_lookup_elem(&ip_byte_counters, &src_ip);
-            if (counters) {
-                __sync_fetch_and_add(&counters->bytes_in, pkt_len);
+    // Process IPv4
+    if (proto == bpf_htons(ETH_P_IP)) {
+        struct iphdr_t *ip = l3_start;
+        if ((void *)(ip + 1) > data_end)
+            return TC_ACT_OK;
+        
+        if (ip->version != 4 || ip->ihl < 5)
+            return TC_ACT_OK;
+        
+        void *ip_end = (void *)ip + (ip->ihl * 4);
+        if (ip_end > data_end)
+            return TC_ACT_OK;
+        
+        __u16 tot_len = bpf_ntohs(ip->tot_len);
+        if (tot_len < (ip->ihl * 4) || tot_len > (u32)(data_end - data))
+            return TC_ACT_OK;
+        
+        u32 src_ip = bpf_ntohl(ip->saddr);
+        u32 pkt_len = tot_len;
+        
+        struct ip_bytes *counters = bpf_map_lookup_elem(&ip_byte_counters, &src_ip);
+        if (counters) {
+            __sync_fetch_and_add(&counters->bytes_in, pkt_len);
+        } else {
+            struct ip_bytes new_counters = {
+                .bytes_in = pkt_len,
+                .bytes_out = 0,
+            };
+            long ret = bpf_map_update_elem(&ip_byte_counters, &src_ip, &new_counters, BPF_NOEXIST);
+            if (ret == -17) {
+                counters = bpf_map_lookup_elem(&ip_byte_counters, &src_ip);
+                if (counters) {
+                    __sync_fetch_and_add(&counters->bytes_in, pkt_len);
+                }
+            } else if (ret) {
+                bpf_map_update_elem(&ip_byte_counters, &src_ip, &new_counters, BPF_ANY);
             }
-            // If still not found (LRU evicted it), we lose this packet's count - acceptable
-        } else if (ret) {
-            // Map full or other error - force update (may lose concurrent data, but better than nothing)
-            bpf_map_update_elem(&ip_byte_counters, &src_ip, &new_counters, BPF_ANY);
         }
+        return TC_ACT_OK;
     }
     
-    return TC_ACT_OK;  // Never drop!
+    // Process IPv6
+    if (proto == bpf_htons(ETH_P_IPV6)) {
+        struct ipv6hdr_t *ip6 = l3_start;
+        if ((void *)(ip6 + 1) > data_end)
+            return TC_ACT_OK;
+        
+        if (ip6->version != 6)
+            return TC_ACT_OK;
+        
+        __u16 payload_len = bpf_ntohs(ip6->payload_len);
+        u32 pkt_len = payload_len + 40; // IPv6 header is 40 bytes
+        
+        struct ip_bytes *counters = bpf_map_lookup_elem(&ip_byte_counters_v6, &ip6->saddr);
+        if (counters) {
+            __sync_fetch_and_add(&counters->bytes_in, pkt_len);
+        } else {
+            struct ip_bytes new_counters = {
+                .bytes_in = pkt_len,
+                .bytes_out = 0,
+            };
+            long ret = bpf_map_update_elem(&ip_byte_counters_v6, &ip6->saddr, &new_counters, BPF_NOEXIST);
+            if (ret == -17) {
+                counters = bpf_map_lookup_elem(&ip_byte_counters_v6, &ip6->saddr);
+                if (counters) {
+                    __sync_fetch_and_add(&counters->bytes_in, pkt_len);
+                }
+            } else if (ret) {
+                bpf_map_update_elem(&ip_byte_counters_v6, &ip6->saddr, &new_counters, BPF_ANY);
+            }
+        }
+        return TC_ACT_OK;
+    }
+    
+    return TC_ACT_OK;
 }
 
 // TC Egress: Count bytes going OUT to remote IPs
@@ -790,67 +981,85 @@ int tc_egress(struct __sk_buff *skb) {
         }
     }
     
-    // Only process IPv4
-    if (proto != bpf_htons(ETH_P_IP))
+    // Interface filtering
+    if (!is_iface_allowed(skb))
         return TC_ACT_OK;
     
-    // Parse IPv4 header
-    struct iphdr_t *ip = l3_start;
-    if ((void *)(ip + 1) > data_end)
-        return TC_ACT_OK;
-    
-    // Validate IP header length (ihl is in 32-bit words, minimum 5 = 20 bytes)
-    // Also verify the packet is large enough to contain a valid IP header
-    if (ip->version != 4 || ip->ihl < 5)
-        return TC_ACT_OK;
-    
-    // Additional bounds check: ensure header doesn't extend past packet data
-    void *ip_end = (void *)ip + (ip->ihl * 4);
-    if (ip_end > data_end)
-        return TC_ACT_OK;
-    
-    // Validate tot_len doesn't exceed actual packet data (prevents malformed packet attacks)
-    __u16 tot_len = bpf_ntohs(ip->tot_len);
-    if (tot_len < (ip->ihl * 4) || tot_len > (u32)(data_end - data))
-        return TC_ACT_OK;
-    
-    // Get destination IP (remote receiver) - convert to HOST byte order
-    // This matches connection event IPs, allowing userspace to correlate:
-    //   ip_byte_counters[event.saddr] gives bandwidth for that connection's remote IP
-    u32 dst_ip = bpf_ntohl(ip->daddr);
-    
-    // Use validated tot_len for accurate L3 byte count (excludes L2 headers)
-    u32 pkt_len = tot_len;
-    
-    // Lookup or create counter for this IP
-    // Race condition handling:
-    // 1. First lookup - if found, atomic add (fast path)
-    // 2. If not found, try BPF_NOEXIST to create atomically
-    // 3. If EEXIST (race: another CPU created it), re-lookup and atomic add
-    // 4. If other error (map full), force update with BPF_ANY
-    struct ip_bytes *counters = bpf_map_lookup_elem(&ip_byte_counters, &dst_ip);
-    if (counters) {
-        __sync_fetch_and_add(&counters->bytes_out, pkt_len);
-    } else {
-        struct ip_bytes new_counters = {
-            .bytes_in = 0,
-            .bytes_out = pkt_len,
-        };
-        long ret = bpf_map_update_elem(&ip_byte_counters, &dst_ip, &new_counters, BPF_NOEXIST);
-        if (ret == -17) { // EEXIST: race condition, entry was just created by another CPU
-            // Re-lookup and do atomic add to preserve the other CPU's count
-            counters = bpf_map_lookup_elem(&ip_byte_counters, &dst_ip);
-            if (counters) {
-                __sync_fetch_and_add(&counters->bytes_out, pkt_len);
+    // Process IPv4
+    if (proto == bpf_htons(ETH_P_IP)) {
+        struct iphdr_t *ip = l3_start;
+        if ((void *)(ip + 1) > data_end)
+            return TC_ACT_OK;
+        
+        if (ip->version != 4 || ip->ihl < 5)
+            return TC_ACT_OK;
+        
+        void *ip_end = (void *)ip + (ip->ihl * 4);
+        if (ip_end > data_end)
+            return TC_ACT_OK;
+        
+        __u16 tot_len = bpf_ntohs(ip->tot_len);
+        if (tot_len < (ip->ihl * 4) || tot_len > (u32)(data_end - data))
+            return TC_ACT_OK;
+        
+        u32 dst_ip = bpf_ntohl(ip->daddr);
+        u32 pkt_len = tot_len;
+        
+        struct ip_bytes *counters = bpf_map_lookup_elem(&ip_byte_counters, &dst_ip);
+        if (counters) {
+            __sync_fetch_and_add(&counters->bytes_out, pkt_len);
+        } else {
+            struct ip_bytes new_counters = {
+                .bytes_in = 0,
+                .bytes_out = pkt_len,
+            };
+            long ret = bpf_map_update_elem(&ip_byte_counters, &dst_ip, &new_counters, BPF_NOEXIST);
+            if (ret == -17) {
+                counters = bpf_map_lookup_elem(&ip_byte_counters, &dst_ip);
+                if (counters) {
+                    __sync_fetch_and_add(&counters->bytes_out, pkt_len);
+                }
+            } else if (ret) {
+                bpf_map_update_elem(&ip_byte_counters, &dst_ip, &new_counters, BPF_ANY);
             }
-            // If still not found (LRU evicted it), we lose this packet's count - acceptable
-        } else if (ret) {
-            // Map full or other error - force update (may lose concurrent data, but better than nothing)
-            bpf_map_update_elem(&ip_byte_counters, &dst_ip, &new_counters, BPF_ANY);
         }
+        return TC_ACT_OK;
     }
     
-    return TC_ACT_OK;  // Never drop!
+    // Process IPv6
+    if (proto == bpf_htons(ETH_P_IPV6)) {
+        struct ipv6hdr_t *ip6 = l3_start;
+        if ((void *)(ip6 + 1) > data_end)
+            return TC_ACT_OK;
+        
+        if (ip6->version != 6)
+            return TC_ACT_OK;
+        
+        __u16 payload_len = bpf_ntohs(ip6->payload_len);
+        u32 pkt_len = payload_len + 40;
+        
+        struct ip_bytes *counters = bpf_map_lookup_elem(&ip_byte_counters_v6, &ip6->daddr);
+        if (counters) {
+            __sync_fetch_and_add(&counters->bytes_out, pkt_len);
+        } else {
+            struct ip_bytes new_counters = {
+                .bytes_in = 0,
+                .bytes_out = pkt_len,
+            };
+            long ret = bpf_map_update_elem(&ip_byte_counters_v6, &ip6->daddr, &new_counters, BPF_NOEXIST);
+            if (ret == -17) {
+                counters = bpf_map_lookup_elem(&ip_byte_counters_v6, &ip6->daddr);
+                if (counters) {
+                    __sync_fetch_and_add(&counters->bytes_out, pkt_len);
+                }
+            } else if (ret) {
+                bpf_map_update_elem(&ip_byte_counters_v6, &ip6->daddr, &new_counters, BPF_ANY);
+            }
+        }
+        return TC_ACT_OK;
+    }
+    
+    return TC_ACT_OK;
 }
 
 // ============================================

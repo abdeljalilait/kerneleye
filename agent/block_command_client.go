@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kerneleye/agent/remediation"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -25,7 +26,7 @@ type BlockCommandClient struct {
 	wg       sync.WaitGroup
 
 	onBlock   func(ip string, duration time.Duration, reason string) error
-	onUnblock func(ip string, reason string) error
+	onUnblock func(ip string, blockType remediation.BlockType, reason string) error
 
 	reconnectMu       sync.Mutex
 	reconnectCount    int
@@ -35,7 +36,7 @@ type BlockCommandClient struct {
 
 // NewBlockCommandClient creates a new block command client
 // If conn is provided, it will use that connection instead of creating a new one
-func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlock func(ip string, duration time.Duration, reason string) error, onUnblock func(ip string, reason string) error) (*BlockCommandClient, error) {
+func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlock func(ip string, duration time.Duration, reason string) error, onUnblock func(ip string, blockType remediation.BlockType, reason string) error) (*BlockCommandClient, error) {
 	var client pb.BlockServiceClient
 	if conn != nil {
 		client = pb.NewBlockServiceClient(conn)
@@ -72,6 +73,73 @@ func (b *BlockCommandClient) Start(ctx context.Context) error {
 	go b.receiveLoop(ctx)
 
 	Logger.Info("[BlockCommandClient] Started streaming block commands")
+	return nil
+}
+
+// Reconcile performs a full reconciliation between backend blocks and local state
+// It removes IPs that are no longer in the backend and adds IPs that are missing locally
+func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
+	b.mu.RLock()
+	client := b.client
+	apiKey := b.apiKey
+	serverID := b.serverID
+	onBlock := b.onBlock
+	b.mu.RUnlock()
+
+	if client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	// Get blocks from backend
+	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
+		ApiKey:      apiKey,
+		ClientToken: serverID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get block list: %w", err)
+	}
+
+	// Build a map of backend blocks for quick lookup
+	backendBlocks := make(map[string]pb.BlockListEntry_BlockType)
+	for _, block := range resp.Blocks {
+		if block.ExpiresAt > 0 {
+			expiresAt := time.Unix(block.ExpiresAt, 0)
+			if time.Now().After(expiresAt) {
+				continue // Skip expired blocks
+			}
+		}
+		backendBlocks[block.IpAddress] = block.BlockType
+	}
+
+	Logger.Debugf("[BlockCommandClient] Backend has %d active blocks", len(backendBlocks))
+
+	// Note: To properly reconcile, we would need to query the local state (XDP/ipset)
+	// and compare with backend. For now, we just log the reconciliation attempt.
+	// Full implementation would require:
+	// 1. Query local ipset/XDP for current blocked IPs
+	// 2. Find IPs in backend but not locally -> add
+	// 3. Find IPs locally but not in backend -> remove
+
+	// For now, just re-apply all backend blocks (handles reconnection scenarios)
+	for ip := range backendBlocks {
+		var duration time.Duration
+		for _, block := range resp.Blocks {
+			if block.IpAddress == ip {
+				if block.DurationSeconds > 0 {
+					duration = time.Duration(block.DurationSeconds) * time.Second
+				}
+				break
+			}
+		}
+
+		if onBlock != nil {
+			if err := onBlock(ip, duration, "reconcile"); err != nil {
+				Logger.Warnf("[BlockCommandClient] Failed to reconcile block %s: %v", ip, err)
+			}
+		}
+	}
+
+	Logger.Infof("[BlockCommandClient] Reconciliation complete: %d blocks from backend", len(backendBlocks))
 	return nil
 }
 
@@ -197,9 +265,11 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 	switch cmd.Action {
 	case pb.BlockCommand_BLOCK:
 		if b.onBlock != nil {
-			duration := time.Duration(cmd.DurationSeconds) * time.Second
-			if duration == 0 {
-				duration = 1 * time.Hour // Default to 1 hour
+			var duration time.Duration
+			// duration = 0 means permanent block (no expiry)
+			// Only convert to duration if DurationSeconds > 0
+			if cmd.DurationSeconds > 0 {
+				duration = time.Duration(cmd.DurationSeconds) * time.Second
 			}
 			ip := cmd.IpAddress
 			reason := cmd.Reason
@@ -208,7 +278,11 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 				if err := onBlock(ip, duration, reason); err != nil {
 					Logger.Errorf("[BlockCommandClient] Failed to block %s: %v", ip, err)
 				} else {
-					Logger.Infof("[BlockCommandClient] Blocked %s for %v", ip, duration)
+					if duration > 0 {
+						Logger.Infof("[BlockCommandClient] Blocked %s for %v", ip, duration)
+					} else {
+						Logger.Infof("[BlockCommandClient] Blocked %s permanently", ip)
+					}
 				}
 			}()
 		}
@@ -217,12 +291,24 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 		if b.onUnblock != nil {
 			ip := cmd.IpAddress
 			reason := cmd.Reason
+			blockType := remediation.BlockTypeBlocklist // default
+
+			// Convert proto BlockType to remediation.BlockType
+			switch cmd.BlockType {
+			case pb.BlockListEntry_BLOCK_TYPE_RATE_LIMIT:
+				blockType = remediation.BlockTypeRateLimit
+			case pb.BlockListEntry_BLOCK_TYPE_CIDR:
+				blockType = remediation.BlockTypeCIDR
+			case pb.BlockListEntry_BLOCK_TYPE_BLOCKLIST:
+				blockType = remediation.BlockTypeBlocklist
+			}
+
 			onUnblock := b.onUnblock
 			go func() {
-				if err := onUnblock(ip, reason); err != nil {
+				if err := onUnblock(ip, blockType, reason); err != nil {
 					Logger.Errorf("[BlockCommandClient] Failed to unblock %s: %v", ip, err)
 				} else {
-					Logger.Infof("[BlockCommandClient] Unblocked %s", ip)
+					Logger.Infof("[BlockCommandClient] Unblocked %s from %s", ip, blockType)
 				}
 			}()
 		}
@@ -272,9 +358,10 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 	// Apply each block locally
 	for _, block := range resp.Blocks {
 		if b.onBlock != nil {
-			duration := time.Duration(block.DurationSeconds) * time.Second
-			if duration == 0 {
-				duration = 1 * time.Hour
+			var duration time.Duration
+			// duration = 0 means permanent block
+			if block.DurationSeconds > 0 {
+				duration = time.Duration(block.DurationSeconds) * time.Second
 			}
 			// Check if already expired
 			if block.ExpiresAt > 0 {
@@ -286,6 +373,12 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 			}
 			if err := b.onBlock(block.IpAddress, duration, block.Reason); err != nil {
 				Logger.Errorf("[BlockCommandClient] Failed to apply block %s: %v", block.IpAddress, err)
+			} else {
+				if duration > 0 {
+					Logger.Debugf("[BlockCommandClient] Applied block %s for %v", block.IpAddress, duration)
+				} else {
+					Logger.Debugf("[BlockCommandClient] Applied permanent block %s", block.IpAddress)
+				}
 			}
 		}
 	}

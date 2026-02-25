@@ -252,28 +252,55 @@ func (r *IPSetRemediator) Block(ip net.IP, duration time.Duration) error {
 		return fmt.Errorf("ipset add failed: %w", err)
 	}
 
-	// Track in memory
+	// Track in memory - use max time for permanent blocks
 	r.mu.Lock()
-	r.blockedIPs[ip.String()] = time.Now().Add(duration)
+	if duration > 0 {
+		r.blockedIPs[ip.String()] = time.Now().Add(duration)
+	} else {
+		// Permanent block - use max time
+		r.blockedIPs[ip.String()] = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	}
 	r.mu.Unlock()
 
 	if r.onBlock != nil {
 		r.onBlock(ip, ActionBlock, "IPSET_BLOCK", duration)
 	}
 
-	logger.Infof("🚫 Blocked %s for %v", ip, duration)
+	if duration > 0 {
+		logger.Infof("🚫 Blocked %s for %v", ip, duration)
+	} else {
+		logger.Infof("🚫 Blocked %s permanently", ip)
+	}
 	return nil
 }
 
-// Unblock removes an IP from the blocklist
-func (r *IPSetRemediator) Unblock(ip net.IP) error {
+// Unblock removes an IP from the specified blocklist
+func (r *IPSetRemediator) Unblock(ip net.IP, blockType BlockType) error {
 	if err := r.validateIP(ip); err != nil {
 		return err
 	}
 
+	// Determine which ipset to use based on block type
 	set := blockSet
+	switch blockType {
+	case BlockTypeRateLimit:
+		set = rateLimitSet
+	case BlockTypeCIDR:
+		set = "kerneleye_block_cidr"
+	default:
+		set = blockSet
+	}
+
+	// Adjust for IPv6
 	if ip.To4() == nil {
-		set = blockSetV6
+		switch blockType {
+		case BlockTypeRateLimit:
+			set = rateLimitSetV6
+		case BlockTypeCIDR:
+			set = "kerneleye_block_cidr_v6"
+		default:
+			set = blockSetV6
+		}
 	}
 
 	if err := r.Runner("ipset", "del", set, ip.String(), "-exist"); err != nil {
@@ -284,7 +311,7 @@ func (r *IPSetRemediator) Unblock(ip net.IP) error {
 	delete(r.blockedIPs, ip.String())
 	r.mu.Unlock()
 
-	logger.Info("✅ Unblocked %s", ip)
+	logger.Info("✅ Unblocked %s from %s", ip, set)
 	return nil
 }
 

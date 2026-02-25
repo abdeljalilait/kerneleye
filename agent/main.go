@@ -181,12 +181,12 @@ func main() {
 				return nil
 			},
 			// OnUnblock callback
-			func(ip string, reason string) error {
+			func(ip string, blockType remediation.BlockType, reason string) error {
 				parsedIP := net.ParseIP(ip)
 				if parsedIP == nil {
 					return fmt.Errorf("invalid IP: %s", ip)
 				}
-				return remediator.Unblock(parsedIP)
+				return remediator.Unblock(parsedIP, blockType)
 			},
 		)
 		if err != nil {
@@ -203,6 +203,22 @@ func main() {
 				if err := blockCmdClient.SyncBlockList(context.Background()); err != nil {
 					Logger.Warnf("⚠️  Failed to sync block list: %v", err)
 				}
+
+				// Start periodic reconcile every 1 minute
+				go func() {
+					ticker := time.NewTicker(1 * time.Minute)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-ticker.C:
+							if blockCmdClient.IsConnected() {
+								if err := blockCmdClient.Reconcile(context.Background()); err != nil {
+									Logger.Warnf("⚠️  Failed to reconcile block list: %v", err)
+								}
+							}
+						}
+					}
+				}()
 			}
 		}
 	} else {

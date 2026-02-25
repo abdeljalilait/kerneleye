@@ -294,7 +294,8 @@ func (ab *AutoBlocker) Unblock(ip string) error {
 		return fmt.Errorf("invalid IP: %s", ip)
 	}
 
-	if err := ab.remediator.Unblock(parsedIP); err != nil {
+	// Manual unblock removes from blocklist (default)
+	if err := ab.remediator.Unblock(parsedIP, BlockTypeBlocklist); err != nil {
 		return err
 	}
 

@@ -47,6 +47,11 @@ type XDPRemediator struct {
 	ringbufCancel chan struct{}
 	ringbufWg     sync.WaitGroup
 
+	cleanupEnabled  bool
+	cleanupInterval time.Duration
+	cleanupCancel   chan struct{}
+	cleanupWg       sync.WaitGroup
+
 	mu sync.RWMutex // Protects all mutable fields
 }
 
@@ -206,7 +211,11 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 			return fmt.Errorf("block IPv6: %w", err)
 		}
 	}
-	logger.Infof("🚫 XDP blocked %s for %v", ip, duration)
+	if duration == 0 {
+		logger.Infof("🚫 XDP blocked %s permanently", ip)
+	} else {
+		logger.Infof("🚫 XDP blocked %s for %v", ip, duration)
+	}
 	if r.OnBlock != nil {
 		r.OnBlock(ip, ActionBlock, "XDP_BLOCK", duration)
 	}
@@ -305,7 +314,14 @@ func (r *XDPRemediator) Teardown() error {
 	wasAttached := r.attached
 	var errs []error
 
-	// Capture any errors from cleanup
+	// Stop cleanup goroutine
+	if r.cleanupEnabled {
+		close(r.cleanupCancel)
+		r.cleanupWg.Wait()
+		r.cleanupEnabled = false
+	}
+
+	// Cleanup XDP resources
 	if err := r.cleanupWithErrors(); err != nil {
 		errs = append(errs, err)
 	}
@@ -461,7 +477,8 @@ func (r *XDPRemediator) readBlockedPackets() {
 }
 
 // Unblock removes IP from blocklist
-func (r *XDPRemediator) Unblock(ip net.IP) error {
+// Note: blockType is ignored since XDP uses a single blocklist for all types
+func (r *XDPRemediator) Unblock(ip net.IP, blockType BlockType) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -579,4 +596,141 @@ func (r *XDPRemediator) unpinAndClose() error {
 		return fmt.Errorf("cleanup errors: %w", errors.Join(errs...))
 	}
 	return nil
+}
+
+// StartCleanup starts a goroutine that periodically removes expired entries from XDP maps
+// This is optional - call after Setup() if you want automatic cleanup of expired blocks
+func (r *XDPRemediator) StartCleanup(interval time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.cleanupEnabled {
+		return // Already running
+	}
+
+	r.cleanupEnabled = true
+	r.cleanupInterval = interval
+	r.cleanupCancel = make(chan struct{})
+
+	r.cleanupWg.Add(1)
+	go r.cleanupLoop()
+
+	logger.Infof("🧹 XDP cleanup started (interval: %v)", interval)
+}
+
+// StopCleanup stops the cleanup goroutine
+func (r *XDPRemediator) StopCleanup() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.cleanupEnabled {
+		return
+	}
+
+	close(r.cleanupCancel)
+	r.cleanupWg.Wait()
+	r.cleanupEnabled = false
+
+	logger.Info("🧹 XDP cleanup stopped")
+}
+
+// cleanupLoop runs the periodic cleanup
+func (r *XDPRemediator) cleanupLoop() {
+	defer r.cleanupWg.Done()
+
+	ticker := time.NewTicker(r.cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.cleanupCancel:
+			return
+		case <-ticker.C:
+			r.cleanupExpiredEntries()
+		}
+	}
+}
+
+// cleanupExpiredEntries removes expired entries from XDP blocklist maps
+func (r *XDPRemediator) cleanupExpiredEntries() {
+	if !r.attached || r.objs == nil {
+		return
+	}
+
+	now := uint64(monotonicNs())
+	cleaned := 0
+
+	// Cleanup IPv4 blocklist
+	if r.objs.XdpBlocklist != nil {
+		cleaned += r.cleanupMap(r.objs.XdpBlocklist, now)
+	}
+
+	// Cleanup IPv6 blocklist
+	if r.objs.XdpBlocklistV6 != nil {
+		cleaned += r.cleanupMapV6(r.objs.XdpBlocklistV6, now)
+	}
+
+	// Cleanup CIDR blocklist
+	if r.objs.XdpCidrBlocklist != nil {
+		cleaned += r.cleanupLPMMap(r.objs.XdpCidrBlocklist, now)
+	}
+
+	if cleaned > 0 {
+		logger.Debugf("🧹 XDP cleanup: removed %d expired entries", cleaned)
+	}
+}
+
+// cleanupMap removes expired entries from an IPv4 blocklist map
+func (r *XDPRemediator) cleanupMap(m *ebpf.Map, now uint64) int {
+	var key uint32
+	var val blockEntry
+	cleaned := 0
+
+	iter := m.Iterate()
+	for iter.Next(&key, &val) {
+		// expires_ns = 0 means permanent (never expires)
+		if val.ExpiresNs > 0 && now > val.ExpiresNs {
+			if err := m.Delete(key); err == nil {
+				cleaned++
+			}
+		}
+	}
+
+	return cleaned
+}
+
+// cleanupMapV6 removes expired entries from an IPv6 blocklist map
+func (r *XDPRemediator) cleanupMapV6(m *ebpf.Map, now uint64) int {
+	var key [16]byte
+	var val blockEntry
+	cleaned := 0
+
+	iter := m.Iterate()
+	for iter.Next(&key, &val) {
+		if val.ExpiresNs > 0 && now > val.ExpiresNs {
+			if err := m.Delete(key); err == nil {
+				cleaned++
+			}
+		}
+	}
+
+	return cleaned
+}
+
+// cleanupLPMMap removes expired entries from a CIDR blocklist map
+func (r *XDPRemediator) cleanupLPMMap(m *ebpf.Map, now uint64) int {
+	var key lpmKeyV4
+	var val blockEntry
+	cleaned := 0
+
+	iter := m.Iterate()
+	for iter.Next(&key, &val) {
+		if val.ExpiresNs > 0 && now > val.ExpiresNs {
+			if err := m.Delete(key); err == nil {
+				cleaned++
+			}
+		}
+	}
+
+	return cleaned
 }

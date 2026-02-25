@@ -212,12 +212,24 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				duration = d
 			}
 
+			// Determine block type from reason
+			blockType := kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST
+			if reason, ok := cmd["reason"].(string); ok {
+				reasonLower := strings.ToLower(reason)
+				if strings.Contains(reasonLower, "rate limit") || strings.Contains(reasonLower, "ratelimit") {
+					blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT
+				} else if strings.Contains(reasonLower, "cidr") || strings.Contains(reasonLower, "range") {
+					blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_CIDR
+				}
+			}
+
 			pbCmd := &kerneleyev1.BlockCommand{
 				Action:          action,
 				IpAddress:       cmd["ip"].(string),
 				DurationSeconds: duration,
 				Reason:          cmd["reason"].(string),
 				BlockId:         cmd["block_id"].(string),
+				BlockType:       blockType,
 			}
 			if err := stream.Send(pbCmd); err != nil {
 				log.Printf("[BlockHandler] Failed to send command: %v", err)
@@ -292,13 +304,25 @@ func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlo
 			expiresAt = block.ExpiresAt.Time.Unix()
 		}
 
+		// Determine block type from reasons
+		blockType := kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST
+		reasonStr := strings.Join(block.Reasons, ", ")
+		reasonLower := strings.ToLower(reasonStr)
+
+		if strings.Contains(reasonLower, "rate limit") || strings.Contains(reasonLower, "ratelimit") {
+			blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT
+		} else if strings.Contains(reasonLower, "cidr") || strings.Contains(reasonLower, "range") {
+			blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_CIDR
+		}
+
 		result = append(result, &kerneleyev1.BlockListEntry{
 			IpAddress:       block.IpAddress.String(),
 			IpVersion:       int32(block.IpVersion.Int32),
 			DurationSeconds: int64(block.DurationSeconds),
-			Reason:          strings.Join(block.Reasons, ", "),
+			Reason:          reasonStr,
 			BlockId:         block.ID.String(),
 			ExpiresAt:       expiresAt,
+			BlockType:       blockType,
 		})
 	}
 

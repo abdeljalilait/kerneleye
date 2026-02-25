@@ -52,6 +52,8 @@ func (h *HybridRemediator) Setup() error {
 		} else {
 			h.xdpEnabled = true
 			logger.Infof("✅ Hybrid mode: XDP (%s) + iptables", h.xdp.Mode())
+			// Start periodic cleanup of expired XDP entries (every 5 minutes)
+			h.xdp.StartCleanup(5 * time.Minute)
 		}
 	} else {
 		logger.Info("ℹ️  XDP disabled, using iptables only")
@@ -203,19 +205,23 @@ func (h *HybridRemediator) UnblockCIDR(cidr string) error {
 	return nil
 }
 
-// Unblock removes an IP from both XDP and iptables blocklists
-func (h *HybridRemediator) Unblock(ip net.IP) error {
+// Unblock removes an IP from the specified block list
+func (h *HybridRemediator) Unblock(ip net.IP, blockType BlockType) error {
 	var errs []error
 
-	// Remove from XDP
+	// Remove from XDP (all block types use same XDP blocklist)
 	if h.xdpEnabled && h.xdp != nil {
-		if err := h.xdp.Unblock(ip); err != nil {
+		if err := h.xdp.Unblock(ip, blockType); err != nil {
 			errs = append(errs, fmt.Errorf("XDP unblock: %w", err))
 		}
 	}
 
-	// Note: IPSetRemediator doesn't have Unblock - ipset timeout handles expiry
-	// For manual unblock, we'd need: ipset del kernel_eye_block <ip>
+	// Remove from ipset based on block type
+	if h.iptables != nil {
+		if err := h.iptables.Unblock(ip, blockType); err != nil {
+			errs = append(errs, fmt.Errorf("ipset unblock: %w", err))
+		}
+	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("unblock errors: %v", errs)

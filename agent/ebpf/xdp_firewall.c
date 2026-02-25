@@ -436,8 +436,9 @@ int xdp_firewall(struct xdp_md *ctx) {
         __u16 dest_port = 0;
         
         // Try to get destination port from TCP/UDP header
+        // Need at least 8 bytes: source port (2) + dest port (2) + seq/ack (4) minimum
         void *l4_start = (void *)ip + (ip->ihl * 4);
-        if (l4_start + 4 <= data_end) {
+        if (l4_start + 8 <= data_end) {
             if (protocol == 6) { // TCP
                 struct tcphdr *tcp = l4_start;
                 dest_port = bpf_ntohs(tcp->dest);

@@ -22,6 +22,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Block type for proper sync with agent
+type BlockListEntry_BlockType int32
+
+const (
+	BlockListEntry_BLOCK_TYPE_UNSPECIFIED BlockListEntry_BlockType = 0
+	BlockListEntry_BLOCK_TYPE_BLOCKLIST   BlockListEntry_BlockType = 1 // kernel_eye_block / xdp_blocklist
+	BlockListEntry_BLOCK_TYPE_RATE_LIMIT  BlockListEntry_BlockType = 2 // kernel_eye_ratelimit
+	BlockListEntry_BLOCK_TYPE_CIDR        BlockListEntry_BlockType = 3 // kerneleye_block_cidr
+)
+
+// Enum value maps for BlockListEntry_BlockType.
+var (
+	BlockListEntry_BlockType_name = map[int32]string{
+		0: "BLOCK_TYPE_UNSPECIFIED",
+		1: "BLOCK_TYPE_BLOCKLIST",
+		2: "BLOCK_TYPE_RATE_LIMIT",
+		3: "BLOCK_TYPE_CIDR",
+	}
+	BlockListEntry_BlockType_value = map[string]int32{
+		"BLOCK_TYPE_UNSPECIFIED": 0,
+		"BLOCK_TYPE_BLOCKLIST":   1,
+		"BLOCK_TYPE_RATE_LIMIT":  2,
+		"BLOCK_TYPE_CIDR":        3,
+	}
+)
+
+func (x BlockListEntry_BlockType) Enum() *BlockListEntry_BlockType {
+	p := new(BlockListEntry_BlockType)
+	*p = x
+	return p
+}
+
+func (x BlockListEntry_BlockType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BlockListEntry_BlockType) Descriptor() protoreflect.EnumDescriptor {
+	return file_kerneleye_v1_blocks_proto_enumTypes[0].Descriptor()
+}
+
+func (BlockListEntry_BlockType) Type() protoreflect.EnumType {
+	return &file_kerneleye_v1_blocks_proto_enumTypes[0]
+}
+
+func (x BlockListEntry_BlockType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BlockListEntry_BlockType.Descriptor instead.
+func (BlockListEntry_BlockType) EnumDescriptor() ([]byte, []int) {
+	return file_kerneleye_v1_blocks_proto_rawDescGZIP(), []int{8, 0}
+}
+
 type BlockCommand_Action int32
 
 const (
@@ -55,11 +108,11 @@ func (x BlockCommand_Action) String() string {
 }
 
 func (BlockCommand_Action) Descriptor() protoreflect.EnumDescriptor {
-	return file_kerneleye_v1_blocks_proto_enumTypes[0].Descriptor()
+	return file_kerneleye_v1_blocks_proto_enumTypes[1].Descriptor()
 }
 
 func (BlockCommand_Action) Type() protoreflect.EnumType {
-	return &file_kerneleye_v1_blocks_proto_enumTypes[0]
+	return &file_kerneleye_v1_blocks_proto_enumTypes[1]
 }
 
 func (x BlockCommand_Action) Number() protoreflect.EnumNumber {
@@ -739,13 +792,14 @@ func (x *GetBlockListRequest) GetClientToken() string {
 }
 
 type BlockListEntry struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	IpAddress       string                 `protobuf:"bytes,1,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
-	IpVersion       int32                  `protobuf:"varint,2,opt,name=ip_version,json=ipVersion,proto3" json:"ip_version,omitempty"`
-	DurationSeconds int64                  `protobuf:"varint,3,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
-	Reason          string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
-	BlockId         string                 `protobuf:"bytes,5,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
-	ExpiresAt       int64                  `protobuf:"varint,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // Unix timestamp
+	state           protoimpl.MessageState   `protogen:"open.v1"`
+	IpAddress       string                   `protobuf:"bytes,1,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
+	IpVersion       int32                    `protobuf:"varint,2,opt,name=ip_version,json=ipVersion,proto3" json:"ip_version,omitempty"`
+	DurationSeconds int64                    `protobuf:"varint,3,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	Reason          string                   `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	BlockId         string                   `protobuf:"bytes,5,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
+	ExpiresAt       int64                    `protobuf:"varint,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // Unix timestamp
+	BlockType       BlockListEntry_BlockType `protobuf:"varint,7,opt,name=block_type,json=blockType,proto3,enum=kerneleye.v1.BlockListEntry_BlockType" json:"block_type,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -822,6 +876,13 @@ func (x *BlockListEntry) GetExpiresAt() int64 {
 	return 0
 }
 
+func (x *BlockListEntry) GetBlockType() BlockListEntry_BlockType {
+	if x != nil {
+		return x.BlockType
+	}
+	return BlockListEntry_BLOCK_TYPE_UNSPECIFIED
+}
+
 type GetBlockListResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Blocks          []*BlockListEntry      `protobuf:"bytes,1,rep,name=blocks,proto3" json:"blocks,omitempty"`
@@ -883,8 +944,10 @@ type BlockCommand struct {
 	Reason          string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
 	BlockId         string                 `protobuf:"bytes,5,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
 	IssuedAt        *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Block type - which list to add/remove from
+	BlockType     BlockListEntry_BlockType `protobuf:"varint,7,opt,name=block_type,json=blockType,proto3,enum=kerneleye.v1.BlockListEntry_BlockType" json:"block_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BlockCommand) Reset() {
@@ -959,6 +1022,13 @@ func (x *BlockCommand) GetIssuedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *BlockCommand) GetBlockType() BlockListEntry_BlockType {
+	if x != nil {
+		return x.BlockType
+	}
+	return BlockListEntry_BLOCK_TYPE_UNSPECIFIED
+}
+
 var File_kerneleye_v1_blocks_proto protoreflect.FileDescriptor
 
 const file_kerneleye_v1_blocks_proto_rawDesc = "" +
@@ -1027,7 +1097,7 @@ const file_kerneleye_v1_blocks_proto_rawDesc = "" +
 	"\fclient_token\x18\x02 \x01(\tR\vclientToken\"Q\n" +
 	"\x13GetBlockListRequest\x12\x17\n" +
 	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12!\n" +
-	"\fclient_token\x18\x02 \x01(\tR\vclientToken\"\xcb\x01\n" +
+	"\fclient_token\x18\x02 \x01(\tR\vclientToken\"\x85\x03\n" +
 	"\x0eBlockListEntry\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x01 \x01(\tR\tipAddress\x12\x1d\n" +
@@ -1037,10 +1107,17 @@ const file_kerneleye_v1_blocks_proto_rawDesc = "" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x19\n" +
 	"\bblock_id\x18\x05 \x01(\tR\ablockId\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x06 \x01(\x03R\texpiresAt\"w\n" +
+	"expires_at\x18\x06 \x01(\x03R\texpiresAt\x12E\n" +
+	"\n" +
+	"block_type\x18\a \x01(\x0e2&.kerneleye.v1.BlockListEntry.BlockTypeR\tblockType\"q\n" +
+	"\tBlockType\x12\x1a\n" +
+	"\x16BLOCK_TYPE_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14BLOCK_TYPE_BLOCKLIST\x10\x01\x12\x19\n" +
+	"\x15BLOCK_TYPE_RATE_LIMIT\x10\x02\x12\x13\n" +
+	"\x0fBLOCK_TYPE_CIDR\x10\x03\"w\n" +
 	"\x14GetBlockListResponse\x124\n" +
 	"\x06blocks\x18\x01 \x03(\v2\x1c.kerneleye.v1.BlockListEntryR\x06blocks\x12)\n" +
-	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\"\xb1\x02\n" +
+	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\"\xf8\x02\n" +
 	"\fBlockCommand\x129\n" +
 	"\x06action\x18\x01 \x01(\x0e2!.kerneleye.v1.BlockCommand.ActionR\x06action\x12\x1d\n" +
 	"\n" +
@@ -1048,7 +1125,9 @@ const file_kerneleye_v1_blocks_proto_rawDesc = "" +
 	"\x10duration_seconds\x18\x03 \x01(\x03R\x0fdurationSeconds\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x19\n" +
 	"\bblock_id\x18\x05 \x01(\tR\ablockId\x127\n" +
-	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"0\n" +
+	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x12E\n" +
+	"\n" +
+	"block_type\x18\a \x01(\x0e2&.kerneleye.v1.BlockListEntry.BlockTypeR\tblockType\"0\n" +
 	"\x06Action\x12\t\n" +
 	"\x05BLOCK\x10\x00\x12\v\n" +
 	"\aUNBLOCK\x10\x01\x12\x0e\n" +
@@ -1072,43 +1151,46 @@ func file_kerneleye_v1_blocks_proto_rawDescGZIP() []byte {
 	return file_kerneleye_v1_blocks_proto_rawDescData
 }
 
-var file_kerneleye_v1_blocks_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_kerneleye_v1_blocks_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_kerneleye_v1_blocks_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_kerneleye_v1_blocks_proto_goTypes = []any{
-	(BlockCommand_Action)(0),      // 0: kerneleye.v1.BlockCommand.Action
-	(*BlockReportRequest)(nil),    // 1: kerneleye.v1.BlockReportRequest
-	(*GeoLocation)(nil),           // 2: kerneleye.v1.GeoLocation
-	(*RawMetrics)(nil),            // 3: kerneleye.v1.RawMetrics
-	(*BlockReportResponse)(nil),   // 4: kerneleye.v1.BlockReportResponse
-	(*BlockStatusRequest)(nil),    // 5: kerneleye.v1.BlockStatusRequest
-	(*BlockStatusResponse)(nil),   // 6: kerneleye.v1.BlockStatusResponse
-	(*StreamBlockRequest)(nil),    // 7: kerneleye.v1.StreamBlockRequest
-	(*GetBlockListRequest)(nil),   // 8: kerneleye.v1.GetBlockListRequest
-	(*BlockListEntry)(nil),        // 9: kerneleye.v1.BlockListEntry
-	(*GetBlockListResponse)(nil),  // 10: kerneleye.v1.GetBlockListResponse
-	(*BlockCommand)(nil),          // 11: kerneleye.v1.BlockCommand
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(BlockListEntry_BlockType)(0), // 0: kerneleye.v1.BlockListEntry.BlockType
+	(BlockCommand_Action)(0),      // 1: kerneleye.v1.BlockCommand.Action
+	(*BlockReportRequest)(nil),    // 2: kerneleye.v1.BlockReportRequest
+	(*GeoLocation)(nil),           // 3: kerneleye.v1.GeoLocation
+	(*RawMetrics)(nil),            // 4: kerneleye.v1.RawMetrics
+	(*BlockReportResponse)(nil),   // 5: kerneleye.v1.BlockReportResponse
+	(*BlockStatusRequest)(nil),    // 6: kerneleye.v1.BlockStatusRequest
+	(*BlockStatusResponse)(nil),   // 7: kerneleye.v1.BlockStatusResponse
+	(*StreamBlockRequest)(nil),    // 8: kerneleye.v1.StreamBlockRequest
+	(*GetBlockListRequest)(nil),   // 9: kerneleye.v1.GetBlockListRequest
+	(*BlockListEntry)(nil),        // 10: kerneleye.v1.BlockListEntry
+	(*GetBlockListResponse)(nil),  // 11: kerneleye.v1.GetBlockListResponse
+	(*BlockCommand)(nil),          // 12: kerneleye.v1.BlockCommand
+	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
 }
 var file_kerneleye_v1_blocks_proto_depIdxs = []int32{
-	2,  // 0: kerneleye.v1.BlockReportRequest.geo:type_name -> kerneleye.v1.GeoLocation
-	12, // 1: kerneleye.v1.BlockReportRequest.blocked_at:type_name -> google.protobuf.Timestamp
-	3,  // 2: kerneleye.v1.BlockReportRequest.metrics:type_name -> kerneleye.v1.RawMetrics
-	9,  // 3: kerneleye.v1.GetBlockListResponse.blocks:type_name -> kerneleye.v1.BlockListEntry
-	0,  // 4: kerneleye.v1.BlockCommand.action:type_name -> kerneleye.v1.BlockCommand.Action
-	12, // 5: kerneleye.v1.BlockCommand.issued_at:type_name -> google.protobuf.Timestamp
-	1,  // 6: kerneleye.v1.BlockService.ReportBlock:input_type -> kerneleye.v1.BlockReportRequest
-	5,  // 7: kerneleye.v1.BlockService.GetBlockStatus:input_type -> kerneleye.v1.BlockStatusRequest
-	8,  // 8: kerneleye.v1.BlockService.GetBlockList:input_type -> kerneleye.v1.GetBlockListRequest
-	7,  // 9: kerneleye.v1.BlockService.StreamBlockCommands:input_type -> kerneleye.v1.StreamBlockRequest
-	4,  // 10: kerneleye.v1.BlockService.ReportBlock:output_type -> kerneleye.v1.BlockReportResponse
-	6,  // 11: kerneleye.v1.BlockService.GetBlockStatus:output_type -> kerneleye.v1.BlockStatusResponse
-	10, // 12: kerneleye.v1.BlockService.GetBlockList:output_type -> kerneleye.v1.GetBlockListResponse
-	11, // 13: kerneleye.v1.BlockService.StreamBlockCommands:output_type -> kerneleye.v1.BlockCommand
-	10, // [10:14] is the sub-list for method output_type
-	6,  // [6:10] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	3,  // 0: kerneleye.v1.BlockReportRequest.geo:type_name -> kerneleye.v1.GeoLocation
+	13, // 1: kerneleye.v1.BlockReportRequest.blocked_at:type_name -> google.protobuf.Timestamp
+	4,  // 2: kerneleye.v1.BlockReportRequest.metrics:type_name -> kerneleye.v1.RawMetrics
+	0,  // 3: kerneleye.v1.BlockListEntry.block_type:type_name -> kerneleye.v1.BlockListEntry.BlockType
+	10, // 4: kerneleye.v1.GetBlockListResponse.blocks:type_name -> kerneleye.v1.BlockListEntry
+	1,  // 5: kerneleye.v1.BlockCommand.action:type_name -> kerneleye.v1.BlockCommand.Action
+	13, // 6: kerneleye.v1.BlockCommand.issued_at:type_name -> google.protobuf.Timestamp
+	0,  // 7: kerneleye.v1.BlockCommand.block_type:type_name -> kerneleye.v1.BlockListEntry.BlockType
+	2,  // 8: kerneleye.v1.BlockService.ReportBlock:input_type -> kerneleye.v1.BlockReportRequest
+	6,  // 9: kerneleye.v1.BlockService.GetBlockStatus:input_type -> kerneleye.v1.BlockStatusRequest
+	9,  // 10: kerneleye.v1.BlockService.GetBlockList:input_type -> kerneleye.v1.GetBlockListRequest
+	8,  // 11: kerneleye.v1.BlockService.StreamBlockCommands:input_type -> kerneleye.v1.StreamBlockRequest
+	5,  // 12: kerneleye.v1.BlockService.ReportBlock:output_type -> kerneleye.v1.BlockReportResponse
+	7,  // 13: kerneleye.v1.BlockService.GetBlockStatus:output_type -> kerneleye.v1.BlockStatusResponse
+	11, // 14: kerneleye.v1.BlockService.GetBlockList:output_type -> kerneleye.v1.GetBlockListResponse
+	12, // 15: kerneleye.v1.BlockService.StreamBlockCommands:output_type -> kerneleye.v1.BlockCommand
+	12, // [12:16] is the sub-list for method output_type
+	8,  // [8:12] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kerneleye_v1_blocks_proto_init() }
@@ -1121,7 +1203,7 @@ func file_kerneleye_v1_blocks_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kerneleye_v1_blocks_proto_rawDesc), len(file_kerneleye_v1_blocks_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,

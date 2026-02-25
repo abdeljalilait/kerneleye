@@ -42,6 +42,8 @@ type Remediator interface {
 	Block(ip net.IP, duration time.Duration) error
 	// RateLimit adds an IP to the rate-limit list for the specified duration
 	RateLimit(ip net.IP, duration time.Duration) error
+	// Unblock removes an IP from the specified block list
+	Unblock(ip net.IP, blockType BlockType) error
 	// Teardown cleans up resources (optional)
 	Teardown() error
 }
@@ -71,9 +73,9 @@ type BlockedPacketCallback func(ip string, port uint16, protocol uint8, reason u
 type BlockReason uint8
 
 const (
-	BlockReasonBlocklist  BlockReason = 1 // IP in blocklist
-	BlockReasonCIDR       BlockReason = 2 // IP in CIDR blocklist
-	BlockReasonRateLimit  BlockReason = 3 // Rate limit exceeded
+	BlockReasonBlocklist BlockReason = 1 // IP in blocklist
+	BlockReasonCIDR      BlockReason = 2 // IP in CIDR blocklist
+	BlockReasonRateLimit BlockReason = 3 // Rate limit exceeded
 )
 
 func (r BlockReason) String() string {
@@ -86,5 +88,28 @@ func (r BlockReason) String() string {
 		return "rate_limit"
 	default:
 		return "unknown"
+	}
+}
+
+// BlockType represents the type of block list
+type BlockType uint8
+
+const (
+	BlockTypeUnspecified BlockType = 0
+	BlockTypeBlocklist   BlockType = 1 // kernel_eye_block / xdp_blocklist
+	BlockTypeRateLimit   BlockType = 2 // kernel_eye_ratelimit
+	BlockTypeCIDR        BlockType = 3 // kerneleye_block_cidr
+)
+
+func (bt BlockType) String() string {
+	switch bt {
+	case BlockTypeBlocklist:
+		return "blocklist"
+	case BlockTypeRateLimit:
+		return "ratelimit"
+	case BlockTypeCIDR:
+		return "cidr"
+	default:
+		return "unspecified"
 	}
 }

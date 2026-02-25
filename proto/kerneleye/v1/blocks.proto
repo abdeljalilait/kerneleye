@@ -116,6 +116,15 @@ message BlockListEntry {
   string reason = 4;
   string block_id = 5;
   int64 expires_at = 6;  // Unix timestamp
+
+  // Block type for proper sync with agent
+  enum BlockType {
+    BLOCK_TYPE_UNSPECIFIED = 0;
+    BLOCK_TYPE_BLOCKLIST = 1;    // kernel_eye_block / xdp_blocklist
+    BLOCK_TYPE_RATE_LIMIT = 2;   // kernel_eye_ratelimit
+    BLOCK_TYPE_CIDR = 3;        // kerneleye_block_cidr
+  }
+  BlockType block_type = 7;
 }
 
 message GetBlockListResponse {
@@ -137,4 +146,7 @@ message BlockCommand {
   string reason = 4;
   string block_id = 5;
   google.protobuf.Timestamp issued_at = 6;
+  
+  // Block type - which list to add/remove from
+  BlockListEntry.BlockType block_type = 7;
 }
