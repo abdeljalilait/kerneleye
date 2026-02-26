@@ -136,7 +136,7 @@ func main() {
 	defer analyzerCancel()
 	analyzer.CleanupRoutine(analyzerCtx, 5*time.Minute)
 
-	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, remediator, analyzer, autoBlocker, scorer)
+	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, Version, remediator, analyzer, autoBlocker, scorer)
 	if err != nil {
 		Logger.Fatalf("Failed to create aggregator: %v", err)
 	}
@@ -238,13 +238,13 @@ func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem
 	}
 	cancelAnalyzer() // Stop the analyzer cleanup goroutine
 	Logger.Debug("[Shutdown] Analyzer cancelled")
-	
-	agg.Close()      // This will flush and cleanup
+
+	agg.Close() // This will flush and cleanup
 	Logger.Debug("[Shutdown] Aggregator closed")
-	
+
 	rd.Close()
 	Logger.Debug("[Shutdown] Ringbuf reader closed")
-	
+
 	if rem != nil {
 		Logger.Debug("[Shutdown] Tearing down remediator...")
 		rem.Teardown()

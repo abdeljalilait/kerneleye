@@ -228,6 +228,14 @@ message BlockedIPEvent {
   uint32 duration_seconds = 5;
   string reason = 6;
   google.protobuf.Timestamp blocked_at = 7;
+  
+  // Service Targeted
+  uint32 target_port = 8;
+  string service_name = 9;
+  Protocol protocol = 10;
+  
+  // Agent Info
+  string agent_version = 11;
 }
 
 message BlockedIPResponse {

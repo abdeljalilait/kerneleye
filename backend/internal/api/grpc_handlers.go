@@ -660,6 +660,23 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		return &pb.BlockedIPResponse{Success: true}, nil
 	}
 
+	// Convert protocol enum to string
+	protocolStr := "TCP"
+	switch req.Protocol {
+	case pb.Protocol_PROTOCOL_UDP:
+		protocolStr = "UDP"
+	case pb.Protocol_PROTOCOL_ICMP:
+		protocolStr = "ICMP"
+	case pb.Protocol_PROTOCOL_UNKNOWN:
+		protocolStr = "UNKNOWN"
+	}
+
+	// Determine service name: use provided or derive from port
+	serviceName := req.ServiceName
+	if serviceName == "" && req.TargetPort > 0 {
+		serviceName = getServiceFromPort(int(req.TargetPort))
+	}
+
 	// Create new block record in database
 	block, err := h.queries.CreateBlock(ctx, database.CreateBlockParams{
 		ServerID:        server.ID,
@@ -669,9 +686,9 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		ThreatScore:     100, // High score for auto-blocked
 		ThreatLevel:     "malicious",
 		Reasons:         []string{req.Reason},
-		TargetPort:      pgtype.Int4{Valid: false},
-		ServiceName:     pgtype.Text{Valid: false},
-		Protocol:        pgtype.Text{String: "TCP", Valid: true},
+		TargetPort:      pgtype.Int4{Int32: int32(req.TargetPort), Valid: req.TargetPort > 0},
+		ServiceName:     pgtype.Text{String: serviceName, Valid: serviceName != ""},
+		Protocol:        pgtype.Text{String: protocolStr, Valid: true},
 		CountryCode:     pgtype.Text{String: countryCodeISO, Valid: countryCodeISO != ""},
 		CountryName:     pgtype.Text{String: country, Valid: country != ""},
 		City:            pgtype.Text{String: city, Valid: city != ""},
@@ -687,7 +704,7 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		ExpiresAt:       expiresAt,
 		DurationSeconds: int32(req.DurationSeconds),
 		IsAutoBlocked:   pgtype.Bool{Bool: isAutoBlocked, Valid: true},
-		AgentVersion:    database.ToPgText(""),
+		AgentVersion:    database.ToPgText(req.AgentVersion),
 		RawMetrics:      nil,
 	})
 

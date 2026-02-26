@@ -145,6 +145,8 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 				Action:   ActionBlock,
 				Reason:   "SYN Flood Detected",
 				Duration: 1 * time.Hour,
+				DestPort: event.DestPort,
+				Protocol: event.Protocol,
 			}
 		}
 	}
@@ -179,6 +181,8 @@ func (a *Analyzer) Evaluate(event TrafficEvent) *Decision {
 				Action:   ActionRateLimit,
 				Reason:   "Port Scan Detected",
 				Duration: 10 * time.Minute,
+				DestPort: event.DestPort,
+				Protocol: event.Protocol,
 			}
 		}
 		// Already rate limited, skip generating duplicate decisions

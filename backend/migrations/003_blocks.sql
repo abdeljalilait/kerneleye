@@ -38,7 +38,7 @@ CREATE TABLE blocks (
     
     -- Timing
     blocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ, -- NULL = permanent block (no expiry)
     duration_seconds INTEGER NOT NULL,
     
     -- Status

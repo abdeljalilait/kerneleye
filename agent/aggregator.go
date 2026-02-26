@@ -27,6 +27,7 @@ type Aggregator struct {
 	apiKey, serverHost string
 	grpcURL            string
 	serverID           string
+	agentVersion       string
 	grpcConn           *grpc.ClientConn
 	grpcClient         pb.IngestServiceClient
 	grpcMu             sync.RWMutex // Protects grpcConn/grpcClient during RPCs and reconnect swaps
@@ -75,7 +76,7 @@ func (a *Aggregator) ServerID() string {
 }
 
 // NewAggregator creates a new aggregator with gRPC connection
-func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
+func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 	controlPlaneHost, controlPlanePort, controlPlaneIPs := resolveControlPlaneEndpoint(grpcTarget)
 	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(grpcTarget), buildGRPCOpts(grpcTarget)...)
@@ -124,6 +125,7 @@ func NewAggregator(apiKey, serverHost, grpcURL string, rem remediation.Remediato
 		serverHost:        serverHost,
 		grpcURL:           grpcTarget,
 		serverID:          serverID,
+		agentVersion:      agentVersion,
 		grpcConn:          conn,
 		grpcClient:        pb.NewIngestServiceClient(conn),
 		remediator:        rem,
@@ -333,10 +335,12 @@ func (a *Aggregator) ProcessEvent(event Event) {
 				if err := a.remediator.Block(decision.IP, decision.Duration); err != nil {
 					Logger.Errorf("❌ Failed to block IP %s: %v", decision.IP, err)
 				}
+				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionBlock, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol)
 			case remediation.ActionRateLimit:
 				if err := a.remediator.RateLimit(decision.IP, decision.Duration); err != nil {
 					Logger.Errorf("❌ Failed to rate-limit IP %s: %v", decision.IP, err)
 				}
+				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionRateLimit, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol)
 			}
 		}
 	}
@@ -675,6 +679,73 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 		Action:          blockAction,
 		DurationSeconds: uint32(duration.Seconds()),
 		Reason:          reason,
+		AgentVersion:    a.agentVersion,
+	}
+
+	// Retry up to 3 times with exponential backoff
+	var err error
+	for attempt := range 3 {
+		a.grpcMu.RLock()
+		client := a.grpcClient
+		if client == nil {
+			a.grpcMu.RUnlock()
+			Logger.Warn("⚠️  gRPC client not initialized, cannot report blocked IP")
+			a.scheduleReconnect()
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err = client.ReportBlockedIP(ctx, req)
+		a.grpcMu.RUnlock()
+		cancel()
+		if err == nil {
+			Logger.Infof("📡 Reported blocked IP %s (%s) to backend", ip, action)
+			return
+		}
+		Logger.Warnf("⚠️  Attempt %d/3 failed to report blocked IP %s: %v", attempt+1, ip, err)
+		if attempt < 2 {
+			time.Sleep(time.Duration(1<<attempt) * time.Second) // 1s, 2s backoff
+		}
+	}
+	a.scheduleReconnect()
+	Logger.Errorf("❌ Failed to report blocked IP %s after 3 attempts: %v", ip, err)
+}
+
+// ReportBlockedIPWithContext sends a blocked IP event with port/protocol context
+func (a *Aggregator) ReportBlockedIPWithContext(ip net.IP, action remediation.Action, reason string, duration time.Duration, targetPort uint16, protocol uint8) {
+	var blockAction pb.BlockAction
+	switch action {
+	case remediation.ActionBlock:
+		blockAction = pb.BlockAction_BLOCK_ACTION_BLOCK
+	case remediation.ActionRateLimit:
+		blockAction = pb.BlockAction_BLOCK_ACTION_RATE_LIMIT
+	default:
+		blockAction = pb.BlockAction_BLOCK_ACTION_ALLOW
+	}
+
+	// Convert protocol number to Protocol enum
+	var proto pb.Protocol
+	switch protocol {
+	case 6:
+		proto = pb.Protocol_PROTOCOL_TCP
+	case 17:
+		proto = pb.Protocol_PROTOCOL_UDP
+	case 1:
+		proto = pb.Protocol_PROTOCOL_ICMP
+	default:
+		proto = pb.Protocol_PROTOCOL_UNKNOWN
+	}
+
+	req := &pb.BlockedIPEvent{
+		ApiKey:          a.apiKey,
+		ServerId:        a.serverID,
+		IpAddress:       ip.String(),
+		Action:          blockAction,
+		DurationSeconds: uint32(duration.Seconds()),
+		Reason:          reason,
+		TargetPort:      uint32(targetPort),
+		Protocol:        proto,
+		AgentVersion:    a.agentVersion,
 	}
 
 	// Retry up to 3 times with exponential backoff

@@ -29,6 +29,8 @@ type Decision struct {
 	Action   Action
 	Reason   string
 	Duration time.Duration
+	DestPort uint16
+	Protocol uint8
 }
 
 // BlockCallback is called when an IP is blocked or rate-limited
