@@ -314,6 +314,65 @@ WHERE server_id = $1
   AND ($4::timestamptz IS NULL OR last_seen >= $4)
   AND ($5::timestamptz IS NULL OR last_seen <= $5);
 
+-- name: ListPortSourcesByServer :many
+-- Returns paginated source IPs for a specific port/protocol combination
+SELECT 
+    source_ip,
+    destination_ip,
+    bytes_in,
+    bytes_out,
+    syn_count,
+    ack_count,
+    hit_count,
+    threat_score,
+    threat_level,
+    country,
+    city,
+    isp,
+    last_seen,
+    direction
+FROM traffic_events
+WHERE server_id = $1
+  AND destination_port = $2
+  AND protocol = $3
+  AND ($4::text IS NULL OR $4 = '' 
+       OR source_ip::text ILIKE '%' || $4 || '%' 
+       OR country ILIKE '%' || $4 || '%' 
+       OR city ILIKE '%' || $4 || '%')
+ORDER BY 
+    CASE WHEN $5::text = 'threat_score' AND $6::text = 'desc' THEN threat_score END DESC,
+    CASE WHEN $5::text = 'threat_score' AND $6::text = 'asc' THEN threat_score END ASC,
+    CASE WHEN $5::text = 'source_ip' AND $6::text = 'desc' THEN source_ip END DESC,
+    CASE WHEN $5::text = 'source_ip' AND $6::text = 'asc' THEN source_ip END ASC,
+    CASE WHEN $5::text = 'country' AND $6::text = 'desc' THEN country END DESC,
+    CASE WHEN $5::text = 'country' AND $6::text = 'asc' THEN country END ASC,
+    CASE WHEN $5::text = 'city' AND $6::text = 'desc' THEN city END DESC,
+    CASE WHEN $5::text = 'city' AND $6::text = 'asc' THEN city END ASC,
+    CASE WHEN $5::text = 'bytes_in' AND $6::text = 'desc' THEN bytes_in END DESC,
+    CASE WHEN $5::text = 'bytes_in' AND $6::text = 'asc' THEN bytes_in END ASC,
+    CASE WHEN $5::text = 'bytes_out' AND $6::text = 'desc' THEN bytes_out END DESC,
+    CASE WHEN $5::text = 'bytes_out' AND $6::text = 'asc' THEN bytes_out END ASC,
+    CASE WHEN $5::text = 'syn_count' AND $6::text = 'desc' THEN syn_count END DESC,
+    CASE WHEN $5::text = 'syn_count' AND $6::text = 'asc' THEN syn_count END ASC,
+    CASE WHEN $5::text = 'ack_count' AND $6::text = 'desc' THEN ack_count END DESC,
+    CASE WHEN $5::text = 'ack_count' AND $6::text = 'asc' THEN ack_count END ASC,
+    CASE WHEN $5::text = 'hit_count' AND $6::text = 'desc' THEN hit_count END DESC,
+    CASE WHEN $5::text = 'hit_count' AND $6::text = 'asc' THEN hit_count END ASC,
+    last_seen DESC
+LIMIT $7 OFFSET $8;
+
+-- name: CountPortSourcesByServer :one
+-- Returns count of source IPs for a specific port/protocol combination
+SELECT COUNT(*)::int as total_count
+FROM traffic_events
+WHERE server_id = $1
+  AND destination_port = $2
+  AND protocol = $3
+  AND ($4::text IS NULL OR $4 = '' 
+       OR source_ip::text ILIKE '%' || $4 || '%' 
+       OR country ILIKE '%' || $4 || '%' 
+       OR city ILIKE '%' || $4 || '%');
+
 -- name: DeleteServer :exec
 DELETE FROM servers
 WHERE id = $1;

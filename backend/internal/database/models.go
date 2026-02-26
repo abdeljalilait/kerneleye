@@ -64,8 +64,9 @@ type Block struct {
 	IsVpn       pgtype.Bool   `json:"is_vpn"`
 	IsTor       pgtype.Bool   `json:"is_tor"`
 	// TRUE if IP is from known cloud provider (AWS, GCP, etc.)
-	IsDatacenter    pgtype.Bool        `json:"is_datacenter"`
-	BlockedAt       pgtype.Timestamptz `json:"blocked_at"`
+	IsDatacenter pgtype.Bool        `json:"is_datacenter"`
+	BlockedAt    pgtype.Timestamptz `json:"blocked_at"`
+	// Block expiration time. NULL = permanent block (no expiry).
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	DurationSeconds int32              `json:"duration_seconds"`
 	IsActive        pgtype.Bool        `json:"is_active"`

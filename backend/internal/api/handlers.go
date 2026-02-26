@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -413,6 +414,145 @@ func HandleServerPortTraffic(queries *database.Queries) fiber.Handler {
 				MaxThreatLevel: maxThreatLevel,
 				LastSeen:       lastSeen,
 				Sources:        sources,
+			})
+		}
+
+		// Return with pagination metadata
+		totalPages := int(math.Ceil(float64(totalCount) / float64(pageSize)))
+		return c.JSON(fiber.Map{
+			"data": items,
+			"pagination": fiber.Map{
+				"page":        page,
+				"page_size":   pageSize,
+				"total_count": totalCount,
+				"total_pages": totalPages,
+			},
+		})
+	}
+}
+
+// HandleServerPortSources returns paginated source IPs for a specific port/protocol combination
+func HandleServerPortSources(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		serverID := c.Params("id")
+		port := c.Params("port")
+		userID := c.Locals("user_id")
+
+		// Verify ownership
+		server, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
+		if err != nil {
+			return fiber.NewError(fiber.StatusNotFound, "Server not found")
+		}
+		if database.FromPgUUID(server.UserID) != userID.(string) {
+			return fiber.NewError(fiber.StatusForbidden, "Access denied")
+		}
+
+		// Parse port number
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid port number")
+		}
+
+		// Parse query parameters
+		protocol := c.Query("protocol")
+		if protocol == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Protocol is required")
+		}
+
+		page := c.QueryInt("page", 1)
+		if page < 1 {
+			page = 1
+		}
+
+		pageSize := c.QueryInt("page_size", 25)
+		if pageSize > 100 {
+			pageSize = 100
+		}
+		if pageSize < 1 {
+			pageSize = 1
+		}
+
+		offset := (page - 1) * pageSize
+
+		// Optional filters
+		search := c.Query("search")
+		sortBy := c.Query("sort_by", "last_seen")
+		sortOrder := c.Query("sort_order", "desc")
+
+		// Build query params
+		params := database.ListPortSourcesByServerParams{
+			ServerID:        database.ToPgUUID(serverID),
+			DestinationPort: int32(portNum),
+			Protocol:        protocol,
+			Limit:           int32(pageSize),
+			Offset:          int32(offset),
+			Column5:         sortBy,
+			Column6:         sortOrder,
+		}
+
+		// Apply search filter
+		if search != "" {
+			params.Column4 = search
+		}
+
+		// Get total count for pagination
+		countParams := database.CountPortSourcesByServerParams{
+			ServerID:        database.ToPgUUID(serverID),
+			DestinationPort: int32(portNum),
+			Protocol:        protocol,
+		}
+		if search != "" {
+			countParams.Column4 = search
+		}
+
+		totalCount, err := queries.CountPortSourcesByServer(c.Context(), countParams)
+		if err != nil {
+			log.Printf("[HandleServerPortSources] Count error: %v", err)
+			totalCount = 0
+		}
+
+		rows, err := queries.ListPortSourcesByServer(c.Context(), params)
+		if err != nil {
+			log.Printf("[HandleServerPortSources] Error: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to fetch port sources")
+		}
+
+		// Convert to response format
+		items := make([]PortSourceIP, 0, len(rows))
+		for _, row := range rows {
+			var country, city, isp, destIP *string
+			if row.Country.Valid {
+				country = &row.Country.String
+			}
+			if row.City.Valid {
+				city = &row.City.String
+			}
+			if row.Isp.Valid {
+				isp = &row.Isp.String
+			}
+			if row.DestinationIp != nil {
+				s := row.DestinationIp.String()
+				destIP = &s
+			}
+
+			lastSeen := row.LastSeen.Time
+
+			items = append(items, PortSourceIP{
+				SourceIP:        row.SourceIp.String(),
+				DestinationPort: int32(portNum),
+				DestinationIP:   destIP,
+				BytesIn:         row.BytesIn,
+				BytesOut:        row.BytesOut,
+				SynCount:        row.SynCount,
+				AckCount:        row.AckCount,
+				HitCount:        row.HitCount,
+				ThreatScore:     row.ThreatScore,
+				ThreatLevel:     row.ThreatLevel,
+				Country:         country,
+				City:            city,
+				ISP:             isp,
+				LastSeen:        lastSeen,
+				Direction:       row.Direction,
 			})
 		}
 

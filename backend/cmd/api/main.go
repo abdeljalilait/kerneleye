@@ -205,6 +205,7 @@ func main() {
 	protected.Get("/servers/:id", api.HandleGetServer(queries))
 	protected.Get("/servers/:id/traffic", api.HandleServerTraffic(queries))
 	protected.Get("/servers/:id/port-traffic", api.HandleServerPortTraffic(queries))
+	protected.Get("/servers/:id/port-traffic/:port/sources", api.HandleServerPortSources(queries))
 	protected.Get("/servers/:id/protocol-traffic", api.HandleServerProtocolTraffic(queries))
 	protected.Get("/servers/:id/stats", api.HandleServerStats(queries))
 	protected.Get("/servers/:id/config", api.HandleGetServerConfig(queries))
