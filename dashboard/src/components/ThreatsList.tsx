@@ -5,155 +5,7 @@ import { Globe, Search, Shield, AlertTriangle, Ban, ExternalLink, MapPin, Clock,
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { Threat } from '../types'
 import api from '../api/client'
-// Import commonly used flags
-import US from 'country-flag-icons/react/3x2/US'
-import GB from 'country-flag-icons/react/3x2/GB'
-import CA from 'country-flag-icons/react/3x2/CA'
-import AU from 'country-flag-icons/react/3x2/AU'
-import DE from 'country-flag-icons/react/3x2/DE'
-import FR from 'country-flag-icons/react/3x2/FR'
-import IT from 'country-flag-icons/react/3x2/IT'
-import ES from 'country-flag-icons/react/3x2/ES'
-import NL from 'country-flag-icons/react/3x2/NL'
-import RU from 'country-flag-icons/react/3x2/RU'
-import CN from 'country-flag-icons/react/3x2/CN'
-import JP from 'country-flag-icons/react/3x2/JP'
-import KR from 'country-flag-icons/react/3x2/KR'
-import IN from 'country-flag-icons/react/3x2/IN'
-import BR from 'country-flag-icons/react/3x2/BR'
-import MX from 'country-flag-icons/react/3x2/MX'
-import SG from 'country-flag-icons/react/3x2/SG'
-import HK from 'country-flag-icons/react/3x2/HK'
-import TW from 'country-flag-icons/react/3x2/TW'
-import CH from 'country-flag-icons/react/3x2/CH'
-import SE from 'country-flag-icons/react/3x2/SE'
-import NO from 'country-flag-icons/react/3x2/NO'
-import DK from 'country-flag-icons/react/3x2/DK'
-import FI from 'country-flag-icons/react/3x2/FI'
-import PL from 'country-flag-icons/react/3x2/PL'
-import CZ from 'country-flag-icons/react/3x2/CZ'
-import AT from 'country-flag-icons/react/3x2/AT'
-import BE from 'country-flag-icons/react/3x2/BE'
-import IE from 'country-flag-icons/react/3x2/IE'
-import PT from 'country-flag-icons/react/3x2/PT'
-import GR from 'country-flag-icons/react/3x2/GR'
-import TR from 'country-flag-icons/react/3x2/TR'
-import UA from 'country-flag-icons/react/3x2/UA'
-import RO from 'country-flag-icons/react/3x2/RO'
-import HU from 'country-flag-icons/react/3x2/HU'
-import IL from 'country-flag-icons/react/3x2/IL'
-import AE from 'country-flag-icons/react/3x2/AE'
-import SA from 'country-flag-icons/react/3x2/SA'
-import ZA from 'country-flag-icons/react/3x2/ZA'
-import NG from 'country-flag-icons/react/3x2/NG'
-import EG from 'country-flag-icons/react/3x2/EG'
-import PK from 'country-flag-icons/react/3x2/PK'
-import BD from 'country-flag-icons/react/3x2/BD'
-import ID from 'country-flag-icons/react/3x2/ID'
-import TH from 'country-flag-icons/react/3x2/TH'
-import VN from 'country-flag-icons/react/3x2/VN'
-import MY from 'country-flag-icons/react/3x2/MY'
-import PH from 'country-flag-icons/react/3x2/PH'
-import NZ from 'country-flag-icons/react/3x2/NZ'
-import CL from 'country-flag-icons/react/3x2/CL'
-import CO from 'country-flag-icons/react/3x2/CO'
-import AR from 'country-flag-icons/react/3x2/AR'
-import PE from 'country-flag-icons/react/3x2/PE'
-import VE from 'country-flag-icons/react/3x2/VE'
-import EC from 'country-flag-icons/react/3x2/EC'
-import UY from 'country-flag-icons/react/3x2/UY'
-import PY from 'country-flag-icons/react/3x2/PY'
-import BO from 'country-flag-icons/react/3x2/BO'
-
-const flagComponents: Record<string, React.FC<{ style?: React.CSSProperties }>> = {
-  US, GB, CA, AU, DE, FR, IT, ES, NL, RU, CN, JP, KR, IN, BR, MX, SG, HK, TW,
-  CH, SE, NO, DK, FI, PL, CZ, AT, BE, IE, PT, GR, TR, UA, RO, HU, IL, AE, SA,
-  ZA, NG, EG, PK, BD, ID, TH, VN, MY, PH, NZ, CL, CO, AR, PE, VE, EC, UY, PY, BO,
-}
-
-// Normalize country code from various formats
-const normalizeCountryCode = (country: string): string => {
-  if (!country) return ''
-  if (/^[A-Za-z]{2}$/.test(country)) return country.toUpperCase()
-  
-  // Map of common country names to codes
-  const countryMap: Record<string, string> = {
-    'united states': 'US',
-    'usa': 'US',
-    'united kingdom': 'GB',
-    'uk': 'GB',
-    'germany': 'DE',
-    'france': 'FR',
-    'italy': 'IT',
-    'spain': 'ES',
-    'netherlands': 'NL',
-    'russia': 'RU',
-    'china': 'CN',
-    'japan': 'JP',
-    'south korea': 'KR',
-    'korea': 'KR',
-    'india': 'IN',
-    'brazil': 'BR',
-    'mexico': 'MX',
-    'singapore': 'SG',
-    'hong kong': 'HK',
-    'taiwan': 'TW',
-    'switzerland': 'CH',
-    'sweden': 'SE',
-    'norway': 'NO',
-    'denmark': 'DK',
-    'finland': 'FI',
-    'poland': 'PL',
-    'czech republic': 'CZ',
-    'austria': 'AT',
-    'belgium': 'BE',
-    'ireland': 'IE',
-    'portugal': 'PT',
-    'greece': 'GR',
-    'turkey': 'TR',
-    'ukraine': 'UA',
-    'romania': 'RO',
-    'hungary': 'HU',
-    'israel': 'IL',
-    'united arab emirates': 'AE',
-    'saudi arabia': 'SA',
-    'south africa': 'ZA',
-    'nigeria': 'NG',
-    'egypt': 'EG',
-    'pakistan': 'PK',
-    'bangladesh': 'BD',
-    'indonesia': 'ID',
-    'thailand': 'TH',
-    'vietnam': 'VN',
-    'malaysia': 'MY',
-    'philippines': 'PH',
-    'new zealand': 'NZ',
-    'chile': 'CL',
-    'colombia': 'CO',
-    'argentina': 'AR',
-    'peru': 'PE',
-    'venezuela': 'VE',
-    'ecuador': 'EC',
-    'uruguay': 'UY',
-    'paraguay': 'PY',
-    'bolivia': 'BO',
-    'canada': 'CA',
-    'australia': 'AU',
-  }
-  
-  return countryMap[country.toLowerCase()] || ''
-}
-
-// Country flag component
-const CountryFlag = ({ countryCode, size = 12 }: { countryCode: string; size?: number }) => {
-  const code = normalizeCountryCode(countryCode)
-  if (!code) return <Globe size={size} style={{ opacity: 0.5 }} />
-  
-  const FlagComponent = flagComponents[code]
-  if (!FlagComponent) return <Globe size={size} style={{ opacity: 0.5 }} />
-  
-  return <FlagComponent style={{ width: size * 1.5, height: size, borderRadius: 2 }} />
-}
+import { CountryFlag } from './CountryFlag'
 
 const { Text, Title } = Typography
 
@@ -374,42 +226,53 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
       title: 'Threat',
       dataIndex: 'source_ip',
       key: 'source_ip',
-      width: 280,
+      width: 300,
       render: (ip, record) => {
         const config = getRiskConfig(record.threat_score)
         const Icon = config.icon
         return (
           <Space size={12}>
             <Avatar
-              size={40}
+              size={44}
               style={{
                 background: config.bg,
-                border: `1px solid ${config.color}30`,
+                border: `2px solid ${config.color}40`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Icon size={20} color={config.color} />
+              <Icon size={22} color={config.color} />
             </Avatar>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Text strong style={{ color: 'var(--text-primary)', fontSize: 14, fontFamily: 'monospace' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+                <Text strong style={{ 
+                  color: 'var(--text-primary)', 
+                  fontSize: 14, 
+                  fontFamily: 'monospace',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: record.is_blocked ? 130 : 180,
+                }}>
                   {ip}
                 </Text>
                 {record.is_blocked && (
                   <Tag
                     style={{
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      color: '#ef4444',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      color: '#10b981',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
                       fontSize: 10,
-                      fontWeight: 600,
-                      padding: '0px 8px',
-                      borderRadius: 4,
+                      fontWeight: 700,
+                      padding: '2px 10px',
+                      borderRadius: 12,
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 4,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      flexShrink: 0,
                     }}
                   >
                     <Lock size={10} />
@@ -417,9 +280,9 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
                   </Tag>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                <CountryFlag countryCode={record.country_code || record.country || ''} size={12} />
-                <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <CountryFlag countryCode={record.country_code || record.country || ''} size={14} />
+                <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                   {record.city && record.country 
                     ? `${record.city}, ${record.country}`
                     : record.country || record.city || record.isp || 'Unknown Location'}
@@ -461,16 +324,27 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
       title: 'Risk Score',
       dataIndex: 'threat_score',
       key: 'score',
-      width: 180,
+      width: 160,
       render: (score) => {
         const config = getRiskConfig(score)
         return (
-          <div style={{ width: 140 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text strong style={{ color: config.color, fontSize: 13 }}>
+          <div style={{ width: 130 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center' }}>
+              <Text style={{ 
+                color: config.color, 
+                fontSize: 11, 
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
                 {config.label}
               </Text>
-              <Text style={{ color: config.color, fontSize: 13, fontWeight: 600 }}>
+              <Text style={{ 
+                color: config.color, 
+                fontSize: 14, 
+                fontWeight: 700,
+                fontFamily: 'monospace'
+              }}>
                 {score}
               </Text>
             </div>
@@ -478,8 +352,10 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
               percent={score}
               size="small"
               strokeColor={config.color}
-              trailColor="rgba(255, 255, 255, 0.05)"
+              trailColor="rgba(255, 255, 255, 0.08)"
               showInfo={false}
+              strokeWidth={6}
+              style={{ margin: 0 }}
             />
           </div>
         )
@@ -610,9 +486,11 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
         columns={columns} 
         dataSource={filteredThreats} 
         rowKey={(record) => `${record.source_ip}-${record.last_seen || Math.random()}`}
+        rowClassName="threats-table-row"
         pagination={{ 
           pageSize: 5,
           size: 'small',
+          position: ['bottomRight'],
           style: { margin: '16px 24px' }
         }}
         locale={{ 

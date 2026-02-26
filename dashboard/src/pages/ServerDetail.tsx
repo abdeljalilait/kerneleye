@@ -1,6 +1,7 @@
 import { useParams, Link } from '@tanstack/react-router'
 import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal, Input } from 'antd'
 import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown, ArrowDownLeft, ArrowUpRight, Flag, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { CountryFlag } from '../components/CountryFlag'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerPortTraffic, useDeleteServer } from '../hooks/useQueries'
 import type { PortTraffic, PortSourceIP } from '../types'
@@ -397,13 +398,13 @@ export default function ServerDetail() {
     { 
       key: 'country', 
       name: 'Country', 
-      minWidth: 110, 
+      minWidth: 120, 
       width: '11%', 
       sortable: true, 
       formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Flag size={13} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
-          <span style={{ color: row.country ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CountryFlag countryCode={row.country || ''} size={14} />
+          <span style={{ color: row.country ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12 }}>
             {row.country || 'Unknown'}
           </span>
         </div>
@@ -1023,7 +1024,7 @@ export default function ServerDetail() {
                 rows={filteredAndSortedRows}
                 rowKeyGetter={(row) => `${row.source_ip}-${row.destination_port || 0}`}
                 style={{ height: '100%', width: '100%' }}
-                className="rdg-dark"
+                className="rdg-dark ip-source-table"
                 headerRowHeight={40}
                 rowHeight={36}
                 sortColumns={sortColumns}

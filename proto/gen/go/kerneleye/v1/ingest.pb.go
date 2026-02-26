@@ -1418,8 +1418,14 @@ type BlockedIPEvent struct {
 	DurationSeconds uint32                 `protobuf:"varint,5,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
 	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
 	BlockedAt       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=blocked_at,json=blockedAt,proto3" json:"blocked_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Service Targeted
+	TargetPort  uint32   `protobuf:"varint,8,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
+	ServiceName string   `protobuf:"bytes,9,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Protocol    Protocol `protobuf:"varint,10,opt,name=protocol,proto3,enum=kerneleye.v1.Protocol" json:"protocol,omitempty"`
+	// Agent Info
+	AgentVersion  string `protobuf:"bytes,11,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BlockedIPEvent) Reset() {
@@ -1499,6 +1505,34 @@ func (x *BlockedIPEvent) GetBlockedAt() *timestamppb.Timestamp {
 		return x.BlockedAt
 	}
 	return nil
+}
+
+func (x *BlockedIPEvent) GetTargetPort() uint32 {
+	if x != nil {
+		return x.TargetPort
+	}
+	return 0
+}
+
+func (x *BlockedIPEvent) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *BlockedIPEvent) GetProtocol() Protocol {
+	if x != nil {
+		return x.Protocol
+	}
+	return Protocol_PROTOCOL_UNKNOWN
+}
+
+func (x *BlockedIPEvent) GetAgentVersion() string {
+	if x != nil {
+		return x.AgentVersion
+	}
+	return ""
 }
 
 type BlockedIPResponse struct {
@@ -1799,7 +1833,7 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\x06action\x18\x02 \x01(\x0e2\x19.kerneleye.v1.BlockActionR\x06action\x129\n" +
 	"\n" +
 	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\x96\x02\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xb3\x03\n" +
 	"\x0eBlockedIPEvent\x12\x17\n" +
 	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12\x1b\n" +
 	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x1d\n" +
@@ -1809,7 +1843,13 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\x10duration_seconds\x18\x05 \x01(\rR\x0fdurationSeconds\x12\x16\n" +
 	"\x06reason\x18\x06 \x01(\tR\x06reason\x129\n" +
 	"\n" +
-	"blocked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tblockedAt\"-\n" +
+	"blocked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tblockedAt\x12\x1f\n" +
+	"\vtarget_port\x18\b \x01(\rR\n" +
+	"targetPort\x12!\n" +
+	"\fservice_name\x18\t \x01(\tR\vserviceName\x122\n" +
+	"\bprotocol\x18\n" +
+	" \x01(\x0e2\x16.kerneleye.v1.ProtocolR\bprotocol\x12#\n" +
+	"\ragent_version\x18\v \x01(\tR\fagentVersion\"-\n" +
 	"\x11BlockedIPResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xf7\x02\n" +
 	"\x12BlockedPacketEvent\x12\x17\n" +
@@ -1929,28 +1969,29 @@ var file_kerneleye_v1_ingest_proto_depIdxs = []int32{
 	25, // 15: kerneleye.v1.BlockDirective.expires_at:type_name -> google.protobuf.Timestamp
 	5,  // 16: kerneleye.v1.BlockedIPEvent.action:type_name -> kerneleye.v1.BlockAction
 	25, // 17: kerneleye.v1.BlockedIPEvent.blocked_at:type_name -> google.protobuf.Timestamp
-	2,  // 18: kerneleye.v1.BlockedPacketEvent.protocol:type_name -> kerneleye.v1.Protocol
-	6,  // 19: kerneleye.v1.BlockedPacketEvent.reason:type_name -> kerneleye.v1.BlockReason
-	25, // 20: kerneleye.v1.BlockedPacketEvent.timestamp:type_name -> google.protobuf.Timestamp
-	11, // 21: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
-	14, // 22: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
-	7,  // 23: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
-	9,  // 24: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
-	18, // 25: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
-	21, // 26: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
-	23, // 27: kerneleye.v1.IngestService.ReportBlockedPacket:input_type -> kerneleye.v1.BlockedPacketEvent
-	12, // 28: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
-	16, // 29: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
-	8,  // 30: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
-	10, // 31: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
-	19, // 32: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
-	22, // 33: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
-	24, // 34: kerneleye.v1.IngestService.ReportBlockedPacket:output_type -> kerneleye.v1.BlockedPacketResponse
-	28, // [28:35] is the sub-list for method output_type
-	21, // [21:28] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	2,  // 18: kerneleye.v1.BlockedIPEvent.protocol:type_name -> kerneleye.v1.Protocol
+	2,  // 19: kerneleye.v1.BlockedPacketEvent.protocol:type_name -> kerneleye.v1.Protocol
+	6,  // 20: kerneleye.v1.BlockedPacketEvent.reason:type_name -> kerneleye.v1.BlockReason
+	25, // 21: kerneleye.v1.BlockedPacketEvent.timestamp:type_name -> google.protobuf.Timestamp
+	11, // 22: kerneleye.v1.IngestService.Heartbeat:input_type -> kerneleye.v1.HeartbeatRequest
+	14, // 23: kerneleye.v1.IngestService.SubmitTraffic:input_type -> kerneleye.v1.TrafficBatch
+	7,  // 24: kerneleye.v1.IngestService.Register:input_type -> kerneleye.v1.RegisterRequest
+	9,  // 25: kerneleye.v1.IngestService.GetStatus:input_type -> kerneleye.v1.GetStatusRequest
+	18, // 26: kerneleye.v1.IngestService.GetBlockList:input_type -> kerneleye.v1.BlockListRequest
+	21, // 27: kerneleye.v1.IngestService.ReportBlockedIP:input_type -> kerneleye.v1.BlockedIPEvent
+	23, // 28: kerneleye.v1.IngestService.ReportBlockedPacket:input_type -> kerneleye.v1.BlockedPacketEvent
+	12, // 29: kerneleye.v1.IngestService.Heartbeat:output_type -> kerneleye.v1.HeartbeatResponse
+	16, // 30: kerneleye.v1.IngestService.SubmitTraffic:output_type -> kerneleye.v1.TrafficResponse
+	8,  // 31: kerneleye.v1.IngestService.Register:output_type -> kerneleye.v1.RegisterResponse
+	10, // 32: kerneleye.v1.IngestService.GetStatus:output_type -> kerneleye.v1.GetStatusResponse
+	19, // 33: kerneleye.v1.IngestService.GetBlockList:output_type -> kerneleye.v1.BlockListResponse
+	22, // 34: kerneleye.v1.IngestService.ReportBlockedIP:output_type -> kerneleye.v1.BlockedIPResponse
+	24, // 35: kerneleye.v1.IngestService.ReportBlockedPacket:output_type -> kerneleye.v1.BlockedPacketResponse
+	29, // [29:36] is the sub-list for method output_type
+	22, // [22:29] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_kerneleye_v1_ingest_proto_init() }

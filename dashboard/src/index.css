@@ -632,6 +632,48 @@ body {
 }
 
 /* ============================================
+   Threats Table Styles
+   ============================================ */
+
+.threats-table-row .ant-table-cell {
+  padding: 16px 16px;
+  vertical-align: middle;
+}
+
+.threats-table-row:hover {
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.threats-table-row .ant-avatar {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Progress bar styling for threats */
+.threats-table-row .ant-progress-inner {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.threats-table-row .ant-progress-bg {
+  border-radius: 10px;
+  box-shadow: 0 0 10px currentColor;
+}
+
+/* Action buttons in threats table */
+.threats-table-row .ant-btn {
+  height: 32px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.threats-table-row .ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================
    BlockedIPs Page Specific Styles
    ============================================ */
 
@@ -719,8 +761,39 @@ body {
 }
 
 /* ============================================
-   react-data-grid Dark Theme
+   react-data-grid Dark Theme & IP Table Styles
    ============================================ */
+
+/* IP Source table specific styles */
+.ip-source-table .rdg-cell {
+  padding: 10px 12px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.ip-source-table .rdg-header-row {
+  background: var(--bg-tertiary);
+  border-bottom: 2px solid var(--border-default);
+}
+
+.ip-source-table .rdg-header-row .rdg-cell {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.ip-source-table .rdg-row {
+  transition: background-color 0.15s ease;
+}
+
+.ip-source-table .rdg-row:hover {
+  background-color: rgba(99, 102, 241, 0.08);
+}
+
+.ip-source-table .rdg-row:hover .rdg-cell-frozen {
+  background-color: rgba(99, 102, 241, 0.08);
+}
 
 .rdg-dark {
   --rdg-color: var(--text-primary);
