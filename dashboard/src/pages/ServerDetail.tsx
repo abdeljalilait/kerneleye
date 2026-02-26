@@ -1,15 +1,21 @@
 import { useParams, Link } from '@tanstack/react-router'
 import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal, Input } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown, ArrowDownLeft, ArrowUpRight, Flag, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown, ArrowDownLeft, ArrowUpRight, Flag, AlertTriangle, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react'
 import { CountryFlag } from '../components/CountryFlag'
 import type { ColumnsType } from 'antd/es/table'
-import { useServer, useServerStats, useServerPortTraffic, useDeleteServer } from '../hooks/useQueries'
+import { useServer, useServerStats, useServerPortTraffic, useDeleteServer, useServerPortSources } from '../hooks/useQueries'
 import type { PortTraffic, PortSourceIP } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useEffect, useState, useMemo } from 'react'
-import { DataGrid } from 'react-data-grid'
-import 'react-data-grid/lib/styles.css'
-import type { SortColumn } from 'react-data-grid'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  flexRender,
+  createColumnHelper,
+  type SortingState,
+  type ColumnDef,
+} from '@tanstack/react-table'
 
 const { Title, Text } = Typography
 
@@ -33,7 +39,8 @@ export default function ServerDetail() {
   const [ipModalOpen, setIpModalOpen] = useState(false)
   const [selectedPortTraffic, setSelectedPortTraffic] = useState<PortTraffic | null>(null)
   const [ipFilter, setIpFilter] = useState('')
-  const [sortColumns, setSortColumns] = useState<readonly SortColumn[]>([])
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [sourcesParams, setSourcesParams] = useState({ page: 1, page_size: 25, search: '', sort_by: 'last_seen', sort_order: 'desc' })
   
   const { data: server, isLoading: serverLoading, error: serverError, refetch: refetchServer } = useServer(id)
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useServerStats(id)
@@ -46,6 +53,16 @@ export default function ServerDetail() {
     }))
   }, [trafficResponse])
   const trafficPagination = trafficResponse?.pagination
+
+  // Server-side paginated sources
+  const { data: sourcesResponse, isLoading: sourcesLoading } = useServerPortSources(
+    id, 
+    selectedPortTraffic?.port, 
+    selectedPortTraffic?.protocol,
+    sourcesParams
+  )
+  const paginatedSources = sourcesResponse?.data || []
+  const sourcesPagination = sourcesResponse?.pagination
   
   const deleteMutation = useDeleteServer()
   const { message } = App.useApp()
@@ -238,374 +255,309 @@ export default function ServerDetail() {
     },
   ]
 
-  // Sort function for DataGrid
-  function getComparator(sortColumn: string) {
-    return (a: PortSourceIP, b: PortSourceIP) => {
-      let aVal: any, bVal: any
-      
-      switch (sortColumn) {
-        case 'source_ip':
-          aVal = a.source_ip
-          bVal = b.source_ip
-          break
-        case 'direction':
-          aVal = a.direction || ''
-          bVal = b.direction || ''
-          break
-        case 'country':
-          aVal = a.country || ''
-          bVal = b.country || ''
-          break
-        case 'city':
-          aVal = a.city || ''
-          bVal = b.city || ''
-          break
-        case 'bytes_in':
-          aVal = a.bytes_in || 0
-          bVal = b.bytes_in || 0
-          break
-        case 'bytes_out':
-          aVal = a.bytes_out || 0
-          bVal = b.bytes_out || 0
-          break
-        case 'syn_count':
-          aVal = a.syn_count || 0
-          bVal = b.syn_count || 0
-          break
-        case 'ack_count':
-          aVal = a.ack_count || 0
-          bVal = b.ack_count || 0
-          break
-        case 'hit_count':
-          aVal = a.hit_count || 0
-          bVal = b.hit_count || 0
-          break
-        case 'threat_score':
-          aVal = a.threat_score || 0
-          bVal = b.threat_score || 0
-          break
-        case 'last_seen':
-          aVal = new Date(a.last_seen || 0).getTime()
-          bVal = new Date(b.last_seen || 0).getTime()
-          break
-        default:
-          return 0
-      }
-      
-      if (typeof aVal === 'string') {
-        return aVal.localeCompare(bVal)
-      }
-      return aVal - bVal
+  // Update sources params when filter changes (with debounce)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSourcesParams(prev => ({ ...prev, search: ipFilter, page: 1 }))
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [ipFilter])
+
+  // Handle sort changes
+  const handleSortingChange = (updater: SortingState | ((old: SortingState) => SortingState)) => {
+    const newSorting = typeof updater === 'function' ? updater(sorting) : updater
+    setSorting(newSorting)
+    
+    if (newSorting.length > 0) {
+      const { id, desc } = newSorting[0]
+      setSourcesParams(prev => ({
+        ...prev,
+        sort_by: id,
+        sort_order: desc ? 'desc' : 'asc'
+      }))
+    } else {
+      setSourcesParams(prev => ({
+        ...prev,
+        sort_by: 'last_seen',
+        sort_order: 'desc'
+      }))
     }
   }
 
-  // Filter and sort the IP data
-  const filteredAndSortedRows = useMemo(() => {
-    if (!selectedPortTraffic) return []
-    
-    let rows = [...selectedPortTraffic.sources]
-    
-    // Apply filter
-    if (ipFilter.trim()) {
-      const filter = ipFilter.toLowerCase()
-      rows = rows.filter(row => 
-        row.source_ip?.toLowerCase().includes(filter) ||
-        row.country?.toLowerCase().includes(filter) ||
-        row.city?.toLowerCase().includes(filter)
-      )
-    }
-    
-    // Apply sorting
-    if (sortColumns.length > 0) {
-      const { columnKey, direction } = sortColumns[0]
-      const comparator = getComparator(columnKey)
-      rows.sort((a, b) => {
-        const comp = comparator(a, b)
-        return direction === 'DESC' ? -comp : comp
-      })
-    }
-    
-    return rows
-  }, [selectedPortTraffic, ipFilter, sortColumns])
-
-  // Get threat icon based on score
+  // Get threat icon based on severity level
   const getThreatIcon = (score: number) => {
-    if (score >= 50) return <AlertTriangle size={14} style={{ color: '#ef4444' }} />;
-    if (score >= 20) return <AlertCircle size={14} style={{ color: '#f59e0b' }} />;
-    return <CheckCircle2 size={14} style={{ color: '#10b981' }} />;
+    if (score >= 70) return <AlertTriangle size={14} style={{ color: '#dc2626' }} />;  // Critical - red
+    if (score >= 50) return <AlertCircle size={14} style={{ color: '#f97316' }} />;   // Suspicious - orange
+    if (score >= 20) return <AlertCircle size={14} style={{ color: '#eab308' }} />;   // Warning - yellow
+    return <CheckCircle2 size={14} style={{ color: '#22c55e' }} />;                   // Normal - green
   };
 
-  // Get threat color for background/badge
+  // Severity color system: Critical → red, Suspicious → orange, Warning → yellow, Normal → green
   const getThreatColor = (score: number) => {
-    if (score >= 50) return { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' };
-    if (score >= 20) return { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.3)' };
-    return { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', border: 'rgba(16, 185, 129, 0.3)' };
+    if (score >= 70) return { 
+      bg: 'rgba(220, 38, 38, 0.15)', 
+      text: '#dc2626', 
+      border: 'rgba(220, 38, 38, 0.3)',
+      label: 'CRITICAL'
+    };  // Critical - red
+    if (score >= 50) return { 
+      bg: 'rgba(249, 115, 22, 0.15)', 
+      text: '#f97316', 
+      border: 'rgba(249, 115, 22, 0.3)',
+      label: 'SUSPICIOUS'
+    };  // Suspicious - orange
+    if (score >= 20) return { 
+      bg: 'rgba(234, 179, 8, 0.15)', 
+      text: '#eab308', 
+      border: 'rgba(234, 179, 8, 0.3)',
+      label: 'WARNING'
+    };  // Warning - yellow
+    return { 
+      bg: 'rgba(34, 197, 94, 0.15)', 
+      text: '#22c55e', 
+      border: 'rgba(34, 197, 94, 0.3)',
+      label: 'NORMAL'
+    };  // Normal - green
   };
 
-  // DataGrid columns for the IP modal - using flex to fill width
-  const ipGridColumns = [
-    { 
-      key: 'source_ip', 
-      name: 'Remote IP', 
-      minWidth: 140, 
-      width: '16%', 
-      frozen: true, 
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Globe size={14} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
-          <Text code style={{ fontSize: 12, background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
-            {row.source_ip}
-          </Text>
-        </div>
-      )
-    },
-    { 
-      key: 'direction', 
-      name: 'Dir', 
-      minWidth: 75,
-      width: '7%',
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => {
-        const isOutbound = row.direction === 'outbound';
-        return (
-          <div style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: 4,
-            padding: '4px 8px',
-            borderRadius: 12,
-            background: isOutbound ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-            border: `1px solid ${isOutbound ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
-          }}>
-            {isOutbound ? (
-              <ArrowUpRight size={12} style={{ color: '#3b82f6' }} />
-            ) : (
-              <ArrowDownLeft size={12} style={{ color: '#10b981' }} />
-            )}
-            <span style={{ 
-              fontSize: 10, 
-              fontWeight: 600,
-              color: isOutbound ? '#3b82f6' : '#10b981',
-              textTransform: 'uppercase'
+  // TanStack Table column definitions
+  const columnHelper = createColumnHelper<PortSourceIP>()
+  
+  const ipTableColumns = useMemo<ColumnDef<PortSourceIP, any>[]>(
+    () => [
+      columnHelper.accessor('source_ip', {
+        header: 'Remote IP',
+        cell: ({ row }) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140 }}>
+            <CountryFlag countryCode={row.original.country || ''} size={14} />
+            <Text code style={{ fontSize: 12, background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+              {row.original.source_ip}
+            </Text>
+          </div>
+        ),
+      }),
+      columnHelper.accessor('direction', {
+        header: 'Dir',
+        cell: ({ row }) => {
+          const isOutbound = row.original.direction === 'outbound';
+          return (
+            <div style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: 4,
+              padding: '4px 8px',
+              borderRadius: 12,
+              background: isOutbound ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+              border: `1px solid ${isOutbound ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
             }}>
-              {isOutbound ? 'OUT' : 'IN'}
+              {isOutbound ? (
+                <ArrowUpRight size={12} style={{ color: '#3b82f6' }} />
+              ) : (
+                <ArrowDownLeft size={12} style={{ color: '#10b981' }} />
+              )}
+              <span style={{ 
+                fontSize: 10, 
+                fontWeight: 600,
+                color: isOutbound ? '#3b82f6' : '#10b981',
+                textTransform: 'uppercase'
+              }}>
+                {isOutbound ? 'OUT' : 'IN'}
+              </span>
+            </div>
+          );
+        },
+      }),
+      columnHelper.accessor('country', {
+        header: 'Country',
+        cell: ({ row }) => (
+          <span style={{ color: row.original.country ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12 }}>
+            {row.original.country || 'Unknown'}
+          </span>
+        ),
+      }),
+      columnHelper.accessor('city', {
+        header: 'City',
+        cell: ({ row }) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <MapPin size={13} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
+            <span style={{ color: row.original.city ? 'var(--text-secondary)' : 'var(--text-muted)', fontSize: 12 }}>
+              {row.original.city || '-'}
             </span>
           </div>
-        );
-      }
-    },
-    { 
-      key: 'country', 
-      name: 'Country', 
-      minWidth: 120, 
-      width: '11%', 
-      sortable: true, 
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <CountryFlag countryCode={row.country || ''} size={14} />
-          <span style={{ color: row.country ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12 }}>
-            {row.country || 'Unknown'}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'city', 
-      name: 'City', 
-      minWidth: 100, 
-      width: '10%', 
-      sortable: true, 
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <MapPin size={13} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
-          <span style={{ color: row.city ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
-            {row.city || '-'}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'bytes_in', 
-      name: '↓ In', 
-      minWidth: 85,
-      width: '9%',
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <ArrowDownLeft size={12} style={{ color: '#10b981', opacity: 0.7 }} />
-          <span style={{ 
-            color: (row.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--text-secondary)',
-            fontWeight: (row.bytes_in || 0) > 1000000 ? 600 : 400,
-            fontSize: 12
+        ),
+      }),
+      columnHelper.accessor('bytes_in', {
+        header: '↓ In',
+        cell: ({ row }) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <ArrowDownLeft size={12} style={{ color: '#10b981', opacity: 0.7 }} />
+            <span style={{ 
+              color: (row.original.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--text-secondary)',
+              fontWeight: (row.original.bytes_in || 0) > 1000000 ? 600 : 400,
+              fontSize: 12
+            }}>
+              {formatBytes(row.original.bytes_in || 0)}
+            </span>
+          </div>
+        ),
+      }),
+      columnHelper.accessor('bytes_out', {
+        header: '↑ Out',
+        cell: ({ row }) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <ArrowUpRight size={12} style={{ color: '#3b82f6', opacity: 0.7 }} />
+            <span style={{ 
+              color: (row.original.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--text-secondary)',
+              fontWeight: (row.original.bytes_out || 0) > 1000000 ? 600 : 400,
+              fontSize: 12
+            }}>
+              {formatBytes(row.original.bytes_out || 0)}
+            </span>
+          </div>
+        ),
+      }),
+      columnHelper.accessor('syn_count', {
+        header: 'SYN',
+        cell: ({ row }) => (
+          <div style={{ 
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2px 8px',
+            borderRadius: 10,
+            background: row.original.syn_count > 10 ? 'rgba(220, 38, 38, 0.15)' : 'var(--bg-tertiary)',
+            border: `1px solid ${row.original.syn_count > 10 ? 'rgba(220, 38, 38, 0.3)' : 'var(--border-subtle)'}`,
           }}>
-            {formatBytes(row.bytes_in || 0)}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'bytes_out', 
-      name: '↑ Out', 
-      minWidth: 85,
-      width: '9%',
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <ArrowUpRight size={12} style={{ color: '#3b82f6', opacity: 0.7 }} />
-          <span style={{ 
-            color: (row.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--text-secondary)',
-            fontWeight: (row.bytes_out || 0) > 1000000 ? 600 : 400,
-            fontSize: 12
+            <span style={{ 
+              color: row.original.syn_count > 10 ? '#dc2626' : 'var(--text-secondary)',
+              fontWeight: row.original.syn_count > 10 ? 600 : 400,
+              fontSize: 12
+            }}>
+              {row.original.syn_count}
+            </span>
+          </div>
+        ),
+      }),
+      columnHelper.accessor('ack_count', {
+        header: 'ACK',
+        cell: ({ row }) => (
+          <div style={{ 
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2px 8px',
+            borderRadius: 10,
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-subtle)',
           }}>
-            {formatBytes(row.bytes_out || 0)}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'syn_count', 
-      name: 'SYN', 
-      minWidth: 55,
-      width: '5%',
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ 
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '2px 8px',
-          borderRadius: 10,
-          background: row.syn_count > 10 ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-tertiary)',
-          border: `1px solid ${row.syn_count > 10 ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-subtle)'}`,
-        }}>
-          <span style={{ 
-            color: row.syn_count > 10 ? '#ef4444' : 'var(--text-secondary)',
-            fontWeight: row.syn_count > 10 ? 600 : 400,
-            fontSize: 12
-          }}>
-            {row.syn_count}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'ack_count', 
-      name: 'ACK', 
-      minWidth: 55, 
-      width: '5%', 
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ 
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '2px 8px',
-          borderRadius: 10,
-          background: 'var(--bg-tertiary)',
-          border: '1px solid var(--border-subtle)',
-        }}>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-            {row.ack_count}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'hit_count', 
-      name: 'Hits', 
-      minWidth: 65, 
-      width: '6%', 
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => (
-        <div style={{ 
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 4,
-          padding: '2px 8px',
-          borderRadius: 10,
-          background: row.hit_count > 50 ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
-          border: `1px solid ${row.hit_count > 50 ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-subtle)'}`,
-        }}>
-          <Activity size={11} style={{ color: row.hit_count > 50 ? '#6366f1' : 'var(--text-muted)' }} />
-          <span style={{ 
-            color: row.hit_count > 50 ? '#6366f1' : 'var(--text-secondary)',
-            fontWeight: row.hit_count > 50 ? 600 : 400,
-            fontSize: 12
-          }}>
-            {row.hit_count}
-          </span>
-        </div>
-      )
-    },
-    { 
-      key: 'threat_score', 
-      name: 'Risk', 
-      minWidth: 75,
-      width: '7%',
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => {
-        const colors = getThreatColor(row.threat_score);
-        return (
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+              {row.original.ack_count}
+            </span>
+          </div>
+        ),
+      }),
+      columnHelper.accessor('hit_count', {
+        header: 'Hits',
+        cell: ({ row }) => (
           <div style={{ 
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 4,
-            padding: '3px 10px',
-            borderRadius: 12,
-            background: colors.bg,
-            border: `1px solid ${colors.border}`,
+            padding: '2px 8px',
+            borderRadius: 10,
+            background: row.original.hit_count > 50 ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
+            border: `1px solid ${row.original.hit_count > 50 ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-subtle)'}`,
           }}>
-            {getThreatIcon(row.threat_score)}
+            <Activity size={11} style={{ color: row.original.hit_count > 50 ? '#6366f1' : 'var(--text-muted)' }} />
             <span style={{ 
-              color: colors.text,
-              fontWeight: 700,
+              color: row.original.hit_count > 50 ? '#6366f1' : 'var(--text-secondary)',
+              fontWeight: row.original.hit_count > 50 ? 600 : 400,
               fontSize: 12
             }}>
-              {row.threat_score}
+              {row.original.hit_count}
             </span>
           </div>
-        );
-      }
-    },
-    { 
-      key: 'last_seen', 
-      name: 'Last Seen', 
-      minWidth: 140,
-      width: '12%',
-      sortable: true,
-      formatter: ({ row }: { row: PortSourceIP }) => {
-        const isRecent = new Date(row.last_seen).getTime() > Date.now() - 5 * 60 * 1000; // 5 minutes
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={13} style={{ 
-              color: isRecent ? '#10b981' : 'var(--text-muted)',
-              opacity: isRecent ? 1 : 0.5
-            }} />
-            <span style={{ 
-              color: isRecent ? '#10b981' : 'var(--text-tertiary)', 
-              fontSize: 12,
-              fontWeight: isRecent ? 500 : 400
+        ),
+      }),
+      columnHelper.accessor('threat_score', {
+        header: 'Severity',
+        cell: ({ row }) => {
+          const colors = getThreatColor(row.original.threat_score);
+          return (
+            <div style={{ 
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              borderRadius: 12,
+              background: colors.bg,
+              border: `1px solid ${colors.border}`,
             }}>
-              {formatDate(row.last_seen)}
-            </span>
-            {isRecent && (
-              <span style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: '#10b981',
-                boxShadow: '0 0 6px #10b981',
-                animation: 'pulse 2s infinite'
+              {getThreatIcon(row.original.threat_score)}
+              <span style={{ 
+                color: colors.text,
+                fontWeight: 700,
+                fontSize: 11,
+                textTransform: 'uppercase',
+                letterSpacing: '0.02em'
+              }}>
+                {colors.label}
+              </span>
+            </div>
+          );
+        },
+      }),
+      columnHelper.accessor('last_seen', {
+        header: 'Last Seen',
+        cell: ({ row }) => {
+          const isRecent = new Date(row.original.last_seen).getTime() > Date.now() - 5 * 60 * 1000;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock size={13} style={{ 
+                color: isRecent ? '#22c55e' : 'var(--text-muted)',
+                opacity: isRecent ? 1 : 0.5
               }} />
-            )}
-          </div>
-        );
-      }
+              <span style={{ 
+                color: isRecent ? '#22c55e' : 'var(--text-tertiary)', 
+                fontSize: 12,
+                fontWeight: isRecent ? 500 : 400
+              }}>
+                {formatDate(row.original.last_seen)}
+              </span>
+              {isRecent && (
+                <span style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: '#22c55e',
+                  boxShadow: '0 0 6px #22c55e',
+                  animation: 'pulse 2s infinite'
+                }} />
+              )}
+            </div>
+          );
+        },
+      }),
+    ],
+    []
+  )
+
+  // TanStack Table instance (server-side data)
+  const ipTable = useReactTable({
+    data: paginatedSources,
+    columns: ipTableColumns,
+    state: {
+      sorting,
     },
-  ]
+    onSortingChange: handleSortingChange,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualSorting: true, // Server-side sorting
+    manualPagination: true, // Server-side pagination
+    pageCount: sourcesPagination?.total_pages || 1,
+  })
 
   if (loading) {
     return (
@@ -950,7 +902,7 @@ export default function ServerDetail() {
         />
       </Card>
 
-      {/* IP List Modal with react-data-grid */}
+      {/* IP List Modal with TanStack Table */}
       <Modal
         title={
           <Space>
@@ -959,12 +911,12 @@ export default function ServerDetail() {
               Source IPs for Port {selectedPortTraffic?.port}/{selectedPortTraffic?.protocol}
             </span>
             <Badge 
-              count={filteredAndSortedRows.length} 
+              count={sourcesPagination?.total_count || selectedPortTraffic?.sources.length || 0} 
               style={{ background: '#3b82f6' }}
             />
             {ipFilter && (
               <Tag style={{ fontSize: 11 }}>
-                Filtered from {selectedPortTraffic?.sources.length || 0}
+                Searching "{ipFilter}"
               </Tag>
             )}
           </Space>
@@ -973,7 +925,8 @@ export default function ServerDetail() {
         onCancel={() => {
           setIpModalOpen(false)
           setIpFilter('')
-          setSortColumns([])
+          setSorting([])
+          setSourcesParams({ page: 1, page_size: 25, search: '', sort_by: 'last_seen', sort_order: 'desc' })
         }}
         footer={null}
         width="95vw"
@@ -989,7 +942,8 @@ export default function ServerDetail() {
               background: 'var(--bg-tertiary)',
               display: 'flex',
               gap: 12,
-              alignItems: 'center'
+              alignItems: 'center',
+              flexWrap: 'wrap'
             }}>
               <Search size={16} color="var(--text-tertiary)" />
               <Input
@@ -1006,31 +960,224 @@ export default function ServerDetail() {
               <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
                 Click column headers to sort
               </Text>
-              {sortColumns.length > 0 && (
+              {sorting.length > 0 && (
                 <Button 
                   size="small" 
                   icon={<ArrowUpDown size={14} />}
-                  onClick={() => setSortColumns([])}
+                  onClick={() => handleSortingChange([])}
                 >
                   Clear Sort
                 </Button>
               )}
+              {sourcesLoading && <Spin size="small" />}
             </div>
             
-            {/* DataGrid */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <DataGrid
-                columns={ipGridColumns}
-                rows={filteredAndSortedRows}
-                rowKeyGetter={(row) => `${row.source_ip}-${row.destination_port || 0}`}
-                style={{ height: '100%', width: '100%' }}
-                className="rdg-dark ip-source-table"
-                headerRowHeight={40}
-                rowHeight={36}
-                sortColumns={sortColumns}
-                onSortColumnsChange={setSortColumns}
-              />
+            {/* TanStack Table */}
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <table style={{ 
+                width: '100%', 
+                borderCollapse: 'collapse',
+                fontSize: 13
+              }}>
+                <thead style={{ 
+                  position: 'sticky', 
+                  top: 0, 
+                  zIndex: 1,
+                  background: 'var(--bg-secondary)'
+                }}>
+                  {ipTable.getHeaderGroups().map(headerGroup => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map(header => (
+                        <th
+                          key={header.id}
+                          onClick={header.column.getToggleSortingHandler()}
+                          style={{
+                            padding: '12px 8px',
+                            textAlign: 'left',
+                            fontWeight: 600,
+                            fontSize: 11,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            color: 'var(--text-secondary)',
+                            borderBottom: '1px solid var(--border-subtle)',
+                            cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                            whiteSpace: 'nowrap',
+                            userSelect: 'none'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getCanSort() && (
+                              <span style={{ display: 'flex', flexDirection: 'column' }}>
+                                <ChevronUp 
+                                  size={12} 
+                                  style={{ 
+                                    opacity: header.column.getIsSorted() === 'asc' ? 1 : 0.3,
+                                    marginBottom: -4
+                                  }} 
+                                />
+                                <ChevronDown 
+                                  size={12} 
+                                  style={{ 
+                                    opacity: header.column.getIsSorted() === 'desc' ? 1 : 0.3
+                                  }} 
+                                />
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody>
+                  {ipTable.getRowModel().rows.length === 0 ? (
+                    <tr>
+                      <td 
+                        colSpan={ipTableColumns.length}
+                        style={{ 
+                          padding: '60px 24px', 
+                          textAlign: 'center',
+                          color: 'var(--text-tertiary)'
+                        }}
+                      >
+                        <Globe size={48} style={{ marginBottom: 16, opacity: 0.3 }} />
+                        <div>No matching IPs found</div>
+                      </td>
+                    </tr>
+                  ) : (
+                    ipTable.getRowModel().rows.map(row => (
+                      <tr 
+                        key={row.id}
+                        style={{
+                          borderBottom: '1px solid var(--border-subtle)',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--bg-tertiary)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        {row.getVisibleCells().map(cell => (
+                          <td
+                            key={cell.id}
+                            style={{
+                              padding: '10px 8px',
+                              color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
+            
+            {/* Server-side Pagination */}
+            {sourcesPagination && sourcesPagination.total_count > 0 && (
+              <div style={{ 
+                padding: '12px 16px', 
+                borderTop: '1px solid var(--border-subtle)',
+                background: 'var(--bg-tertiary)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 12
+              }}>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+                  Showing {(sourcesPagination.page - 1) * sourcesPagination.page_size + 1} to {Math.min(
+                    sourcesPagination.page * sourcesPagination.page_size,
+                    sourcesPagination.total_count
+                  )} of {sourcesPagination.total_count} IPs
+                </Text>
+                
+                <Space>
+                  <Button
+                    size="small"
+                    disabled={sourcesPagination.page <= 1}
+                    onClick={() => setSourcesParams(prev => ({ ...prev, page: prev.page - 1 }))}
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      borderColor: 'var(--border-subtle)'
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {Array.from({ length: Math.min(5, sourcesPagination.total_pages) }, (_, i) => {
+                      const currentPage = sourcesPagination.page;
+                      const totalPages = sourcesPagination.total_pages;
+                      
+                      // Show pages around current page
+                      let startPage = Math.max(1, currentPage - 2);
+                      let endPage = Math.min(totalPages, startPage + 4);
+                      if (endPage - startPage < 4) {
+                        startPage = Math.max(1, endPage - 4);
+                      }
+                      const pageNum = startPage + i;
+                      if (pageNum > endPage) return null;
+                      
+                      const isActive = pageNum === currentPage;
+                      return (
+                        <Button
+                          key={pageNum}
+                          size="small"
+                          onClick={() => setSourcesParams(prev => ({ ...prev, page: pageNum }))}
+                          style={{
+                            minWidth: 32,
+                            background: isActive ? '#3b82f6' : 'var(--bg-secondary)',
+                            borderColor: isActive ? '#3b82f6' : 'var(--border-subtle)',
+                            color: isActive ? '#fff' : 'var(--text-primary)'
+                          }}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  
+                  <Button
+                    size="small"
+                    disabled={sourcesPagination.page >= sourcesPagination.total_pages}
+                    onClick={() => setSourcesParams(prev => ({ ...prev, page: prev.page + 1 }))}
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      borderColor: 'var(--border-subtle)'
+                    }}
+                  >
+                    Next
+                  </Button>
+                  
+                  <select
+                    value={sourcesParams.page_size}
+                    onChange={e => setSourcesParams(prev => ({ ...prev, page_size: Number(e.target.value), page: 1 }))}
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 6,
+                      padding: '4px 8px',
+                      color: 'var(--text-primary)',
+                      fontSize: 13,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {[10, 25, 50, 100].map(pageSize => (
+                      <option key={pageSize} value={pageSize} style={{ background: 'var(--bg-card)' }}>
+                        {pageSize} / page
+                      </option>
+                    ))}
+                  </select>
+                </Space>
+              </div>
+            )}
           </div>
         )}
       </Modal>

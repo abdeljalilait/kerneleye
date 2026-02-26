@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI, agentConfigAPI, blocksAPI, whitelistAPI } from '../api/client';
-import { Server, Threat, Alert, StatsOverview, TrafficEvent, PaginatedResponse, PortTraffic, ProtocolTraffic } from '../types';
+import type { Server, Threat, Alert, StatsOverview, TrafficEvent, PaginatedResponse, PortTraffic, ProtocolTraffic, PortSourceIP } from '../types';
 
 export const useServers = () => {
   return useQuery({
@@ -171,6 +171,17 @@ export const useServerProtocolTraffic = (id: string | undefined, params?: { page
       return data as PaginatedResponse<ProtocolTraffic>;
     },
     enabled: !!id,
+  });
+};
+
+export const useServerPortSources = (id: string | undefined, port: number | undefined, protocol: string | undefined, params?: { page?: number; page_size?: number; search?: string; sort_by?: string; sort_order?: string }) => {
+  return useQuery({
+    queryKey: ['server', id, 'port-sources', port, protocol, params],
+    queryFn: async () => {
+      const { data } = await serversAPI.getPortSources(id!, port!, protocol!, params);
+      return data as PaginatedResponse<PortSourceIP>;
+    },
+    enabled: !!id && !!port && !!protocol,
   });
 };
 

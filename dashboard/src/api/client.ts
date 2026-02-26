@@ -95,6 +95,16 @@ export const serversAPI = {
     const query = queryParams.toString();
     return api.get(`/servers/${id}/protocol-traffic${query ? `?${query}` : ''}`);
   },
+  getPortSources: (id: string, port: number, protocol: string, params?: { page?: number; page_size?: number; search?: string; sort_by?: string; sort_order?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.set('page', String(params.page));
+    if (params?.page_size) queryParams.set('page_size', String(params.page_size));
+    if (params?.search) queryParams.set('search', params.search);
+    if (params?.sort_by) queryParams.set('sort_by', params.sort_by);
+    if (params?.sort_order) queryParams.set('sort_order', params.sort_order);
+    const query = queryParams.toString();
+    return api.get(`/servers/${id}/port-traffic/${port}/sources?protocol=${protocol}${query ? `&${query}` : ''}`);
+  },
   getStats: (id: string) => api.get(`/servers/${id}/stats`),
   getConfig: (id: string) => api.get(`/servers/${id}/config`),
   updateConfig: (id: string, config: any) => api.patch(`/servers/${id}/config`, config),
