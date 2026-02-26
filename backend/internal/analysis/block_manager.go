@@ -37,15 +37,16 @@ type BlockManager struct {
 }
 
 type ActiveBlock struct {
-	IP         string
-	ServerID   pgtype.UUID
-	UserID     pgtype.UUID
-	Score      int
-	Reason     string
-	Duration   time.Duration
-	BlockedAt  time.Time
-	ExpiresAt  time.Time
-	AgentToken string
+	IP          string
+	ServerID    pgtype.UUID
+	UserID      pgtype.UUID
+	Score       int
+	Reason      string
+	Duration    time.Duration
+	BlockedAt   time.Time
+	ExpiresAt   time.Time
+	IsPermanent bool
+	AgentToken  string
 }
 
 func NewBlockManager(cfg BlockManagerConfig, queries *database.Queries, hub interface {
@@ -93,19 +94,24 @@ func (bm *BlockManager) loadActiveBlocks(ctx context.Context) {
 		ipStr := block.IpAddress.String()
 		expiresAt, _ := block.ExpiresAt.Value()
 		var expires time.Time
+		isPermanent := false
 		if t, ok := expiresAt.(time.Time); ok {
 			expires = t
+		} else {
+			// No expiry = permanent block
+			isPermanent = true
 		}
 
 		bm.activeBlocks[ipStr] = &ActiveBlock{
-			IP:        ipStr,
-			ServerID:  block.ServerID,
-			UserID:    block.UserID,
-			Score:     int(block.ThreatScore),
-			Reason:    strings.Join(block.Reasons, ", "),
-			Duration:  time.Duration(block.DurationSeconds) * time.Second,
-			BlockedAt: block.BlockedAt.Time,
-			ExpiresAt: expires,
+			IP:          ipStr,
+			ServerID:    block.ServerID,
+			UserID:      block.UserID,
+			Score:       int(block.ThreatScore),
+			Reason:      strings.Join(block.Reasons, ", "),
+			Duration:    time.Duration(block.DurationSeconds) * time.Second,
+			BlockedAt:   block.BlockedAt.Time,
+			ExpiresAt:   expires,
+			IsPermanent: isPermanent,
 		}
 	}
 
@@ -121,18 +127,49 @@ func (bm *BlockManager) Stop() {
 func (bm *BlockManager) runLoop(ctx context.Context) {
 	defer bm.wg.Done()
 
-	ticker := time.NewTicker(bm.config.CheckInterval)
-	defer ticker.Stop()
+	evalTicker := time.NewTicker(bm.config.CheckInterval)
+	defer evalTicker.Stop()
+
+	// Cleanup expired blocks every 5 minutes
+	cleanupTicker := time.NewTicker(5 * time.Minute)
+	defer cleanupTicker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-evalTicker.C:
 			bm.evaluateAndBlock(ctx)
+		case <-cleanupTicker.C:
+			bm.cleanupExpiredBlocks()
 		case <-ctx.Done():
 			return
 		case <-bm.stopChan:
 			return
 		}
+	}
+}
+
+// cleanupExpiredBlocks removes expired temporary blocks from the in-memory map
+// This prevents stale entries from preventing re-blocks of IPs whose blocks have expired
+func (bm *BlockManager) cleanupExpiredBlocks() {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	now := time.Now()
+	removed := 0
+	for ip, block := range bm.activeBlocks {
+		// Skip permanent blocks
+		if block.IsPermanent {
+			continue
+		}
+		// Remove if expired
+		if block.ExpiresAt.Before(now) {
+			delete(bm.activeBlocks, ip)
+			removed++
+		}
+	}
+
+	if removed > 0 {
+		log.Printf("[BlockManager] Cleaned up %d expired blocks from memory", removed)
 	}
 }
 
@@ -183,24 +220,47 @@ func (bm *BlockManager) evaluateAndBlock(ctx context.Context) {
 
 func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockableIPsRow) {
 	ipStr := row.SourceIp.String()
-	duration := bm.config.BaseBlockDuration
-
-	if row.ThreatScore > 80 {
-		duration = duration * 2
+	
+	// Determine if this should be a permanent block based on threat level
+	// malicious/critical = permanent block (no expiry)
+	// suspicious/normal = temporary block with duration
+	var duration time.Duration
+	var expiresAt time.Time
+	var expiresAtPg pgtype.Timestamptz
+	
+	threatLevel := strings.ToLower(row.ThreatLevel)
+	if threatLevel == "malicious" || threatLevel == "critical" {
+		// Permanent block - no expiration
+		duration = 0
+		expiresAtPg = pgtype.Timestamptz{Valid: false}
+	} else {
+		// Temporary block with duration based on score
+		duration = bm.config.BaseBlockDuration
+		if row.ThreatScore > 80 {
+			duration = duration * 2
+		}
+		if duration > bm.config.MaxBlockDuration {
+			duration = bm.config.MaxBlockDuration
+		}
+		expiresAt = time.Now().Add(duration)
+		expiresAtPg = database.ToPgTimestamptz(expiresAt)
 	}
-	if duration > bm.config.MaxBlockDuration {
-		duration = bm.config.MaxBlockDuration
-	}
-
-	expiresAt := time.Now().Add(duration)
 
 	reasons := []string{row.ThreatType}
+
+	// Determine IP version
+	ipVersion := int32(4)
+	if row.SourceIp.Is6() {
+		ipVersion = 6
+	}
+
+	isPermanent := threatLevel == "malicious" || threatLevel == "critical"
 
 	block, err := bm.queries.CreateBlock(ctx, database.CreateBlockParams{
 		ServerID:        row.ServerID,
 		UserID:          row.UserID,
 		IpAddress:       row.SourceIp,
-		IpVersion:       pgtype.Int4{Int32: 4, Valid: true},
+		IpVersion:       pgtype.Int4{Int32: ipVersion, Valid: true},
 		ThreatScore:     row.ThreatScore,
 		ThreatLevel:     row.ThreatLevel,
 		Reasons:         reasons,
@@ -219,7 +279,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		IsTor:           pgtype.Bool{Bool: false, Valid: true},
 		IsDatacenter:    pgtype.Bool{Bool: false, Valid: true},
 		BlockedAt:       database.ToPgTimestamptz(time.Now()),
-		ExpiresAt:       database.ToPgTimestamptz(expiresAt),
+		ExpiresAt:       expiresAtPg,
 		DurationSeconds: int32(duration.Seconds()),
 		IsAutoBlocked:   pgtype.Bool{Bool: true, Valid: true},
 		AgentVersion:    pgtype.Text{String: "", Valid: false},
@@ -232,15 +292,17 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 
 	bm.mu.Lock()
 	bm.activeBlocks[ipStr] = &ActiveBlock{
-		IP:        ipStr,
-		ServerID:  row.ServerID,
-		UserID:    row.UserID,
-		Score:     int(row.ThreatScore),
-		Reason:    row.ThreatType,
-		Duration:  duration,
-		BlockedAt: time.Now(),
-		ExpiresAt: expiresAt,
+		IP:          ipStr,
+		ServerID:    row.ServerID,
+		UserID:      row.UserID,
+		Score:       int(row.ThreatScore),
+		Reason:      row.ThreatType,
+		Duration:    duration,
+		BlockedAt:   time.Now(),
+		ExpiresAt:   expiresAt,
+		IsPermanent: isPermanent,
 	}
+	agentID := row.ServerID.String()
 	bm.mu.Unlock()
 
 	// Create alert for this block
@@ -264,17 +326,13 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		log.Printf("[BlockManager] Failed to create alert for %s: %v", ipStr, err)
 	}
 
-	// Determine block type based on threat score
+	// Determine block type: ratelimit for low scores (< 50), blocklist for higher scores
 	blockType := "blocklist"
-	if row.ThreatScore >= 50 && row.ThreatScore < 70 {
-		blockType = "ratelimit"
-	} else if row.ThreatScore >= 70 {
-		blockType = "blocklist"
-	} else {
+	if row.ThreatScore < 50 {
 		blockType = "ratelimit"
 	}
 
-	bm.sendBlockCommand(ipStr, duration, row.ThreatType, blockType, block.ID.String())
+	bm.sendBlockCommand(agentID, ipStr, duration, row.ThreatType, blockType, block.ID.String())
 
 	if bm.hub != nil && row.UserID.Valid {
 		bm.hub.BroadcastToUser(database.FromPgUUID(row.UserID), "new_block", map[string]interface{}{
@@ -294,20 +352,10 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ipStr, row.ThreatScore, duration)
 }
 
-func (bm *BlockManager) sendBlockCommand(ip string, duration time.Duration, reason, blockType, blockID string) {
+func (bm *BlockManager) sendBlockCommand(agentID, ip string, duration time.Duration, reason, blockType, blockID string) {
 	if bm.hub == nil {
 		return
 	}
-
-	bm.mu.RLock()
-	block, exists := bm.activeBlocks[ip]
-	bm.mu.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	agentID := block.ServerID.String()
 
 	bm.hub.SendCommandToAgent(agentID, map[string]interface{}{
 		"action":     "block",

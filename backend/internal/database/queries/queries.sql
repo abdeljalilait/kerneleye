@@ -759,7 +759,7 @@ SELECT
 FROM blocks
 WHERE server_id = $1
   AND is_active = true
-  AND expires_at > NOW()
+  AND (expires_at > NOW() OR expires_at IS NULL)
 ORDER BY blocked_at DESC;
 
 -- name: GetAllActiveBlocks :many
