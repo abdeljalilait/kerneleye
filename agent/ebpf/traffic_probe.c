@@ -454,6 +454,67 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     return 0;
 }
 
+// Tracepoint context for tcp_receive_reset (not defined in vmlinux.h)
+// See: net/ipv4/tcp.c - trace_tcp_receive_reset(sk)
+struct trace_event_raw_tcp_receive_reset {
+    struct trace_entry ent;
+    const void *skaddr;  // struct sock pointer (from TP_STRUCT__entry)
+    char __data[0];
+};
+
+// Tracepoint: TCP Receive Reset - detects RST packets
+// This catches:
+//   • Rejected connections (connection refused)
+//   • Firewall blocks (iptables/nftables dropping with RST)
+//   • Connection failures (mid-stream resets, timeouts)
+//   • IDS/IPS blocking (security appliances sending RST)
+SEC("tracepoint/tcp/tcp_receive_reset")
+int detect_tcp_reset(struct trace_event_raw_tcp_receive_reset *ctx) {
+    struct sock *sk = (struct sock *)ctx->skaddr;
+    if (!sk)
+        return 0;
+
+    u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
+    if (family != AF_INET && family != AF_INET6)
+        return 0;
+
+    // Rate limit check
+    if (!check_rate_limit())
+        return 0;
+
+    struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    if (!e)
+        return 0;
+
+    if (family == AF_INET) {
+        e->saddr.addr4 = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_daddr));
+        e->daddr.addr4 = bpf_ntohl(BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr));
+    } else {
+        bpf_core_read(&e->saddr.addr6, sizeof(e->saddr.addr6), &sk->__sk_common.skc_v6_daddr);
+        bpf_core_read(&e->daddr.addr6, sizeof(e->daddr.addr6), &sk->__sk_common.skc_v6_rcv_saddr);
+    }
+
+    e->lport = BPF_CORE_READ(sk, __sk_common.skc_num);
+    e->rport = bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
+    e->family = family;
+    e->protocol = IPPROTO_TCP;
+    e->flags = FLAG_FAILED;
+    // RST is received, but direction is ambiguous for outbound connects that fail.
+    // Hardcode as inbound since the RST packet arrives from remote.
+    e->direction = DIR_INBOUND;
+    e->timestamp = bpf_ktime_get_ns();
+
+    // NOTE: tracepoint fires in softirq context - current task is meaningless.
+    // Don't use fill_process_info() here.
+    e->pid = 0;
+    e->tgid = 0;
+    e->uid = 0;
+    e->comm[0] = '\0';
+
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
 // Hook: TCP Connect (Outgoing connections - SYN sent)
 SEC("kprobe/tcp_connect")
 int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
@@ -585,15 +646,12 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
         return 0;
     }
     
-    int tracked = 0;
-    
     if (family == AF_INET) {
         struct conn_key key = {};
         make_conn_key(&key, saddr4, sport, daddr4, dport);
         
         u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker, &key);
         if (syn_ts) {
-            tracked = 1;
             u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
             if (sk_state == TCP_ESTABLISHED) {
                 bpf_map_delete_elem(&tcp_syn_tracker, &key);
@@ -632,7 +690,6 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
         
         u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker_v6, &key);
         if (syn_ts) {
-            tracked = 1;
             u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
             if (sk_state == TCP_ESTABLISHED) {
                 bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
