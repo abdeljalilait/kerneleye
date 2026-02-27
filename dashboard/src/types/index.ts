@@ -115,6 +115,11 @@ export interface PortSourceIP {
   isp?: string;
   last_seen: string;
   direction?: string;
+  icmp_packets_in?: number;
+  icmp_packets_out?: number;
+  connection_duration_ms?: number;
+  port_bytes_in?: Record<string, number>;
+  port_bytes_out?: Record<string, number>;
 }
 
 export interface PortTraffic {
@@ -126,6 +131,8 @@ export interface PortTraffic {
   total_hits: number;
   total_syn: number;
   total_ack: number;
+  total_icmp_in?: number;
+  total_icmp_out?: number;
   max_threat_score: number;
   max_threat_level: string;
   last_seen: string;
