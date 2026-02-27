@@ -203,6 +203,8 @@ func SetupBandwidthTracking(res *EBPFResources) {
 		return
 	}
 	byteCounterMap = res.Objects.IpByteCounters
+	icmpCounterMap = res.Objects.IcmpCounters
+	ipPortBytesMap = res.Objects.IpPortBytes
 }
 
 // rateLimitState matches the C struct in traffic_probe.c
