@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Server as ServerIcon, Shield, AlertTriangle, Zap, Crown, Sparkles } from 'lucide-react'
+import { Server as ServerIcon, Shield, AlertTriangle, Zap, Crown, Sparkles, Activity, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
 import { Row, Col, Typography, Card, Space, Badge, Tag } from 'antd'
 import { useNavigate } from '@tanstack/react-router'
 import StatCard from '../components/StatCard'
@@ -9,10 +9,118 @@ import ServersList from '../components/ServersList'
 import LiveStream from '../components/LiveStream'
 import { Threat, StatsOverview } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
-import { useServers, useThreats, useStats, useSubscriptionStatus } from '../hooks/useQueries'
+import { useServers, useThreats, useStats, useSubscriptionStatus, useSystemStatus } from '../hooks/useQueries'
 import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
+
+// System Status Card Component
+function SystemStatusCard() {
+  const { data: systemStatus, isLoading } = useSystemStatus()
+
+  if (isLoading || !systemStatus) {
+    return (
+      <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
+        <Col xs={24}>
+          <Card
+            variant="borderless"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+            }}
+            bodyStyle={{ padding: 24 }}
+          >
+            <Text style={{ color: 'var(--text-secondary)' }}>Loading system status...</Text>
+          </Card>
+        </Col>
+      </Row>
+    )
+  }
+
+  const statusConfig = {
+    healthy: {
+      icon: CheckCircle,
+      color: '#10b981',
+      bgColor: 'rgba(16, 185, 129, 0.1)',
+      title: 'System Status: Protected',
+    },
+    warning: {
+      icon: AlertCircle,
+      color: '#f59e0b',
+      bgColor: 'rgba(245, 158, 11, 0.1)',
+      title: 'System Status: Warning',
+    },
+    error: {
+      icon: XCircle,
+      color: '#ef4444',
+      bgColor: 'rgba(239, 68, 68, 0.1)',
+      title: 'System Status: Attention Required',
+    },
+  }
+
+  const config = statusConfig[systemStatus.status]
+  const StatusIcon = config.icon
+
+  return (
+    <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
+      <Col xs={24}>
+        <Card
+          variant="borderless"
+          style={{
+            background: config.bgColor,
+            border: `1px solid ${config.color}30`,
+            borderRadius: 'var(--radius-lg)',
+          }}
+          bodyStyle={{ padding: 24 }}
+        >
+          <Row justify="space-between" align="middle">
+            <Col>
+              <Space size={16} align="center">
+                <div 
+                  style={{
+                    width: 48,
+                    height: 48,
+                    background: config.color,
+                    borderRadius: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: `0 4px 14px ${config.color}40`,
+                  }}
+                >
+                  <StatusIcon size={24} color="white" />
+                </div>
+                <div>
+                  <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                    {config.title}
+                  </Title>
+                  <Text style={{ color: 'var(--text-secondary)' }}>
+                    {systemStatus.message}. Last heartbeat {systemStatus.lastHeartbeatAgo}.
+                  </Text>
+                </div>
+              </Space>
+            </Col>
+            <Col>
+              <Space size={12}>
+                <Text style={{ color: 'var(--text-tertiary)' }}>
+                  Active agents:
+                </Text>
+                <Badge 
+                  count={`${systemStatus.activeServers}/${systemStatus.totalServers}`}
+                  style={{ 
+                    background: systemStatus.activeServers === systemStatus.totalServers ? '#10b981' : '#f59e0b',
+                    color: 'white',
+                  }}
+                />
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      </Col>
+    </Row>
+  )
+}
 
 export default function Overview() {
   const { data: statsData } = useStats()
@@ -232,6 +340,8 @@ export default function Overview() {
         </Col>
       </Row>
 
+      {/* System Status */}
+      <SystemStatusCard />
 
     </div>
   )

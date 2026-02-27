@@ -452,6 +452,96 @@ export const useCreateCustomerPortal = () => {
 };
 
 // ============================================
+// SYSTEM STATUS HOOK
+// ============================================
+
+export interface SystemStatus {
+  status: 'healthy' | 'warning' | 'error';
+  message: string;
+  lastHeartbeat: string | null;
+  lastHeartbeatAgo: string;
+  activeServers: number;
+  totalServers: number;
+}
+
+export const useSystemStatus = () => {
+  return useQuery({
+    queryKey: ['system-status'],
+    queryFn: async () => {
+      const { data } = await serversAPI.list();
+      const servers = data as Server[];
+      
+      if (!servers || servers.length === 0) {
+        return {
+          status: 'error',
+          message: 'No servers configured',
+          lastHeartbeat: null,
+          lastHeartbeatAgo: 'Never',
+          activeServers: 0,
+          totalServers: 0,
+        } as SystemStatus;
+      }
+
+      // Find the most recent heartbeat across all servers
+      const now = new Date().getTime();
+      const heartbeats = servers
+        .map(s => s.last_seen ? new Date(s.last_seen).getTime() : 0)
+        .filter(t => t > 0);
+      
+      const lastHeartbeat = heartbeats.length > 0 ? Math.max(...heartbeats) : 0;
+      const lastHeartbeatAgo = lastHeartbeat > 0 ? now - lastHeartbeat : Infinity;
+      
+      // Count servers active in last 5 minutes
+      const fiveMinutes = 5 * 60 * 1000;
+      const activeServers = heartbeats.filter(t => now - t < fiveMinutes).length;
+      
+      // Determine status
+      let status: 'healthy' | 'warning' | 'error' = 'healthy';
+      let message = 'All systems operational';
+      
+      if (lastHeartbeat === 0 || lastHeartbeatAgo > 10 * 60 * 1000) {
+        // No heartbeat in 10 minutes
+        status = 'error';
+        message = activeServers > 0 
+          ? `${servers.length - activeServers} server(s) not reporting`
+          : 'No agent heartbeats received';
+      } else if (lastHeartbeatAgo > 5 * 60 * 1000) {
+        // Last heartbeat between 5-10 minutes
+        status = 'warning';
+        message = `Last heartbeat ${Math.floor(lastHeartbeatAgo / 60000)} min ago`;
+      } else if (activeServers < servers.length) {
+        // Some servers not active
+        status = 'warning';
+        message = `${activeServers}/${servers.length} servers active`;
+      }
+
+      return {
+        status,
+        message,
+        lastHeartbeat: lastHeartbeat > 0 ? new Date(lastHeartbeat).toISOString() : null,
+        lastHeartbeatAgo: lastHeartbeat > 0 
+          ? formatDuration(lastHeartbeatAgo)
+          : 'Never',
+        activeServers,
+        totalServers: servers.length,
+      } as SystemStatus;
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+};
+
+// Helper to format duration
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  if (hours > 0) return `${hours}h ${minutes % 60}m ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return `${seconds}s ago`;
+}
+
+// ============================================
 // ANALYTICS HOOKS (Reports & Visualizer)
 // ============================================
 
