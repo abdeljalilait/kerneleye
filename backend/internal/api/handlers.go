@@ -193,53 +193,60 @@ func HandleServerStats(queries *database.Queries) fiber.Handler {
 
 // PortTrafficResponse represents aggregated traffic data per port/protocol
 type PortTrafficResponse struct {
-	Port            int32           `json:"port"`
-	Protocol        string          `json:"protocol"`
-	UniqueIps       int32           `json:"unique_ips"`
-	TotalBytesIn    int64           `json:"total_bytes_in"`
-	TotalBytesOut   int64           `json:"total_bytes_out"`
-	TotalHits       int32           `json:"total_hits"`
-	TotalSyn        int32           `json:"total_syn"`
-	TotalAck        int32           `json:"total_ack"`
-	MaxThreatScore  int32           `json:"max_threat_score"`
-	MaxThreatLevel  string          `json:"max_threat_level"`
-	LastSeen        time.Time       `json:"last_seen"`
-	Sources         []PortSourceIP  `json:"sources"`
+	Port           int32          `json:"port"`
+	Protocol       string         `json:"protocol"`
+	UniqueIps      int32          `json:"unique_ips"`
+	TotalBytesIn   int64          `json:"total_bytes_in"`
+	TotalBytesOut  int64          `json:"total_bytes_out"`
+	TotalHits      int32          `json:"total_hits"`
+	TotalSyn       int32          `json:"total_syn"`
+	TotalAck       int32          `json:"total_ack"`
+	TotalIcmpIn    int64          `json:"total_icmp_in"`
+	TotalIcmpOut   int64          `json:"total_icmp_out"`
+	MaxThreatScore int32          `json:"max_threat_score"`
+	MaxThreatLevel string         `json:"max_threat_level"`
+	LastSeen       time.Time      `json:"last_seen"`
+	Sources        []PortSourceIP `json:"sources"`
 }
 
 // PortSourceIP represents a source IP in port traffic
 type PortSourceIP struct {
-	SourceIP        string    `json:"source_ip"`
-	DestinationPort int32     `json:"destination_port,omitempty"`
-	DestinationIP   *string   `json:"destination_ip,omitempty"`
-	BytesIn         int64     `json:"bytes_in"`
-	BytesOut        int64     `json:"bytes_out"`
-	SynCount        int32     `json:"syn_count"`
-	AckCount        int32     `json:"ack_count"`
-	HitCount        int32     `json:"hit_count"`
-	ThreatScore     int32     `json:"threat_score"`
-	ThreatLevel     string    `json:"threat_level"`
-	Country         *string   `json:"country,omitempty"`
-	City            *string   `json:"city,omitempty"`
-	ISP             *string   `json:"isp,omitempty"`
-	LastSeen        time.Time `json:"last_seen"`
-	Direction       string    `json:"direction,omitempty"`
+	SourceIP             string           `json:"source_ip"`
+	DestinationPort      int32            `json:"destination_port,omitempty"`
+	DestinationIP        *string          `json:"destination_ip,omitempty"`
+	BytesIn              int64            `json:"bytes_in"`
+	BytesOut             int64            `json:"bytes_out"`
+	SynCount             int32            `json:"syn_count"`
+	AckCount             int32            `json:"ack_count"`
+	HitCount             int32            `json:"hit_count"`
+	ThreatScore          int32            `json:"threat_score"`
+	ThreatLevel          string           `json:"threat_level"`
+	Country              *string          `json:"country,omitempty"`
+	City                 *string          `json:"city,omitempty"`
+	ISP                  *string          `json:"isp,omitempty"`
+	LastSeen             time.Time        `json:"last_seen"`
+	Direction            string           `json:"direction,omitempty"`
+	IcmpPacketsIn        int64            `json:"icmp_packets_in,omitempty"`
+	IcmpPacketsOut       int64            `json:"icmp_packets_out,omitempty"`
+	ConnectionDurationMs int64            `json:"connection_duration_ms,omitempty"`
+	PortBytesIn          map[string]int64 `json:"port_bytes_in,omitempty"`
+	PortBytesOut         map[string]int64 `json:"port_bytes_out,omitempty"`
 }
 
 // ProtocolTrafficResponse represents aggregated traffic data per protocol
 type ProtocolTrafficResponse struct {
-	Protocol       string          `json:"protocol"`
-	UniqueIps      int32           `json:"unique_ips"`
-	UniquePorts    int32           `json:"unique_ports"`
-	TotalBytesIn   int64           `json:"total_bytes_in"`
-	TotalBytesOut  int64           `json:"total_bytes_out"`
-	TotalHits      int32           `json:"total_hits"`
-	TotalSyn       int32           `json:"total_syn"`
-	TotalAck       int32           `json:"total_ack"`
-	MaxThreatScore int32           `json:"max_threat_score"`
-	MaxThreatLevel string          `json:"max_threat_level"`
-	LastSeen       time.Time       `json:"last_seen"`
-	Sources        []PortSourceIP  `json:"sources"`
+	Protocol       string         `json:"protocol"`
+	UniqueIps      int32          `json:"unique_ips"`
+	UniquePorts    int32          `json:"unique_ports"`
+	TotalBytesIn   int64          `json:"total_bytes_in"`
+	TotalBytesOut  int64          `json:"total_bytes_out"`
+	TotalHits      int32          `json:"total_hits"`
+	TotalSyn       int32          `json:"total_syn"`
+	TotalAck       int32          `json:"total_ack"`
+	MaxThreatScore int32          `json:"max_threat_score"`
+	MaxThreatLevel string         `json:"max_threat_level"`
+	LastSeen       time.Time      `json:"last_seen"`
+	Sources        []PortSourceIP `json:"sources"`
 }
 
 // HandleServerPortTraffic returns aggregated port traffic with source IPs for a specific server
@@ -410,6 +417,8 @@ func HandleServerPortTraffic(queries *database.Queries) fiber.Handler {
 				TotalHits:      row.TotalHits,
 				TotalSyn:       row.TotalSyn,
 				TotalAck:       row.TotalAck,
+				TotalIcmpIn:    row.TotalIcmpIn,
+				TotalIcmpOut:   row.TotalIcmpOut,
 				MaxThreatScore: maxThreatScore,
 				MaxThreatLevel: maxThreatLevel,
 				LastSeen:       lastSeen,
@@ -538,21 +547,26 @@ func HandleServerPortSources(queries *database.Queries) fiber.Handler {
 			lastSeen := row.LastSeen.Time
 
 			items = append(items, PortSourceIP{
-				SourceIP:        row.SourceIp.String(),
-				DestinationPort: int32(portNum),
-				DestinationIP:   destIP,
-				BytesIn:         row.BytesIn,
-				BytesOut:        row.BytesOut,
-				SynCount:        row.SynCount,
-				AckCount:        row.AckCount,
-				HitCount:        row.HitCount,
-				ThreatScore:     row.ThreatScore,
-				ThreatLevel:     row.ThreatLevel,
-				Country:         country,
-				City:            city,
-				ISP:             isp,
-				LastSeen:        lastSeen,
-				Direction:       row.Direction,
+				SourceIP:             row.SourceIp.String(),
+				DestinationPort:      int32(portNum),
+				DestinationIP:        destIP,
+				BytesIn:              row.BytesIn,
+				BytesOut:             row.BytesOut,
+				SynCount:             row.SynCount,
+				AckCount:             row.AckCount,
+				HitCount:             row.HitCount,
+				ThreatScore:          row.ThreatScore,
+				ThreatLevel:          row.ThreatLevel,
+				Country:              country,
+				City:                 city,
+				ISP:                  isp,
+				LastSeen:             lastSeen,
+				Direction:            row.Direction,
+				IcmpPacketsIn:        row.IcmpPacketsIn,
+				IcmpPacketsOut:       row.IcmpPacketsOut,
+				ConnectionDurationMs: row.ConnectionDurationMs,
+				PortBytesIn:          unmarshalPortBytesMap(row.PortBytesIn),
+				PortBytesOut:         unmarshalPortBytesMap(row.PortBytesOut),
 			})
 		}
 
@@ -764,6 +778,22 @@ func HandleServerProtocolTraffic(queries *database.Queries) fiber.Handler {
 }
 
 // Helper functions for JSON parsing
+// unmarshalPortBytesMap deserializes a JSONB port-bytes map from the DB ([]byte)
+// into map[string]int64 suitable for the REST response. Returns nil on empty or error.
+func unmarshalPortBytesMap(data []byte) map[string]int64 {
+	if len(data) == 0 || string(data) == "{}" || string(data) == "null" {
+		return nil
+	}
+	var m map[string]int64
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
+}
+
 func getString(m map[string]interface{}, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
