@@ -241,12 +241,20 @@ export default function BlockedIPs() {
               {serviceIcons[record.service_name] || <Server size={16} />}
             </span>
             <Text strong style={{ textTransform: 'uppercase', fontSize: 13 }}>
-              {record.service_name}
+              {record.service_name || 'Unknown'}
             </Text>
           </div>
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            Port {record.target_port} / {record.protocol?.toUpperCase()}
-          </Text>
+          {(record.target_port && record.target_port > 0) || record.protocol ? (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {record.target_port > 0 && `Port ${record.target_port}`}
+              {record.target_port > 0 && record.protocol && ' / '}
+              {record.protocol?.toUpperCase()}
+            </Text>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              Multiple ports
+            </Text>
+          )}
         </div>
       ),
       filters: [
@@ -314,10 +322,16 @@ export default function BlockedIPs() {
             <Clock size={14} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
             <Text style={{ fontSize: 13 }}>{dayjs(date).format('MMM D, HH:mm')}</Text>
           </div>
-          <Text type="secondary" style={{ fontSize: 11, paddingLeft: 20 }}>
-            Expires {dayjs(record.expires_at).fromNow()}
-          </Text>
-          {record.is_active && (
+          {record.expires_at && dayjs(record.expires_at).isValid() && record.expires_at !== '0001-01-01T00:00:00Z' ? (
+            <Text type="secondary" style={{ fontSize: 11, paddingLeft: 20 }}>
+              Expires {dayjs(record.expires_at).fromNow()}
+            </Text>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 11, paddingLeft: 20, color: 'var(--text-muted)' }}>
+              Permanent block
+            </Text>
+          )}
+          {record.is_active && record.expires_at && dayjs(record.expires_at).isValid() && record.expires_at !== '0001-01-01T00:00:00Z' && (
             <div style={{ paddingLeft: 20, width: 80 }}>
               <Progress
                 percent={calculateProgress(record.blocked_at, record.expires_at)}
@@ -667,11 +681,13 @@ export default function BlockedIPs() {
             <Descriptions title="Attack Details" bordered column={1}>
               <Descriptions.Item label="Target Service">
                 <Space>
-                  {serviceIcons[selectedBlock.service_name]}
+                  {serviceIcons[selectedBlock.service_name] || <Server size={16} />}
                   <Text strong style={{ textTransform: 'uppercase' }}>
-                    {selectedBlock.service_name}
+                    {selectedBlock.service_name || 'Unknown'}
                   </Text>
-                  <Text type="secondary">Port {selectedBlock.target_port}</Text>
+                  {selectedBlock.target_port > 0 && (
+                    <Text type="secondary">Port {selectedBlock.target_port}</Text>
+                  )}
                 </Space>
               </Descriptions.Item>
               <Descriptions.Item label="Threat Score">
@@ -693,8 +709,14 @@ export default function BlockedIPs() {
                 {dayjs(selectedBlock.blocked_at).format('MMMM D, YYYY HH:mm:ss')}
               </Descriptions.Item>
               <Descriptions.Item label="Expires At">
-                {dayjs(selectedBlock.expires_at).format('MMMM D, YYYY HH:mm:ss')} (
-                {dayjs(selectedBlock.expires_at).fromNow()})
+                {selectedBlock.expires_at && dayjs(selectedBlock.expires_at).isValid() && selectedBlock.expires_at !== '0001-01-01T00:00:00Z' ? (
+                  <>
+                    {dayjs(selectedBlock.expires_at).format('MMMM D, YYYY HH:mm:ss')} (
+                    {dayjs(selectedBlock.expires_at).fromNow()})
+                  </>
+                ) : (
+                  <Text type="secondary">Permanent block</Text>
+                )}
               </Descriptions.Item>
               {selectedBlock.unblocked_at && (
                 <Descriptions.Item label="Unblocked At">
