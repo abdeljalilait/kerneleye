@@ -872,6 +872,102 @@ SET polar_customer_id = $2,
     updated_at = NOW()
 WHERE id = $1;
 
+-- ============================================
+-- Monthly Report Queries
+-- ============================================
+
+-- name: ListUsersForReports :many
+-- Gets all users with email addresses for monthly reports
+SELECT id, email, email as name
+FROM users
+WHERE email IS NOT NULL AND email != ''
+  AND (subscription_status = 'active' OR subscription_status = 'trialing');
+
+-- name: GetMonthlyTrafficStats :one
+-- Gets total traffic event count for a user in a date range
+SELECT COALESCE(SUM(te.hit_count), 0)::bigint as total_events
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3;
+
+-- name: GetMonthlyBlockStats :one
+-- Gets total blocked connection count for a user in a date range
+SELECT COUNT(*)::bigint as blocked_count
+FROM blocks
+WHERE user_id = $1
+  AND blocked_at >= $2
+  AND blocked_at <= $3;
+
+-- name: GetMonthlyThreatStats :one
+-- Gets count of threat-level traffic events (non-normal)
+SELECT COALESCE(SUM(te.hit_count), 0)::bigint as threat_count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+  AND te.threat_level != 'normal';
+
+-- name: GetMonthlyUniqueThreatIPs :one
+-- Gets count of unique threat IPs for a user in a date range
+SELECT COUNT(DISTINCT te.source_ip)::bigint as unique_ips
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+  AND te.threat_level != 'normal';
+
+-- name: GetMonthlyTopPorts :many
+-- Gets top targeted ports for a user in a date range (top 5)
+SELECT 
+    te.destination_port as port,
+    COALESCE(
+        MODE() WITHIN GROUP (ORDER BY te.service_name),
+        'unknown'::text
+    ) as service_name,
+    SUM(te.hit_count)::bigint as count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+GROUP BY te.destination_port
+ORDER BY count DESC
+LIMIT 5;
+
+-- name: GetMonthlyTopBlockedIPs :many
+-- Gets top blocked IPs for a user in a date range (top 5)
+SELECT 
+    b.ip_address,
+    COALESCE(MAX(b.country_name), 'Unknown') as country,
+    COUNT(*)::bigint as count
+FROM blocks b
+WHERE b.user_id = $1
+  AND b.blocked_at >= $2
+  AND b.blocked_at <= $3
+GROUP BY b.ip_address
+ORDER BY count DESC
+LIMIT 5;
+
+-- name: GetMonthlyTopCountries :many
+-- Gets top attacking countries for a user in a date range (top 5)
+SELECT 
+    COALESCE(te.country, 'Unknown') as country,
+    SUM(te.hit_count)::bigint as count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+  AND te.threat_level != 'normal'
+  AND te.country IS NOT NULL
+GROUP BY te.country
+ORDER BY count DESC
+LIMIT 5;
+
 
 -- ============================================
 -- Data Retention Queries
@@ -879,7 +975,6 @@ WHERE id = $1;
 
 -- name: ArchiveTrafficEvents :one
 -- Archives old traffic events based on retention policy
--- Returns number of rows archived
 SELECT archive_traffic_events($1, $2)::int as archived_count;
 
 -- name: GetServerDataRetentionDays :one

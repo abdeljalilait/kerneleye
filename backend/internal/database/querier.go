@@ -20,7 +20,6 @@ type Querier interface {
 	// Data Retention Queries
 	// ============================================
 	// Archives old traffic events based on retention policy
-	// Returns number of rows archived
 	ArchiveTrafficEvents(ctx context.Context, arg ArchiveTrafficEventsParams) (int32, error)
 	CleanupExpiredBlocks(ctx context.Context) error
 	// Deletes archived data older than 1 year
@@ -79,6 +78,20 @@ type Querier interface {
 	GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error)
 	// Gets historical traffic for a specific IP across all servers
 	GetIPTrafficHistory(ctx context.Context, arg GetIPTrafficHistoryParams) ([]GetIPTrafficHistoryRow, error)
+	// Gets total blocked connection count for a user in a date range
+	GetMonthlyBlockStats(ctx context.Context, arg GetMonthlyBlockStatsParams) (int64, error)
+	// Gets count of threat-level traffic events (non-normal)
+	GetMonthlyThreatStats(ctx context.Context, arg GetMonthlyThreatStatsParams) (int64, error)
+	// Gets top blocked IPs for a user in a date range (top 5)
+	GetMonthlyTopBlockedIPs(ctx context.Context, arg GetMonthlyTopBlockedIPsParams) ([]GetMonthlyTopBlockedIPsRow, error)
+	// Gets top attacking countries for a user in a date range (top 5)
+	GetMonthlyTopCountries(ctx context.Context, arg GetMonthlyTopCountriesParams) ([]GetMonthlyTopCountriesRow, error)
+	// Gets top targeted ports for a user in a date range (top 5)
+	GetMonthlyTopPorts(ctx context.Context, arg GetMonthlyTopPortsParams) ([]GetMonthlyTopPortsRow, error)
+	// Gets total traffic event count for a user in a date range
+	GetMonthlyTrafficStats(ctx context.Context, arg GetMonthlyTrafficStatsParams) (int64, error)
+	// Gets count of unique threat IPs for a user in a date range
+	GetMonthlyUniqueThreatIPs(ctx context.Context, arg GetMonthlyUniqueThreatIPsParams) (int64, error)
 	GetPlanByName(ctx context.Context, name string) (SubscriptionPlan, error)
 	GetPlanByPolarProductID(ctx context.Context, polarProductID pgtype.Text) (SubscriptionPlan, error)
 	GetRecentBlocks(ctx context.Context, arg GetRecentBlocksParams) ([]GetRecentBlocksRow, error)
@@ -133,6 +146,11 @@ type Querier interface {
 	ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]Server, error)
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
+	// ============================================
+	// Monthly Report Queries
+	// ============================================
+	// Gets all users with email addresses for monthly reports
+	ListUsersForReports(ctx context.Context) ([]ListUsersForReportsRow, error)
 	RemoveFromWhitelist(ctx context.Context, arg RemoveFromWhitelistParams) error
 	// Reset threat score for an IP after unblock (keeps history for future calculations)
 	// Sets score to 0 and level to normal, but preserves traffic counts

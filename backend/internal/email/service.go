@@ -308,6 +308,11 @@ func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) err
 	return s.sendEmail(toEmail, toName, subject, htmlContent, "trial_reminder")
 }
 
+// SendMonthlyReport sends a monthly security report email
+func (s *Service) SendMonthlyReport(toEmail, toName, subject, htmlContent string) error {
+	return s.sendEmail(toEmail, toName, subject, htmlContent, "monthly_report")
+}
+
 // stripHTML removes HTML tags for plain text version
 func stripHTML(html string) string {
 	var buf bytes.Buffer

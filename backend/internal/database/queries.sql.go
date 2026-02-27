@@ -69,7 +69,6 @@ type ArchiveTrafficEventsParams struct {
 // Data Retention Queries
 // ============================================
 // Archives old traffic events based on retention policy
-// Returns number of rows archived
 func (q *Queries) ArchiveTrafficEvents(ctx context.Context, arg ArchiveTrafficEventsParams) (int32, error) {
 	row := q.db.QueryRow(ctx, archiveTrafficEvents, arg.PServerID, arg.PRetentionDays)
 	var archived_count int32
@@ -1201,6 +1200,245 @@ func (q *Queries) GetIPTrafficHistory(ctx context.Context, arg GetIPTrafficHisto
 		return nil, err
 	}
 	return items, nil
+}
+
+const getMonthlyBlockStats = `-- name: GetMonthlyBlockStats :one
+SELECT COUNT(*)::bigint as blocked_count
+FROM blocks
+WHERE user_id = $1
+  AND blocked_at >= $2
+  AND blocked_at <= $3
+`
+
+type GetMonthlyBlockStatsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	BlockedAt   pgtype.Timestamptz `json:"blocked_at"`
+	BlockedAt_2 pgtype.Timestamptz `json:"blocked_at_2"`
+}
+
+// Gets total blocked connection count for a user in a date range
+func (q *Queries) GetMonthlyBlockStats(ctx context.Context, arg GetMonthlyBlockStatsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getMonthlyBlockStats, arg.UserID, arg.BlockedAt, arg.BlockedAt_2)
+	var blocked_count int64
+	err := row.Scan(&blocked_count)
+	return blocked_count, err
+}
+
+const getMonthlyThreatStats = `-- name: GetMonthlyThreatStats :one
+SELECT COALESCE(SUM(te.hit_count), 0)::bigint as threat_count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+  AND te.threat_level != 'normal'
+`
+
+type GetMonthlyThreatStatsParams struct {
+	UserID     pgtype.UUID        `json:"user_id"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
+}
+
+// Gets count of threat-level traffic events (non-normal)
+func (q *Queries) GetMonthlyThreatStats(ctx context.Context, arg GetMonthlyThreatStatsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getMonthlyThreatStats, arg.UserID, arg.LastSeen, arg.LastSeen_2)
+	var threat_count int64
+	err := row.Scan(&threat_count)
+	return threat_count, err
+}
+
+const getMonthlyTopBlockedIPs = `-- name: GetMonthlyTopBlockedIPs :many
+SELECT 
+    b.ip_address,
+    COALESCE(MAX(b.country_name), 'Unknown') as country,
+    COUNT(*)::bigint as count
+FROM blocks b
+WHERE b.user_id = $1
+  AND b.blocked_at >= $2
+  AND b.blocked_at <= $3
+GROUP BY b.ip_address
+ORDER BY count DESC
+LIMIT 5
+`
+
+type GetMonthlyTopBlockedIPsParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	BlockedAt   pgtype.Timestamptz `json:"blocked_at"`
+	BlockedAt_2 pgtype.Timestamptz `json:"blocked_at_2"`
+}
+
+type GetMonthlyTopBlockedIPsRow struct {
+	IpAddress netip.Addr  `json:"ip_address"`
+	Country   interface{} `json:"country"`
+	Count     int64       `json:"count"`
+}
+
+// Gets top blocked IPs for a user in a date range (top 5)
+func (q *Queries) GetMonthlyTopBlockedIPs(ctx context.Context, arg GetMonthlyTopBlockedIPsParams) ([]GetMonthlyTopBlockedIPsRow, error) {
+	rows, err := q.db.Query(ctx, getMonthlyTopBlockedIPs, arg.UserID, arg.BlockedAt, arg.BlockedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMonthlyTopBlockedIPsRow{}
+	for rows.Next() {
+		var i GetMonthlyTopBlockedIPsRow
+		if err := rows.Scan(&i.IpAddress, &i.Country, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMonthlyTopCountries = `-- name: GetMonthlyTopCountries :many
+SELECT 
+    COALESCE(te.country, 'Unknown') as country,
+    SUM(te.hit_count)::bigint as count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+  AND te.threat_level != 'normal'
+  AND te.country IS NOT NULL
+GROUP BY te.country
+ORDER BY count DESC
+LIMIT 5
+`
+
+type GetMonthlyTopCountriesParams struct {
+	UserID     pgtype.UUID        `json:"user_id"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
+}
+
+type GetMonthlyTopCountriesRow struct {
+	Country string `json:"country"`
+	Count   int64  `json:"count"`
+}
+
+// Gets top attacking countries for a user in a date range (top 5)
+func (q *Queries) GetMonthlyTopCountries(ctx context.Context, arg GetMonthlyTopCountriesParams) ([]GetMonthlyTopCountriesRow, error) {
+	rows, err := q.db.Query(ctx, getMonthlyTopCountries, arg.UserID, arg.LastSeen, arg.LastSeen_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMonthlyTopCountriesRow{}
+	for rows.Next() {
+		var i GetMonthlyTopCountriesRow
+		if err := rows.Scan(&i.Country, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMonthlyTopPorts = `-- name: GetMonthlyTopPorts :many
+SELECT 
+    te.destination_port as port,
+    COALESCE(
+        MODE() WITHIN GROUP (ORDER BY te.service_name),
+        'unknown'::text
+    ) as service_name,
+    SUM(te.hit_count)::bigint as count
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+GROUP BY te.destination_port
+ORDER BY count DESC
+LIMIT 5
+`
+
+type GetMonthlyTopPortsParams struct {
+	UserID     pgtype.UUID        `json:"user_id"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
+}
+
+type GetMonthlyTopPortsRow struct {
+	Port        int32       `json:"port"`
+	ServiceName interface{} `json:"service_name"`
+	Count       int64       `json:"count"`
+}
+
+// Gets top targeted ports for a user in a date range (top 5)
+func (q *Queries) GetMonthlyTopPorts(ctx context.Context, arg GetMonthlyTopPortsParams) ([]GetMonthlyTopPortsRow, error) {
+	rows, err := q.db.Query(ctx, getMonthlyTopPorts, arg.UserID, arg.LastSeen, arg.LastSeen_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMonthlyTopPortsRow{}
+	for rows.Next() {
+		var i GetMonthlyTopPortsRow
+		if err := rows.Scan(&i.Port, &i.ServiceName, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMonthlyTrafficStats = `-- name: GetMonthlyTrafficStats :one
+SELECT COALESCE(SUM(te.hit_count), 0)::bigint as total_events
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+`
+
+type GetMonthlyTrafficStatsParams struct {
+	UserID     pgtype.UUID        `json:"user_id"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
+}
+
+// Gets total traffic event count for a user in a date range
+func (q *Queries) GetMonthlyTrafficStats(ctx context.Context, arg GetMonthlyTrafficStatsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getMonthlyTrafficStats, arg.UserID, arg.LastSeen, arg.LastSeen_2)
+	var total_events int64
+	err := row.Scan(&total_events)
+	return total_events, err
+}
+
+const getMonthlyUniqueThreatIPs = `-- name: GetMonthlyUniqueThreatIPs :one
+SELECT COUNT(DISTINCT te.source_ip)::bigint as unique_ips
+FROM traffic_events te
+JOIN servers s ON te.server_id = s.id
+WHERE s.user_id = $1
+  AND te.last_seen >= $2
+  AND te.last_seen <= $3
+  AND te.threat_level != 'normal'
+`
+
+type GetMonthlyUniqueThreatIPsParams struct {
+	UserID     pgtype.UUID        `json:"user_id"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
+}
+
+// Gets count of unique threat IPs for a user in a date range
+func (q *Queries) GetMonthlyUniqueThreatIPs(ctx context.Context, arg GetMonthlyUniqueThreatIPsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getMonthlyUniqueThreatIPs, arg.UserID, arg.LastSeen, arg.LastSeen_2)
+	var unique_ips int64
+	err := row.Scan(&unique_ips)
+	return unique_ips, err
 }
 
 const getPlanByName = `-- name: GetPlanByName :one
@@ -2975,6 +3213,44 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 			&i.ThreatType,
 			&i.CountryCode,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersForReports = `-- name: ListUsersForReports :many
+
+SELECT id, email, email as name
+FROM users
+WHERE email IS NOT NULL AND email != ''
+  AND (subscription_status = 'active' OR subscription_status = 'trialing')
+`
+
+type ListUsersForReportsRow struct {
+	ID    pgtype.UUID `json:"id"`
+	Email string      `json:"email"`
+	Name  string      `json:"name"`
+}
+
+// ============================================
+// Monthly Report Queries
+// ============================================
+// Gets all users with email addresses for monthly reports
+func (q *Queries) ListUsersForReports(ctx context.Context) ([]ListUsersForReportsRow, error) {
+	rows, err := q.db.Query(ctx, listUsersForReports)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersForReportsRow{}
+	for rows.Next() {
+		var i ListUsersForReportsRow
+		if err := rows.Scan(&i.ID, &i.Email, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
