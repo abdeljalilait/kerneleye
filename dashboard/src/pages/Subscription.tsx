@@ -39,7 +39,7 @@ interface Plan {
 const Subscription = () => {
   const screens = Grid.useBreakpoint();
   const router = useRouter();
-  const search = useSearch({ from: '/subscription' });
+  const search = useSearch({ from: '/dashboard/subscription' });
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
