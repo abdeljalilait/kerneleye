@@ -16,6 +16,16 @@ import (
 const defaultDBPath = "/var/lib/kerneleye/pending.db"
 const fallbackDBPath = "/tmp/kerneleye/pending.db"
 
+// Buffer limits. These prevent unbounded SQLite growth during extended backend outages.
+const (
+	// BufferMaxBatches is the maximum number of pending batches to retain.
+	// When exceeded, the oldest batches are FIFO-evicted before the new one is written.
+	BufferMaxBatches = 500
+	// DefaultBufferTTL is the maximum age of a buffered batch before it is expired
+	// by the periodic maintenance goroutine (runBufferMaintenance in aggregator.go).
+	DefaultBufferTTL = 24 * time.Hour
+)
+
 // BufferDB handles SQLite-based storage for pending events
 type BufferDB struct {
 	db *sql.DB
@@ -93,7 +103,10 @@ func openBufferDB(dbPath string) (*BufferDB, error) {
 	return &BufferDB{db: db}, nil
 }
 
-// Save stores a batch of events to the buffer
+// Save stores a batch of events to the SQLite buffer.
+// It enforces BufferMaxBatches by FIFO-evicting the oldest rows when at capacity.
+// On disk-full or other write errors the error is returned so the caller can
+// preserve in-memory state rather than silently losing events.
 func (b *BufferDB) Save(apiKey string, events []*pb.ConnectionEvent) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -105,16 +118,62 @@ func (b *BufferDB) Save(apiKey string, events []*pb.ConnectionEvent) error {
 
 	data, err := proto.Marshal(batch)
 	if err != nil {
-		return err
+		return fmt.Errorf("proto marshal: %w", err)
 	}
 
-	_, err = b.db.Exec("INSERT INTO pending_events (data, api_key) VALUES (?, ?)", data, apiKey)
-	if err != nil {
-		return err
+	// Enforce capacity cap: count rows without acquiring a second lock (already held).
+	var count int
+	if err := b.db.QueryRow("SELECT COUNT(*) FROM pending_events").Scan(&count); err != nil {
+		Logger.Warnf("⚠️  Buffer: could not count rows: %v", err)
+	} else if count >= BufferMaxBatches {
+		// Evict the oldest (count - BufferMaxBatches + 1) rows to make room.
+		evictN := count - BufferMaxBatches + 1
+		_, evictErr := b.db.Exec(
+			`DELETE FROM pending_events WHERE id IN
+			 (SELECT id FROM pending_events ORDER BY created_at ASC LIMIT ?)`,
+			evictN,
+		)
+		if evictErr != nil {
+			Logger.Warnf("⚠️  Buffer: FIFO eviction of %d rows failed: %v", evictN, evictErr)
+		} else {
+			Logger.Warnf("⚠️  Buffer at capacity (%d/%d): evicted %d oldest batches",
+				count, BufferMaxBatches, evictN)
+		}
 	}
 
-	Logger.Infof("📦 Buffered %d events to SQLite", len(events))
+	if _, err = b.db.Exec(
+		"INSERT INTO pending_events (data, api_key) VALUES (?, ?)", data, apiKey,
+	); err != nil {
+		// Distinguish disk-full from other errors for clearer operator messaging.
+		errStr := err.Error()
+		if isDiskFullError(errStr) {
+			return fmt.Errorf("buffer write failed (disk full): %w", err)
+		}
+		return fmt.Errorf("buffer write failed: %w", err)
+	}
+
 	return nil
+}
+
+// isDiskFullError returns true for SQLite disk-full and readonly-filesystem errors.
+func isDiskFullError(errMsg string) bool {
+	// SQLite error codes embedded in error strings by the modernc.org/sqlite driver.
+	return containsAny(errMsg, "disk", "SQLITE_FULL", "readonly", "read-only", "no space")
+}
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if len(sub) > 0 {
+			// Simple substring check without importing strings at package level —
+			// strings is already imported by other files in the package.
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // PendingBatch represents a batch loaded from storage
@@ -194,8 +253,9 @@ func (b *BufferDB) Delete(ids []int64) error {
 	return tx.Commit()
 }
 
-// Cleanup removes entries older than maxAge
-func (b *BufferDB) Cleanup(maxAge time.Duration) (int64, error) {
+// EvictExpired removes buffered batches older than maxAge.
+// Called by runBufferMaintenance in aggregator.go on a 1-hour interval.
+func (b *BufferDB) EvictExpired(maxAge time.Duration) (int64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -204,17 +264,26 @@ func (b *BufferDB) Cleanup(maxAge time.Duration) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	return result.RowsAffected()
 }
 
-// Count returns the number of pending batches
+// Cleanup is a back-compat alias for EvictExpired.
+func (b *BufferDB) Cleanup(maxAge time.Duration) (int64, error) {
+	return b.EvictExpired(maxAge)
+}
+
+// Count returns the number of pending batches (acquires lock).
 func (b *BufferDB) Count() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.countUnsafe()
+}
 
+// countUnsafe returns the row count without acquiring the mutex.
+// Must be called with b.mu held.
+func (b *BufferDB) countUnsafe() int {
 	var count int
-	b.db.QueryRow("SELECT COUNT(*) FROM pending_events").Scan(&count)
+	_ = b.db.QueryRow("SELECT COUNT(*) FROM pending_events").Scan(&count)
 	return count
 }
 
