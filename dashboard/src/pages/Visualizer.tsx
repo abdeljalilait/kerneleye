@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
   Card,
-  Button,
   Typography,
   Row,
   Col,
@@ -56,7 +55,7 @@ const sanitizeText = (value: string) =>
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
-// Mock data - in production this comes from API
+// Data interfaces for visualizer
 interface SourceIP {
   ip: string;
   count: number;
@@ -162,8 +161,8 @@ export default function Visualizer() {
     isp: ip.isp || 'Unknown',
     firstSeen: ip.first_seen,
     lastSeen: ip.last_seen,
-    timeline: [], // Timeline would need separate API call
-    threatTypes: [],
+    timeline: [], // TODO: Add timeline API endpoint
+    threatTypes: [], // TODO: Add threat type breakdown from API
   }));
 
   // Calculate percentages
@@ -194,9 +193,9 @@ export default function Visualizer() {
   const uniqueAS = sourceASData.length;
   const uniqueCountries = new Set(sourceIPsData.map((ip: any) => ip.country)).size;
 
-  // Use real data or fallback to empty arrays
-  const mockSourceIPs = sourceIPsData.length > 0 ? sourceIPsData : [];
-  const mockSourceAS = sourceASData.length > 0 ? sourceASData : [];
+  // Source data from API
+  const sourceIPs = sourceIPsData.length > 0 ? sourceIPsData : [];
+  const sourceAS = sourceASData.length > 0 ? sourceASData : [];
 
   return (
     <div style={{ padding: '24px 48px', maxWidth: 1600, margin: '0 auto' }}>
@@ -248,16 +247,7 @@ export default function Visualizer() {
             <Text style={{ color: 'var(--text-secondary)' }}>Countries:</Text>
             <Text strong style={{ color: 'var(--text-primary)' }}>{uniqueCountries}</Text>
           </Space>
-          <Space>
-            <Shield size={16} color="#ef4444" />
-            <Text style={{ color: 'var(--text-secondary)' }}>Scenarios:</Text>
-            <Text strong style={{ color: 'var(--text-primary)' }}>5</Text>
-          </Space>
-          <Space>
-            <Server size={16} color="#8b5cf6" />
-            <Text style={{ color: 'var(--text-secondary)' }}>Security Engines:</Text>
-            <Text strong style={{ color: 'var(--text-primary)' }}>1</Text>
-          </Space>
+
         </Space>
       </Card>
 
@@ -286,15 +276,7 @@ export default function Visualizer() {
               <Select.Option value="30d">Last 30 days</Select.Option>
             </Select>
           </Col>
-          <Col flex="auto" />
-          <Col>
-            <Select placeholder="Filter by engine or tag..." style={{ width: 250 }}>
-              <Select.Option value="all">All Engines</Select.Option>
-              <Select.Option value="ssh">SSH Bruteforce</Select.Option>
-              <Select.Option value="http">HTTP Attacks</Select.Option>
-              <Select.Option value="scan">Port Scans</Select.Option>
-            </Select>
-          </Col>
+
         </Row>
       </Card>
 
@@ -330,7 +312,7 @@ export default function Visualizer() {
                   }}
                 >
                   <Space wrap size={[8, 8]}>
-                    {mockSourceIPs.slice(0, 10).map((ip: SourceIP, idx: number) => (
+                    {sourceIPs.slice(0, 10).map((ip: SourceIP, idx: number) => (
                       <Tooltip key={ip.ip} title={`${ip.isp} | ${ip.country}`}>
                         <Tag
                           color={COLORS[idx % COLORS.length]}
@@ -389,7 +371,7 @@ export default function Visualizer() {
                             borderRadius: 8,
                           }}
                         />
-                        {mockSourceIPs.slice(0, 5).map((ip: SourceIP, idx: number) => (
+                        {sourceIPs.slice(0, 5).map((ip: SourceIP, idx: number) => (
                           <Line
                           key={ip.ip}
                           data={ip.timeline as { time: string; count: number }[]}
@@ -426,12 +408,12 @@ export default function Visualizer() {
                   }
                 >
                   <Text style={{ color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>
-                    Top 10 out of {uniqueIPs} source IP (total of {totalAlerts} alerts)
+                    Top {Math.min(10, sourceIPs.length)} out of {uniqueIPs} source IPs (total of {totalAlerts} alerts)
                   </Text>
                   <div style={{ height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
-                        data={mockSourceIPs.slice(0, 10)}
+                        data={sourceIPs.slice(0, 10)}
                         layout="vertical"
                         margin={{ left: 120 }}
                       >
@@ -453,7 +435,7 @@ export default function Visualizer() {
                           }}
                         />
                         <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                            {mockSourceIPs.slice(0, 10).map((_: SourceIP, idx: number) => (
+                            {sourceIPs.slice(0, 10).map((_: SourceIP, idx: number) => (
                             <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                             ))}
                         </Bar>
@@ -481,7 +463,7 @@ export default function Visualizer() {
                   }
                 >
                   <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {mockSourceIPs.map((ip: SourceIP, idx: number) => (
+                    {sourceIPs.map((ip: SourceIP, idx: number) => (
                       <Row
                         key={ip.ip}
                         align="middle"
@@ -559,7 +541,7 @@ export default function Visualizer() {
                   }}
                 >
                   <Space wrap size={[8, 8]}>
-                    {mockSourceAS.slice(0, 8).map((as: SourceAS, idx: number) => (
+                    {sourceAS.slice(0, 8).map((as: SourceAS, idx: number) => (
                       <Tooltip key={as.asn} title={`${as.name} | ${as.country}`}>
                         <Tag
                           color={COLORS[idx % COLORS.length]}
@@ -617,7 +599,7 @@ export default function Visualizer() {
                             borderRadius: 8,
                           }}
                         />
-                        {mockSourceAS.slice(0, 5).map((as: SourceAS, idx: number) => (
+                        {sourceAS.slice(0, 5).map((as: SourceAS, idx: number) => (
                           <Line
                           key={as.asn}
                           data={as.timeline as { time: string; count: number }[]}
@@ -654,12 +636,12 @@ export default function Visualizer() {
                   }
                 >
                   <Text style={{ color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>
-                    Top {mockSourceAS.length} out of {uniqueAS} source AS (total of {totalAlerts} alerts)
+                    Top {sourceAS.length} out of {uniqueAS} source AS (total of {totalAlerts} alerts)
                   </Text>
                   <div style={{ height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
-                        data={mockSourceAS}
+                        data={sourceAS}
                         layout="vertical"
                         margin={{ left: 150 }}
                       >
@@ -681,7 +663,7 @@ export default function Visualizer() {
                           }}
                         />
                         <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                            {mockSourceAS.map((_: SourceAS, idx: number) => (
+                            {sourceAS.map((_: SourceAS, idx: number) => (
                             <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                             ))}
                         </Bar>
@@ -709,7 +691,7 @@ export default function Visualizer() {
                   }
                 >
                   <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {mockSourceAS.map((as: SourceAS, idx: number) => (
+                    {sourceAS.map((as: SourceAS, idx: number) => (
                       <Row
                       key={as.asn}
                       align="middle"
@@ -769,38 +751,7 @@ export default function Visualizer() {
           </TabPane>
 
           {/* Countries Tab */}
-          <TabPane
-            tab={
-              <Space>
-                <Globe size={16} />
-                Countries
-                <Badge count={uniqueCountries} style={{ backgroundColor: '#10b981' }} />
-              </Space>
-            }
-            key="countries"
-          >
-            <Empty
-              description="Country analysis coming soon"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          </TabPane>
 
-          {/* Scenarios Tab */}
-          <TabPane
-            tab={
-              <Space>
-                <Shield size={16} />
-                Scenarios
-                <Badge count={5} style={{ backgroundColor: '#ef4444' }} />
-              </Space>
-            }
-            key="scenarios"
-          >
-            <Empty
-              description="Scenario analysis coming soon"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          </TabPane>
         </Tabs>
       )}
     </div>

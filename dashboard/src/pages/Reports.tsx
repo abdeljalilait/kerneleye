@@ -94,11 +94,9 @@ export default function Reports() {
       monitored: day.total_attacks || 0,  // Threats detected (from traffic_events)
       prevented: blockMap.get(day.date) || 0,  // Actually blocked (from blocks table)
       uniqueIPs: day.unique_sources || 0,
-      sshBruteforce: day.ssh_attacks || 0,
-      httpScan: day.http_attacks || 0,
-      httpBruteforce: Math.floor((day.http_attacks || 0) * 0.3),
-      httpExploit: Math.floor((day.http_attacks || 0) * 0.2),
-      portScan: day.other_attacks || 0,
+      sshAttacks: day.ssh_attacks || 0,
+      httpAttacks: day.http_attacks || 0,
+      otherAttacks: day.other_attacks || 0,
     })).reverse();
   }, [dailyStats, blockStats]);
 
@@ -191,8 +189,8 @@ export default function Reports() {
           </Col>
           <Col>
             <Space>
-              <Button icon={<Download size={16} />}>Export PDF</Button>
-              <Button icon={<FileText size={16} />}>Export CSV</Button>
+              <Button icon={<Download size={16} />} disabled>Export PDF</Button>
+              <Button icon={<FileText size={16} />} disabled>Export CSV</Button>
             </Space>
           </Col>
         </Row>
@@ -403,9 +401,9 @@ export default function Reports() {
                         labelStyle={{ color: 'var(--text-primary)' }}
                       />
                       <Legend />
-                      <Bar dataKey="sshBruteforce" name="SSH Attacks" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
-                      <Bar dataKey="httpScan" name="HTTP Attacks" stackId="a" fill="#f59e0b" />
-                      <Bar dataKey="portScan" name="Other" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="sshAttacks" name="SSH Attacks" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
+                      <Bar dataKey="httpAttacks" name="HTTP Attacks" stackId="a" fill="#f59e0b" />
+                      <Bar dataKey="otherAttacks" name="Other" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
