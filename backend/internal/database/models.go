@@ -197,6 +197,33 @@ type TrafficEvent struct {
 	CountryCode      pgtype.Text        `json:"country_code"`
 }
 
+type TrafficEventsArchive struct {
+	ID               pgtype.UUID        `json:"id"`
+	ServerID         pgtype.UUID        `json:"server_id"`
+	SourceIp         netip.Addr         `json:"source_ip"`
+	DestinationPort  pgtype.Int4        `json:"destination_port"`
+	Protocol         pgtype.Text        `json:"protocol"`
+	Direction        pgtype.Text        `json:"direction"`
+	BytesIn          pgtype.Int8        `json:"bytes_in"`
+	BytesOut         pgtype.Int8        `json:"bytes_out"`
+	HitCount         pgtype.Int4        `json:"hit_count"`
+	SynCount         pgtype.Int4        `json:"syn_count"`
+	AckCount         pgtype.Int4        `json:"ack_count"`
+	FailedHandshakes pgtype.Int4        `json:"failed_handshakes"`
+	ThreatScore      pgtype.Int4        `json:"threat_score"`
+	ThreatLevel      pgtype.Text        `json:"threat_level"`
+	ThreatType       pgtype.Text        `json:"threat_type"`
+	Country          pgtype.Text        `json:"country"`
+	CountryCode      pgtype.Text        `json:"country_code"`
+	City             pgtype.Text        `json:"city"`
+	Isp              pgtype.Text        `json:"isp"`
+	Asn              pgtype.Text        `json:"asn"`
+	FirstSeen        pgtype.Timestamptz `json:"first_seen"`
+	LastSeen         pgtype.Timestamptz `json:"last_seen"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	ArchivedAt       pgtype.Timestamptz `json:"archived_at"`
+}
+
 // KernelEye customer accounts
 type User struct {
 	ID                             pgtype.UUID        `json:"id"`

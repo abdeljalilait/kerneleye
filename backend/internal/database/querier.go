@@ -16,7 +16,15 @@ type Querier interface {
 	// Whitelist Queries
 	// ============================================
 	AddToWhitelist(ctx context.Context, arg AddToWhitelistParams) (Whitelist, error)
+	// ============================================
+	// Data Retention Queries
+	// ============================================
+	// Archives old traffic events based on retention policy
+	// Returns number of rows archived
+	ArchiveTrafficEvents(ctx context.Context, arg ArchiveTrafficEventsParams) (int32, error)
 	CleanupExpiredBlocks(ctx context.Context) error
+	// Deletes archived data older than 1 year
+	CleanupOldArchives(ctx context.Context) (int32, error)
 	ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (User, error)
 	CountActiveBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountBlocks(ctx context.Context, userID pgtype.UUID) (int64, error)
@@ -43,6 +51,10 @@ type Querier interface {
 	GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]Block, error)
 	// Gets all active blocks across all servers (for BlockManager state recovery)
 	GetAllActiveBlocks(ctx context.Context) ([]Block, error)
+	// Gets all servers with their data retention settings for archival job
+	GetAllServersWithRetention(ctx context.Context) ([]GetAllServersWithRetentionRow, error)
+	// Returns count of archived events for a server
+	GetArchivedEventsCount(ctx context.Context, serverID pgtype.UUID) (int64, error)
 	GetAttackTypeBreakdown(ctx context.Context, arg GetAttackTypeBreakdownParams) ([]GetAttackTypeBreakdownRow, error)
 	GetBlockByID(ctx context.Context, arg GetBlockByIDParams) (GetBlockByIDRow, error)
 	GetBlockRemainingTime(ctx context.Context, arg GetBlockRemainingTimeParams) (int64, error)
@@ -76,6 +88,8 @@ type Querier interface {
 	GetServerByClientToken(ctx context.Context, clientToken pgtype.Text) (Server, error)
 	GetServerByID(ctx context.Context, id pgtype.UUID) (Server, error)
 	GetServerByUserAndIP(ctx context.Context, arg GetServerByUserAndIPParams) (Server, error)
+	// Gets the data retention days for a server's user
+	GetServerDataRetentionDays(ctx context.Context, id pgtype.UUID) (int32, error)
 	GetServerStats(ctx context.Context, serverID pgtype.UUID) (GetServerStatsRow, error)
 	GetSourceIPTimeline(ctx context.Context, arg GetSourceIPTimelineParams) ([]GetSourceIPTimelineRow, error)
 	GetStatsAlertCounts(ctx context.Context, userID pgtype.UUID) (GetStatsAlertCountsRow, error)

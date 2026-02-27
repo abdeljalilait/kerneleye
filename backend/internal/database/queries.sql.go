@@ -55,6 +55,40 @@ func (q *Queries) AddToWhitelist(ctx context.Context, arg AddToWhitelistParams) 
 	return i, err
 }
 
+const archiveTrafficEvents = `-- name: ArchiveTrafficEvents :one
+
+SELECT archive_traffic_events($1, $2)::int as archived_count
+`
+
+type ArchiveTrafficEventsParams struct {
+	PServerID      pgtype.UUID `json:"p_server_id"`
+	PRetentionDays int32       `json:"p_retention_days"`
+}
+
+// ============================================
+// Data Retention Queries
+// ============================================
+// Archives old traffic events based on retention policy
+// Returns number of rows archived
+func (q *Queries) ArchiveTrafficEvents(ctx context.Context, arg ArchiveTrafficEventsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, archiveTrafficEvents, arg.PServerID, arg.PRetentionDays)
+	var archived_count int32
+	err := row.Scan(&archived_count)
+	return archived_count, err
+}
+
+const cleanupOldArchives = `-- name: CleanupOldArchives :one
+SELECT cleanup_old_archives()::int as deleted_count
+`
+
+// Deletes archived data older than 1 year
+func (q *Queries) CleanupOldArchives(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, cleanupOldArchives)
+	var deleted_count int32
+	err := row.Scan(&deleted_count)
+	return deleted_count, err
+}
+
 const clearUserRefreshToken = `-- name: ClearUserRefreshToken :one
 UPDATE users
 SET refresh_token = NULL,
@@ -599,6 +633,57 @@ func (q *Queries) GetAllActiveBlocks(ctx context.Context) ([]Block, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const getAllServersWithRetention = `-- name: GetAllServersWithRetention :many
+SELECT 
+    s.id as server_id,
+    u.id as user_id,
+    COALESCE(p.data_retention_days, 7) as retention_days
+FROM servers s
+JOIN users u ON s.user_id = u.id
+LEFT JOIN subscription_plans p ON u.plan = p.name
+`
+
+type GetAllServersWithRetentionRow struct {
+	ServerID      pgtype.UUID `json:"server_id"`
+	UserID        pgtype.UUID `json:"user_id"`
+	RetentionDays int32       `json:"retention_days"`
+}
+
+// Gets all servers with their data retention settings for archival job
+func (q *Queries) GetAllServersWithRetention(ctx context.Context) ([]GetAllServersWithRetentionRow, error) {
+	rows, err := q.db.Query(ctx, getAllServersWithRetention)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAllServersWithRetentionRow{}
+	for rows.Next() {
+		var i GetAllServersWithRetentionRow
+		if err := rows.Scan(&i.ServerID, &i.UserID, &i.RetentionDays); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getArchivedEventsCount = `-- name: GetArchivedEventsCount :one
+SELECT COUNT(*)::bigint as count
+FROM traffic_events_archive
+WHERE server_id = $1
+`
+
+// Returns count of archived events for a server
+func (q *Queries) GetArchivedEventsCount(ctx context.Context, serverID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getArchivedEventsCount, serverID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const getAttackTypeBreakdown = `-- name: GetAttackTypeBreakdown :many
@@ -1345,6 +1430,22 @@ func (q *Queries) GetServerByUserAndIP(ctx context.Context, arg GetServerByUserA
 		&i.Config,
 	)
 	return i, err
+}
+
+const getServerDataRetentionDays = `-- name: GetServerDataRetentionDays :one
+SELECT p.data_retention_days
+FROM servers s
+JOIN users u ON s.user_id = u.id
+JOIN subscription_plans p ON u.plan = p.name
+WHERE s.id = $1
+`
+
+// Gets the data retention days for a server's user
+func (q *Queries) GetServerDataRetentionDays(ctx context.Context, id pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getServerDataRetentionDays, id)
+	var data_retention_days int32
+	err := row.Scan(&data_retention_days)
+	return data_retention_days, err
 }
 
 const getServerStats = `-- name: GetServerStats :one

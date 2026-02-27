@@ -871,3 +871,41 @@ UPDATE users
 SET polar_customer_id = $2,
     updated_at = NOW()
 WHERE id = $1;
+
+
+-- ============================================
+-- Data Retention Queries
+-- ============================================
+
+-- name: ArchiveTrafficEvents :one
+-- Archives old traffic events based on retention policy
+-- Returns number of rows archived
+SELECT archive_traffic_events($1, $2)::int as archived_count;
+
+-- name: GetServerDataRetentionDays :one
+-- Gets the data retention days for a server's user
+SELECT p.data_retention_days
+FROM servers s
+JOIN users u ON s.user_id = u.id
+JOIN subscription_plans p ON u.plan = p.name
+WHERE s.id = $1;
+
+-- name: GetAllServersWithRetention :many
+-- Gets all servers with their data retention settings for archival job
+SELECT 
+    s.id as server_id,
+    u.id as user_id,
+    COALESCE(p.data_retention_days, 7) as retention_days
+FROM servers s
+JOIN users u ON s.user_id = u.id
+LEFT JOIN subscription_plans p ON u.plan = p.name;
+
+-- name: GetArchivedEventsCount :one
+-- Returns count of archived events for a server
+SELECT COUNT(*)::bigint as count
+FROM traffic_events_archive
+WHERE server_id = $1;
+
+-- name: CleanupOldArchives :one
+-- Deletes archived data older than 1 year
+SELECT cleanup_old_archives()::int as deleted_count;
