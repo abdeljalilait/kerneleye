@@ -133,6 +133,19 @@ message ConnectionEvent {
   ThreatLevel threat_level = 16;
   ThreatType threat_type = 17;
   repeated string reasons = 18;
+
+  // ICMP activity (populated from icmp_counters BPF map via TC hooks)
+  uint64 icmp_packets_in = 19;
+  uint64 icmp_packets_out = 20;
+
+  // Duration of first→last event in this aggregation window (milliseconds).
+  // Short window + high SYN = burst/flood; long window + low SYN = slow scan.
+  uint64 connection_duration_ms = 21;
+
+  // Per-service-port byte breakdown (limited to top 10 ports, from ip_port_bytes BPF map).
+  // Keys are port numbers as uint32 (proto3 map keys must be integral or string).
+  map<uint32, uint64> port_bytes_in = 22;
+  map<uint32, uint64> port_bytes_out = 23;
 }
 
 enum ThreatLevel {
