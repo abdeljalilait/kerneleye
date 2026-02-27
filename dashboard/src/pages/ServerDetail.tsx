@@ -231,7 +231,7 @@ export default function ServerDetail() {
           size="small" 
           showInfo={false}
           strokeColor={score > 50 ? '#ef4444' : score > 20 ? '#f59e0b' : '#10b981'}
-          trailColor="rgba(255, 255, 255, 0.05)"
+          trailColor="var(--border-subtle)"
           style={{ width: 60 }}
         />
       ),
@@ -887,6 +887,8 @@ export default function ServerDetail() {
           } : { pageSize: 15, size: 'small' }}
           size="small"
           scroll={{ x: 1100 }}
+          style={{ background: 'transparent' }}
+          rowClassName={() => 'traffic-row'}
           locale={{ 
             emptyText: (
               <div style={{ padding: '60px 0', textAlign: 'center' }}>
