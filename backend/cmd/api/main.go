@@ -207,6 +207,11 @@ func main() {
 	}, queries, hub)
 	go blockManager.Start(ctx)
 
+	// Start data retention manager for archiving old traffic data
+	dataRetention := analysis.NewDataRetentionManager(queries, analysis.DefaultDataRetentionConfig())
+	dataRetention.Start(ctx)
+	defer dataRetention.Stop()
+
 	// Protected routes (require API key or JWT)
 	protected := v1.Group("", api.AuthMiddleware(queries))
 
