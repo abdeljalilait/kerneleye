@@ -212,6 +212,11 @@ func main() {
 	dataRetention.Start(ctx)
 	defer dataRetention.Stop()
 
+	// Start monthly report manager
+	monthlyReports := analysis.NewMonthlyReportManager(queries, emailService)
+	monthlyReports.Start(ctx)
+	defer monthlyReports.Stop()
+
 	// Protected routes (require API key or JWT)
 	protected := v1.Group("", api.AuthMiddleware(queries))
 
