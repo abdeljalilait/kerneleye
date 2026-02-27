@@ -221,6 +221,24 @@ export default function ServerDetail() {
       ),
     },
     {
+      title: 'ICMP',
+      key: 'icmp',
+      width: 90,
+      render: (_: unknown, record: PortTraffic) => {
+        const icmpIn = record.total_icmp_in ?? 0
+        const icmpOut = record.total_icmp_out ?? 0
+        if (icmpIn === 0 && icmpOut === 0) return <Text style={{ color: 'var(--text-muted)' }}>—</Text>
+        const isHigh = icmpIn > 100
+        return (
+          <Tooltip title={`${icmpIn.toLocaleString()} packets in / ${icmpOut.toLocaleString()} packets out`}>
+            <Text style={{ color: isHigh ? '#f59e0b' : 'var(--text-secondary)', fontFamily: 'monospace', fontSize: 12 }}>
+              ↓{icmpIn} ↑{icmpOut}
+            </Text>
+          </Tooltip>
+        )
+      },
+    },
+    {
       title: 'Max Score',
       dataIndex: 'max_threat_score',
       key: 'score',
@@ -388,33 +406,73 @@ export default function ServerDetail() {
       }),
       columnHelper.accessor('bytes_in', {
         header: '↓ In',
-        cell: ({ row }) => (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <ArrowDownLeft size={12} style={{ color: '#10b981', opacity: 0.7 }} />
-            <span style={{ 
-              color: (row.original.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--text-secondary)',
-              fontWeight: (row.original.bytes_in || 0) > 1000000 ? 600 : 400,
-              fontSize: 12
-            }}>
-              {formatBytes(row.original.bytes_in || 0)}
-            </span>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const portMap = row.original.port_bytes_in
+          const hasPortData = portMap && Object.keys(portMap).length > 0
+          const content = (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <ArrowDownLeft size={12} style={{ color: '#10b981', opacity: 0.7 }} />
+              <span style={{
+                color: (row.original.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--text-secondary)',
+                fontWeight: (row.original.bytes_in || 0) > 1000000 ? 600 : 400,
+                fontSize: 12
+              }}>
+                {formatBytes(row.original.bytes_in || 0)}
+              </span>
+            </div>
+          )
+          if (!hasPortData) return content
+          const tooltipContent = (
+            <div style={{ minWidth: 140 }}>
+              <div style={{ marginBottom: 4, fontWeight: 600, fontSize: 11 }}>By port:</div>
+              {Object.entries(portMap)
+                .sort(([, a], [, b]) => Number(b) - Number(a))
+                .slice(0, 10)
+                .map(([port, bytes]) => (
+                  <div key={port} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 11 }}>
+                    <span style={{ color: '#818cf8' }}>:{port}</span>
+                    <span>{formatBytes(Number(bytes))}</span>
+                  </div>
+                ))}
+            </div>
+          )
+          return <Tooltip title={tooltipContent}>{content}</Tooltip>
+        },
       }),
       columnHelper.accessor('bytes_out', {
         header: '↑ Out',
-        cell: ({ row }) => (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <ArrowUpRight size={12} style={{ color: '#3b82f6', opacity: 0.7 }} />
-            <span style={{ 
-              color: (row.original.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--text-secondary)',
-              fontWeight: (row.original.bytes_out || 0) > 1000000 ? 600 : 400,
-              fontSize: 12
-            }}>
-              {formatBytes(row.original.bytes_out || 0)}
-            </span>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const portMap = row.original.port_bytes_out
+          const hasPortData = portMap && Object.keys(portMap).length > 0
+          const content = (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <ArrowUpRight size={12} style={{ color: '#3b82f6', opacity: 0.7 }} />
+              <span style={{
+                color: (row.original.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--text-secondary)',
+                fontWeight: (row.original.bytes_out || 0) > 1000000 ? 600 : 400,
+                fontSize: 12
+              }}>
+                {formatBytes(row.original.bytes_out || 0)}
+              </span>
+            </div>
+          )
+          if (!hasPortData) return content
+          const tooltipContent = (
+            <div style={{ minWidth: 140 }}>
+              <div style={{ marginBottom: 4, fontWeight: 600, fontSize: 11 }}>By port:</div>
+              {Object.entries(portMap)
+                .sort(([, a], [, b]) => Number(b) - Number(a))
+                .slice(0, 10)
+                .map(([port, bytes]) => (
+                  <div key={port} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 11 }}>
+                    <span style={{ color: '#818cf8' }}>:{port}</span>
+                    <span>{formatBytes(Number(bytes))}</span>
+                  </div>
+                ))}
+            </div>
+          )
+          return <Tooltip title={tooltipContent}>{content}</Tooltip>
+        },
       }),
       columnHelper.accessor('syn_count', {
         header: 'SYN',
@@ -479,6 +537,40 @@ export default function ServerDetail() {
             </span>
           </div>
         ),
+      }),
+      columnHelper.accessor('icmp_packets_in', {
+        header: 'ICMP',
+        cell: ({ row }) => {
+          const icmpIn = row.original.icmp_packets_in ?? 0
+          const icmpOut = row.original.icmp_packets_out ?? 0
+          if (icmpIn === 0 && icmpOut === 0) {
+            return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+          }
+          const isHigh = icmpIn > 50
+          return (
+            <Tooltip title={`${icmpIn.toLocaleString()} in / ${icmpOut.toLocaleString()} out`}>
+              <span style={{
+                color: isHigh ? '#f59e0b' : 'var(--text-secondary)',
+                fontSize: 11,
+                fontFamily: 'monospace',
+              }}>
+                ↓{icmpIn} ↑{icmpOut}
+              </span>
+            </Tooltip>
+          )
+        },
+      }),
+      columnHelper.accessor('connection_duration_ms', {
+        header: 'Duration',
+        cell: ({ row }) => {
+          const ms = row.original.connection_duration_ms ?? 0
+          if (ms === 0) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+          let label: string
+          if (ms < 1000) label = `${ms}ms`
+          else if (ms < 60000) label = `${(ms / 1000).toFixed(1)}s`
+          else label = `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
+          return <span style={{ color: 'var(--text-tertiary)', fontSize: 12, fontFamily: 'monospace' }}>{label}</span>
+        },
       }),
       columnHelper.accessor('threat_score', {
         header: 'Severity',
