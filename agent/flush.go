@@ -59,10 +59,13 @@ func (a *Aggregator) FlushToAPI() {
 			ip, primaryPort, dir, stats.SYNCount, stats.ACKCount, stats.FailedHandshakes, len(stats.UniquePorts))
 	}
 
-	// Fetch byte counters using thread-safe iteration
-	if byteCounterMap != nil {
-		a.stats.ForEachMutable(func(ip string, stats *IPStats) {
-			key := ipToNetworkOrder(ip)
+	// Fetch byte/ICMP/per-port counters from BPF maps using thread-safe iteration.
+	// All three maps are keyed by IPv4 host-byte-order uint32 (same convention).
+	a.stats.ForEachMutable(func(ip string, stats *IPStats) {
+		key := ipToNetworkOrder(ip)
+
+		// Total byte counters
+		if byteCounterMap != nil {
 			var counters IpBytes
 			if err := byteCounterMap.Lookup(&key, &counters); err == nil {
 				stats.mu.Lock()
@@ -70,8 +73,46 @@ func (a *Aggregator) FlushToAPI() {
 				stats.BytesOut = counters.BytesOut
 				stats.mu.Unlock()
 			}
-		})
-	}
+		}
+
+		// ICMP packet counters
+		if icmpCounterMap != nil {
+			var icmp IpICMP
+			if err := icmpCounterMap.Lookup(&key, &icmp); err == nil {
+				stats.mu.Lock()
+				stats.ICMPPacketsIn = icmp.PacketsIn
+				stats.ICMPPacketsOut = icmp.PacketsOut
+				stats.mu.Unlock()
+			}
+		}
+
+		// Per-port byte counters: look up each port we've seen for this IP.
+		if ipPortBytesMap != nil {
+			stats.mu.Lock()
+			ports := make([]uint16, 0, len(stats.UniquePorts))
+			for p := range stats.UniquePorts {
+				ports = append(ports, p)
+			}
+			stats.mu.Unlock()
+
+			for _, port := range ports {
+				pkey := IpPortKey{IP: key, Port: port}
+				var pb PortBytes
+				if err := ipPortBytesMap.Lookup(&pkey, &pb); err == nil {
+					stats.mu.Lock()
+					if stats.PortBytesIn == nil {
+						stats.PortBytesIn = make(map[uint16]uint64)
+					}
+					if stats.PortBytesOut == nil {
+						stats.PortBytesOut = make(map[uint16]uint64)
+					}
+					stats.PortBytesIn[port] = pb.BytesIn
+					stats.PortBytesOut[port] = pb.BytesOut
+					stats.mu.Unlock()
+				}
+			}
+		}
+	})
 
 	snapshot = a.stats.SnapshotDeep()
 	now := time.Now()
@@ -143,16 +184,20 @@ func (a *Aggregator) FlushToAPI() {
 	}
 }
 
-// bufferEvents saves events to SQLite buffer
+// bufferEvents saves events to SQLite buffer.
+// Stats are cleared only on successful persistence so no data is lost on write failure.
 func (a *Aggregator) bufferEvents(events []*pb.ConnectionEvent) {
 	if a.buffer == nil {
 		Logger.Warn("⚠️  Buffer not initialized, events will be lost")
 		return
 	}
 	if err := a.buffer.Save(a.apiKey, events); err != nil {
-		Logger.Error("❌ Failed to buffer events: %v", err)
+		Logger.Errorf("❌ Failed to buffer %d events (keeping in memory): %v", len(events), err)
+		// Do NOT clear stats — they remain in memory for the next flush attempt.
 		return
 	}
+	count := a.buffer.Count()
+	Logger.Infof("📦 Buffered %d events (total pending batches: %d)", len(events), count)
 	// Clear stats only after successful persistence.
 	a.stats.Clear()
 }
@@ -257,6 +302,34 @@ func (a *Aggregator) buildProtoEventsFromSnapshot(snapshot map[string]IPStatsSna
 			}
 		}
 
+		// Connection duration: time between first and last event in this flush window.
+		// This is a window-level approximation useful for detecting slow scans vs bursts.
+		connDurationMs := uint64(lastSeen.Sub(firstSeen).Milliseconds())
+		if lastSeen.Before(firstSeen) || connDurationMs > uint64(24*60*60*1000) {
+			connDurationMs = 0 // clamp nonsensical values
+		}
+
+		// Per-port byte breakdown — cap at top 10 ports by bytes_in to bound proto size.
+		portBytesIn := make(map[uint32]uint64, len(stats.PortBytesIn))
+		portBytesOut := make(map[uint32]uint64, len(stats.PortBytesOut))
+		const maxPortBreakdown = 10
+		added := 0
+		for port, b := range stats.PortBytesIn {
+			if added >= maxPortBreakdown {
+				break
+			}
+			portBytesIn[uint32(port)] = b
+			added++
+		}
+		added = 0
+		for port, b := range stats.PortBytesOut {
+			if added >= maxPortBreakdown {
+				break
+			}
+			portBytesOut[uint32(port)] = b
+			added++
+		}
+
 		pbEvents = append(pbEvents, &pb.ConnectionEvent{
 			SourceIp: sourceIP, DestinationIp: destIP, DestinationPort: uint32(primaryPort),
 			Protocol: getProtocolFromNumber(stats.Protocol), SynCount: uint32(stats.SYNCount),
@@ -264,11 +337,16 @@ func (a *Aggregator) buildProtoEventsFromSnapshot(snapshot map[string]IPStatsSna
 			BytesIn: stats.BytesIn, BytesOut: stats.BytesOut,
 			FirstSeen: timestamppb.New(firstSeen), LastSeen: timestamppb.New(lastSeen),
 			UniquePortsCount: uint32(len(stats.UniquePorts)), PortsAccessed: portsAccessed,
-			Direction:   pb.Direction(stats.Direction + 1),
-			ThreatScore: uint32(max(score.Score, 0)),
-			ThreatLevel: toProtoThreatLevel(score.Level),
-			ThreatType:  toProtoThreatType(score.Type),
-			Reasons:     score.Reasons,
+			Direction:            pb.Direction(stats.Direction + 1),
+			ThreatScore:          uint32(max(score.Score, 0)),
+			ThreatLevel:          toProtoThreatLevel(score.Level),
+			ThreatType:           toProtoThreatType(score.Type),
+			Reasons:              score.Reasons,
+			IcmpPacketsIn:        stats.ICMPPacketsIn,
+			IcmpPacketsOut:       stats.ICMPPacketsOut,
+			ConnectionDurationMs: connDurationMs,
+			PortBytesIn:          portBytesIn,
+			PortBytesOut:         portBytesOut,
 		})
 	}
 	return pbEvents
