@@ -250,7 +250,7 @@ body {
 }
 
 .ant-table-thead > tr > th {
-  background: var(--bg-tertiary);
+  background: var(--bg-tertiary) !important;
   border-bottom: 1px solid var(--border-subtle);
   font-weight: 600;
   text-transform: uppercase;
@@ -260,10 +260,21 @@ body {
   padding: var(--space-4) var(--space-5);
 }
 
+/* Fix for sorted column header - prevent black background */
+.ant-table-thead > tr > th.ant-table-column-sort {
+  background: var(--bg-tertiary) !important;
+}
+
 .ant-table-tbody > tr > td {
   border-bottom: 1px solid var(--border-subtle);
   padding: var(--space-4) var(--space-5);
   transition: background var(--transition-fast);
+  background: transparent;
+}
+
+/* Fix for sorted column cells - prevent black background */
+.ant-table-tbody > tr > td.ant-table-column-sort {
+  background: rgba(99, 102, 241, 0.05) !important;
 }
 
 .ant-table-tbody > tr:hover > td {
