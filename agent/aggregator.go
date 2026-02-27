@@ -149,7 +149,36 @@ func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, rem remedia
 	agg.wg.Add(1)
 	go agg.monitorConnection()
 
+	// Start periodic buffer maintenance (TTL eviction + size enforcement)
+	agg.wg.Add(1)
+	go agg.runBufferMaintenance()
+
 	return agg, nil
+}
+
+// runBufferMaintenance runs an hourly loop that evicts expired SQLite buffer batches.
+// This prevents unbounded disk growth during extended backend outages.
+func (a *Aggregator) runBufferMaintenance() {
+	defer a.wg.Done()
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if a.buffer == nil {
+				continue
+			}
+			evicted, err := a.buffer.EvictExpired(24 * time.Hour)
+			if err != nil {
+				Logger.Warnf("⚠️  Buffer TTL eviction error: %v", err)
+			} else if evicted > 0 {
+				Logger.Infof("🗑️  Buffer maintenance: evicted %d expired batches (>24h old)", evicted)
+			}
+		case <-a.stopChan:
+			return
+		}
+	}
 }
 
 // getServerIPs retrieves all local IP addresses for the server
@@ -281,13 +310,15 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	// GetOrCreate atomically gets or creates stats entry
 	stats, isNew := a.stats.GetOrCreate(ip, func() *IPStats {
 		return &IPStats{
-			Protocol:    event.Protocol,
-			UniquePorts: make(map[uint16]bool),
-			PortCounts:  make(map[uint16]int),
-			PortHits:    make(map[uint16]int),
-			FirstSeen:   eventTime,
-			Direction:   event.Direction,
-			LocalIP:     localIP,
+			Protocol:     event.Protocol,
+			UniquePorts:  make(map[uint16]bool),
+			PortCounts:   make(map[uint16]int),
+			PortHits:     make(map[uint16]int),
+			PortBytesIn:  make(map[uint16]uint64),
+			PortBytesOut: make(map[uint16]uint64),
+			FirstSeen:    eventTime,
+			Direction:    event.Direction,
+			LocalIP:      localIP,
 		}
 	})
 
