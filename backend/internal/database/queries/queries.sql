@@ -93,8 +93,11 @@ INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
     syn_count, ack_count, failed_handshakes, unique_ports,
     bytes_in, bytes_out, threat_score, threat_level, threat_type,
-    first_seen, last_seen, country, country_code, city, isp, asn, hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, 1)
+    first_seen, last_seen, country, country_code, city, isp, asn,
+    icmp_packets_in, icmp_packets_out, connection_duration_ms,
+    port_bytes_in, port_bytes_out,
+    hit_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -102,6 +105,11 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     unique_ports = GREATEST(traffic_events.unique_ports, EXCLUDED.unique_ports),
     bytes_in = traffic_events.bytes_in + EXCLUDED.bytes_in,
     bytes_out = traffic_events.bytes_out + EXCLUDED.bytes_out,
+    icmp_packets_in = traffic_events.icmp_packets_in + EXCLUDED.icmp_packets_in,
+    icmp_packets_out = traffic_events.icmp_packets_out + EXCLUDED.icmp_packets_out,
+    connection_duration_ms = GREATEST(traffic_events.connection_duration_ms, EXCLUDED.connection_duration_ms),
+    port_bytes_in = EXCLUDED.port_bytes_in,
+    port_bytes_out = EXCLUDED.port_bytes_out,
     -- Use the most recent threat score (allows scores to decrease over time)
     threat_score = EXCLUDED.threat_score,
     threat_level = EXCLUDED.threat_level,
@@ -201,6 +209,8 @@ SELECT
     SUM(hit_count)::int as total_hits,
     SUM(syn_count)::int as total_syn,
     SUM(ack_count)::int as total_ack,
+    SUM(icmp_packets_in)::bigint as total_icmp_in,
+    SUM(icmp_packets_out)::bigint as total_icmp_out,
     MAX(threat_score) as max_threat_score,
     MAX(threat_level) as max_threat_level,
     MAX(last_seen) as last_seen,
@@ -325,7 +335,12 @@ SELECT
     city,
     isp,
     last_seen,
-    direction
+    direction,
+    icmp_packets_in,
+    icmp_packets_out,
+    connection_duration_ms,
+    port_bytes_in,
+    port_bytes_out
 FROM traffic_events
 WHERE server_id = $1
   AND destination_port = $2
