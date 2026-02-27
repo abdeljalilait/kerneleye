@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Server as ServerIcon, Shield, AlertTriangle, Zap, TrendingUp, Crown, Sparkles } from 'lucide-react'
+import { Server as ServerIcon, Shield, AlertTriangle, Zap, Crown, Sparkles } from 'lucide-react'
 import { Row, Col, Typography, Card, Space, Badge, Tag } from 'antd'
 import { useNavigate } from '@tanstack/react-router'
 import StatCard from '../components/StatCard'
@@ -118,39 +118,7 @@ export default function Overview() {
                   </div>
                 </Space>
               </Card>
-              <Card 
-                variant="borderless" 
-                style={{ 
-                  background: 'var(--bg-tertiary)', 
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 12,
-                }}
-                bodyStyle={{ padding: '12px 20px' }}
-              >
-                <Space size={12}>
-                  <div 
-                    style={{
-                      width: 32,
-                      height: 32,
-                      background: 'rgba(16, 185, 129, 0.15)',
-                      borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <TrendingUp size={16} color="#10b981" />
-                  </div>
-                  <div>
-                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block' }}>
-                      Uptime
-                    </Text>
-                    <Text strong style={{ fontSize: 16, color: 'var(--text-primary)' }}>
-                      99.9%
-                    </Text>
-                  </div>
-                </Space>
-              </Card>
+
             </Space>
           </Col>
         </Row>
@@ -264,64 +232,7 @@ export default function Overview() {
         </Col>
       </Row>
 
-      {/* Quick Actions Footer */}
-      <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
-        <Col xs={24}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05))',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-            bodyStyle={{ padding: 24 }}
-          >
-            <Row justify="space-between" align="middle">
-              <Col>
-                <Space size={16} align="center">
-                  <div 
-                    style={{
-                      width: 48,
-                      height: 48,
-                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      borderRadius: 12,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
-                    }}
-                  >
-                    <Shield size={24} color="white" />
-                  </div>
-                  <div>
-                    <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
-                      System Status: Protected
-                    </Title>
-                    <Text style={{ color: 'var(--text-secondary)' }}>
-                      All systems operational. Last scan completed 2 minutes ago.
-                    </Text>
-                  </div>
-                </Space>
-              </Col>
-              <Col>
-                <Space size={12}>
-                  <Text style={{ color: 'var(--text-tertiary)' }}>
-                    Next scheduled scan:
-                  </Text>
-                  <Badge 
-                    count="5 min" 
-                    style={{ 
-                      background: 'var(--bg-tertiary)', 
-                      color: 'var(--text-secondary)',
-                      border: '1px solid var(--border-subtle)',
-                    }}
-                  />
-                </Space>
-              </Col>
-            </Row>
-          </Card>
-        </Col>
-      </Row>
+
     </div>
   )
 }
