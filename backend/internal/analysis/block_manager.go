@@ -2,8 +2,10 @@ package analysis
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -246,7 +248,8 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		expiresAtPg = database.ToPgTimestamptz(expiresAt)
 	}
 
-	reasons := []string{row.ThreatType}
+	// Build detailed reasons based on threat type and traffic metrics
+	reasons := bm.buildBlockReasons(row)
 
 	// Determine IP version
 	ipVersion := int32(4)
@@ -256,6 +259,18 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 
 	isPermanent := threatLevel == "malicious" || threatLevel == "critical"
 
+	// Parse ASN from text to int (ASN is stored as text in traffic_events)
+	asnInt := parseASN(row.Asn)
+
+	// Get service name from top target port
+	serviceName := getServiceName(int(row.TopTargetPort))
+
+	// Convert interface{} geo fields to proper pgtype
+	countryCode := toPgText(row.CountryCode)
+	countryName := toPgText(row.Country)
+	city := toPgText(row.City)
+	isp := toPgText(row.Isp)
+
 	block, err := bm.queries.CreateBlock(ctx, database.CreateBlockParams{
 		ServerID:        row.ServerID,
 		UserID:          row.UserID,
@@ -264,17 +279,17 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ThreatScore:     row.ThreatScore,
 		ThreatLevel:     row.ThreatLevel,
 		Reasons:         reasons,
-		TargetPort:      pgtype.Int4{Int32: 0, Valid: false},
-		ServiceName:     pgtype.Text{String: "", Valid: false},
-		Protocol:        pgtype.Text{String: "", Valid: false},
-		CountryCode:     row.CountryCode,
-		CountryName:     row.Country,
-		City:            row.City,
-		Region:          pgtype.Text{String: "", Valid: false},
-		Latitude:        pgtype.Float8{Float64: 0, Valid: false},
-		Longitude:       pgtype.Float8{Float64: 0, Valid: false},
-		Asn:             pgtype.Int4{Int32: 0, Valid: false},
-		AsnOrg:          row.Isp,
+		TargetPort:      pgtype.Int4{Int32: row.TopTargetPort, Valid: row.TopTargetPort > 0},
+		ServiceName:     pgtype.Text{String: serviceName, Valid: serviceName != ""},
+		Protocol:        pgtype.Text{String: row.TopProtocol, Valid: row.TopProtocol != ""},
+		CountryCode:     countryCode,
+		CountryName:     countryName,
+		City:            city,
+		Region:          pgtype.Text{Valid: false}, // Not available from traffic_events
+		Latitude:        pgtype.Float8{Valid: false},
+		Longitude:       pgtype.Float8{Valid: false},
+		Asn:             asnInt,
+		AsnOrg:          isp,
 		IsVpn:           pgtype.Bool{Bool: false, Valid: true},
 		IsTor:           pgtype.Bool{Bool: false, Valid: true},
 		IsDatacenter:    pgtype.Bool{Bool: false, Valid: true},
@@ -282,7 +297,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ExpiresAt:       expiresAtPg,
 		DurationSeconds: int32(duration.Seconds()),
 		IsAutoBlocked:   pgtype.Bool{Bool: true, Valid: true},
-		AgentVersion:    pgtype.Text{String: "", Valid: false},
+		AgentVersion:    pgtype.Text{Valid: false},
 		RawMetrics:      nil,
 	})
 	if err != nil {
@@ -396,4 +411,128 @@ func (bm *BlockManager) GetActiveBlocks() []*ActiveBlock {
 		blocks = append(blocks, block)
 	}
 	return blocks
+}
+
+// buildBlockReasons creates detailed reasons based on threat type and traffic metrics
+func (bm *BlockManager) buildBlockReasons(row database.GetBlockableIPsRow) []string {
+	reasons := []string{}
+	
+	// Add threat type as first reason
+	if row.ThreatType != "" {
+		reasons = append(reasons, row.ThreatType)
+	}
+	
+	// Add traffic details based on threat type
+	switch row.ThreatType {
+	case "syn_flood":
+		if row.TotalSyn > 0 {
+			reasons = append(reasons, fmt.Sprintf("SYN count: %d", row.TotalSyn))
+		}
+	case "port_scan":
+		if row.UniquePorts > 0 {
+			reasons = append(reasons, fmt.Sprintf("Ports scanned: %d", row.UniquePorts))
+		}
+	case "service_abuse":
+		if row.TopTargetPort > 0 {
+			reasons = append(reasons, fmt.Sprintf("Target port: %d (%s)", row.TopTargetPort, getServiceName(int(row.TopTargetPort))))
+		}
+	case "failed_handshake":
+		if row.TotalFailed > 0 {
+			reasons = append(reasons, fmt.Sprintf("Failed handshakes: %d", row.TotalFailed))
+		}
+	}
+	
+	// Add protocol info
+	if row.TopProtocol != "" {
+		reasons = append(reasons, fmt.Sprintf("Protocol: %s", row.TopProtocol))
+	}
+	
+	// Add score info
+	reasons = append(reasons, fmt.Sprintf("Threat score: %d", row.ThreatScore))
+	
+	return reasons
+}
+
+// parseASN converts ASN from interface{} (text) to pgtype.Int4
+func parseASN(asn interface{}) pgtype.Int4 {
+	if asn == nil {
+		return pgtype.Int4{Valid: false}
+	}
+	
+	switch v := asn.(type) {
+	case string:
+		if v == "" || v == "Unknown" {
+			return pgtype.Int4{Valid: false}
+		}
+		// Try to parse ASN number from string (may have "AS" prefix)
+		v = strings.TrimPrefix(v, "AS")
+		v = strings.TrimSpace(v)
+		if num, err := strconv.ParseInt(v, 10, 32); err == nil {
+			return pgtype.Int4{Int32: int32(num), Valid: true}
+		}
+	case int:
+		return pgtype.Int4{Int32: int32(v), Valid: true}
+	case int32:
+		return pgtype.Int4{Int32: v, Valid: true}
+	case int64:
+		return pgtype.Int4{Int32: int32(v), Valid: true}
+	}
+	
+	return pgtype.Int4{Valid: false}
+}
+
+// toPgText converts interface{} to pgtype.Text
+func toPgText(v interface{}) pgtype.Text {
+	if v == nil {
+		return pgtype.Text{Valid: false}
+	}
+	
+	switch s := v.(type) {
+	case string:
+		if s == "" || s == "Unknown" {
+			return pgtype.Text{Valid: false}
+		}
+		return pgtype.Text{String: s, Valid: true}
+	default:
+		str := fmt.Sprintf("%v", s)
+		if str == "" || str == "Unknown" || str == "<nil>" {
+			return pgtype.Text{Valid: false}
+		}
+		return pgtype.Text{String: str, Valid: true}
+	}
+}
+
+// getServiceName returns the service name for a given port
+func getServiceName(port int) string {
+	services := map[int]string{
+		22:    "SSH",
+		80:    "HTTP",
+		443:   "HTTPS",
+		25:    "SMTP",
+		3306:  "MySQL",
+		5432:  "PostgreSQL",
+		6379:  "Redis",
+		27017: "MongoDB",
+		21:    "FTP",
+		23:    "Telnet",
+		3389:  "RDP",
+		587:   "SMTP",
+		110:   "POP3",
+		143:   "IMAP",
+		53:    "DNS",
+		67:    "DHCP",
+		68:    "DHCP",
+		161:   "SNMP",
+		389:   "LDAP",
+		636:   "LDAPS",
+		993:   "IMAPS",
+		995:   "POP3S",
+		1194:  "OpenVPN",
+		8080:  "HTTP-Proxy",
+		8443:  "HTTPS-Alt",
+	}
+	if name, ok := services[port]; ok {
+		return name
+	}
+	return ""
 }

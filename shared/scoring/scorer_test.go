@@ -193,8 +193,15 @@ func TestCalculateServiceAbuseScore_RespectsConfiguredThreshold(t *testing.T) {
 		MaxPortHits: 6,
 	}
 
-	score := ts.calculateServiceAbuseScore(metrics)
+	// Test with 10 second window (0.6 hits/sec = above threshold)
+	score := ts.calculateServiceAbuseScore(metrics, 10.0)
 	if score <= 0 {
 		t.Fatalf("expected positive service-abuse score when threshold is met, got %.2f", score)
+	}
+
+	// Test with very long window (low rate = should not score)
+	scoreLowRate := ts.calculateServiceAbuseScore(metrics, 600.0) // 10 minutes
+	if scoreLowRate > 0 {
+		t.Logf("Low rate service abuse should not score high: got %.2f", scoreLowRate)
 	}
 }

@@ -45,11 +45,17 @@ type IPMetrics struct {
 
 	EstablishedConnections int
 	PreviousScore          int
+	LastSeen               time.Time // When this IP was last observed (for decay)
 	ServicePorts           []int
 
 	PortHits    map[int]int // port -> hit count
 	MaxPortHits int         // max hits to single port
 	PrimaryPort int         // most hit port
+	
+	// Cumulative tracking for slow scan detection
+	// These persist across scoring windows to catch distributed/slow attacks
+	CumulativeUniquePorts int   // Total unique ports seen over extended period
+	CumulativeWindowHours float64 // Duration of cumulative tracking
 
 	Direction Direction // Traffic direction
 }

@@ -675,17 +675,20 @@ SELECT
     COUNT(DISTINCT te.destination_port)::int as unique_ports,
     COUNT(DISTINCT te.server_id)::int as server_count,
     MAX(te.last_seen) as last_seen,
-    te.country,
-    te.country_code,
-    te.city,
-    te.isp,
-    te.asn
+    MAX(te.country) as country,
+    MAX(te.country_code) as country_code,
+    MAX(te.city) as city,
+    MAX(te.isp) as isp,
+    MAX(te.asn) as asn,
+    -- Get the most targeted port (mode) and protocol
+    MODE() WITHIN GROUP (ORDER BY te.destination_port)::int as top_target_port,
+    MODE() WITHIN GROUP (ORDER BY te.protocol)::text as top_protocol
 FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE te.last_seen >= $1
   AND te.threat_score >= $2
   AND te.direction = 'inbound'
-GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id, te.country, te.country_code, te.city, te.isp, te.asn
+GROUP BY te.source_ip, te.server_id, s.hostname, s.user_id
 ORDER BY MAX(te.threat_score) DESC
 `
 
@@ -695,27 +698,30 @@ type GetBlockableIPsParams struct {
 }
 
 type GetBlockableIPsRow struct {
-	SourceIp    netip.Addr  `json:"source_ip"`
-	ServerID    pgtype.UUID `json:"server_id"`
-	ServerName  string      `json:"server_name"`
-	UserID      pgtype.UUID `json:"user_id"`
-	ThreatScore int32       `json:"threat_score"`
-	ThreatLevel string      `json:"threat_level"`
-	ThreatType  string      `json:"threat_type"`
-	TotalSyn    int64       `json:"total_syn"`
-	TotalAck    int64       `json:"total_ack"`
-	TotalFailed int64       `json:"total_failed"`
-	UniquePorts int32       `json:"unique_ports"`
-	ServerCount int32       `json:"server_count"`
-	LastSeen    interface{} `json:"last_seen"`
-	Country     pgtype.Text `json:"country"`
-	CountryCode pgtype.Text `json:"country_code"`
-	City        pgtype.Text `json:"city"`
-	Isp         pgtype.Text `json:"isp"`
-	Asn         pgtype.Text `json:"asn"`
+	SourceIp      netip.Addr  `json:"source_ip"`
+	ServerID      pgtype.UUID `json:"server_id"`
+	ServerName    string      `json:"server_name"`
+	UserID        pgtype.UUID `json:"user_id"`
+	ThreatScore   int32       `json:"threat_score"`
+	ThreatLevel   string      `json:"threat_level"`
+	ThreatType    string      `json:"threat_type"`
+	TotalSyn      int64       `json:"total_syn"`
+	TotalAck      int64       `json:"total_ack"`
+	TotalFailed   int64       `json:"total_failed"`
+	UniquePorts   int32       `json:"unique_ports"`
+	ServerCount   int32       `json:"server_count"`
+	LastSeen      interface{} `json:"last_seen"`
+	Country       interface{} `json:"country"`
+	CountryCode   interface{} `json:"country_code"`
+	City          interface{} `json:"city"`
+	Isp           interface{} `json:"isp"`
+	Asn           interface{} `json:"asn"`
+	TopTargetPort int32       `json:"top_target_port"`
+	TopProtocol   string      `json:"top_protocol"`
 }
 
 // Gets IPs that exceed the scoring threshold for potential blocking
+// Uses MAX for geo fields to avoid grouping issues and get most recent values
 func (q *Queries) GetBlockableIPs(ctx context.Context, arg GetBlockableIPsParams) ([]GetBlockableIPsRow, error) {
 	rows, err := q.db.Query(ctx, getBlockableIPs, arg.LastSeen, arg.ThreatScore)
 	if err != nil {
@@ -744,6 +750,8 @@ func (q *Queries) GetBlockableIPs(ctx context.Context, arg GetBlockableIPsParams
 			&i.City,
 			&i.Isp,
 			&i.Asn,
+			&i.TopTargetPort,
+			&i.TopProtocol,
 		); err != nil {
 			return nil, err
 		}
@@ -951,16 +959,34 @@ func (q *Queries) GetHighScoreTraffic(ctx context.Context, arg GetHighScoreTraff
 
 const getHourlyAttackDistribution = `-- name: GetHourlyAttackDistribution :many
 SELECT 
-    EXTRACT(HOUR FROM te.created_at)::int as hour,
-    SUM(te.hit_count)::int as attack_count,
-    SUM(CASE WHEN te.threat_level = 'malicious' THEN te.hit_count ELSE 0 END)::int as blocked_count
-FROM traffic_events te
-JOIN servers s ON te.server_id = s.id
-WHERE s.user_id = $1
-  AND te.created_at >= $2
-  AND te.created_at <= $3
-GROUP BY EXTRACT(HOUR FROM te.created_at)
-ORDER BY hour
+    COALESCE(attack_data.hour, block_data.hour) as hour,
+    COALESCE(attack_data.attack_count, 0)::int as attack_count,
+    COALESCE(block_data.blocked_count, 0)::int as blocked_count
+FROM (
+    -- Get attack counts from traffic_events
+    SELECT 
+        EXTRACT(HOUR FROM te.created_at)::int as hour,
+        SUM(te.hit_count)::int as attack_count
+    FROM traffic_events te
+    JOIN servers s ON te.server_id = s.id
+    WHERE s.user_id = $1
+      AND te.created_at >= $2
+      AND te.created_at <= $3
+    GROUP BY EXTRACT(HOUR FROM te.created_at)
+) attack_data
+FULL OUTER JOIN (
+    -- Get actual block counts from blocks table
+    SELECT 
+        EXTRACT(HOUR FROM b.blocked_at)::int as hour,
+        COUNT(*)::int as blocked_count
+    FROM blocks b
+    WHERE b.user_id = $1
+      AND b.blocked_at >= $2
+      AND b.blocked_at <= $3
+      AND b.is_auto_blocked = true
+    GROUP BY EXTRACT(HOUR FROM b.blocked_at)
+) block_data ON attack_data.hour = block_data.hour
+ORDER BY COALESCE(attack_data.hour, block_data.hour)
 `
 
 type GetHourlyAttackDistributionParams struct {
@@ -975,6 +1001,8 @@ type GetHourlyAttackDistributionRow struct {
 	BlockedCount int32 `json:"blocked_count"`
 }
 
+// Uses actual blocks from blocks table for accurate blocked_count
+// rather than estimating from traffic_events threat_level
 func (q *Queries) GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error) {
 	rows, err := q.db.Query(ctx, getHourlyAttackDistribution, arg.UserID, arg.CreatedAt, arg.CreatedAt_2)
 	if err != nil {
@@ -2871,6 +2899,26 @@ func (q *Queries) RemoveFromWhitelist(ctx context.Context, arg RemoveFromWhiteli
 	return err
 }
 
+const resetTrafficScoreForIP = `-- name: ResetTrafficScoreForIP :exec
+UPDATE traffic_events
+SET threat_score = 0,
+    threat_level = 'normal',
+    threat_type = NULL
+WHERE server_id = $1 AND source_ip = $2
+`
+
+type ResetTrafficScoreForIPParams struct {
+	ServerID pgtype.UUID `json:"server_id"`
+	SourceIp netip.Addr  `json:"source_ip"`
+}
+
+// Reset threat score for an IP after unblock (keeps history for future calculations)
+// Sets score to 0 and level to normal, but preserves traffic counts
+func (q *Queries) ResetTrafficScoreForIP(ctx context.Context, arg ResetTrafficScoreForIPParams) error {
+	_, err := q.db.Exec(ctx, resetTrafficScoreForIP, arg.ServerID, arg.SourceIp)
+	return err
+}
+
 const updateServerAPIKey = `-- name: UpdateServerAPIKey :exec
 UPDATE servers
 SET api_key = $2,
@@ -2987,15 +3035,9 @@ func (q *Queries) UpdateServerStatus(ctx context.Context, arg UpdateServerStatus
 
 const updateTrafficScore = `-- name: UpdateTrafficScore :exec
 UPDATE traffic_events
-SET threat_score = GREATEST(threat_score, $3),
-    threat_level = CASE
-        WHEN $3 > threat_score THEN $4
-        ELSE threat_level
-    END,
-    threat_type = CASE
-        WHEN $3 > threat_score THEN $5
-        ELSE threat_type
-    END
+SET threat_score = $3,
+    threat_level = $4,
+    threat_type = $5
 WHERE server_id = $1 AND source_ip = $2 AND direction = 'inbound'
 `
 
@@ -3149,15 +3191,10 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     unique_ports = GREATEST(traffic_events.unique_ports, EXCLUDED.unique_ports),
     bytes_in = traffic_events.bytes_in + EXCLUDED.bytes_in,
     bytes_out = traffic_events.bytes_out + EXCLUDED.bytes_out,
-    threat_score = GREATEST(traffic_events.threat_score, EXCLUDED.threat_score),
-    threat_level = CASE 
-        WHEN EXCLUDED.threat_score > traffic_events.threat_score THEN EXCLUDED.threat_level 
-        ELSE traffic_events.threat_level 
-    END,
-    threat_type = CASE 
-        WHEN EXCLUDED.threat_score > traffic_events.threat_score THEN EXCLUDED.threat_type 
-        ELSE traffic_events.threat_type 
-    END,
+    -- Use the most recent threat score (allows scores to decrease over time)
+    threat_score = EXCLUDED.threat_score,
+    threat_level = EXCLUDED.threat_level,
+    threat_type = EXCLUDED.threat_type,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
 RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code

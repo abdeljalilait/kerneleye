@@ -52,6 +52,7 @@ type Querier interface {
 	GetBlockStatsByService(ctx context.Context, userID pgtype.UUID) ([]GetBlockStatsByServiceRow, error)
 	GetBlockStatsByThreatLevel(ctx context.Context, userID pgtype.UUID) ([]GetBlockStatsByThreatLevelRow, error)
 	// Gets IPs that exceed the scoring threshold for potential blocking
+	// Uses MAX for geo fields to avoid grouping issues and get most recent values
 	GetBlockableIPs(ctx context.Context, arg GetBlockableIPsParams) ([]GetBlockableIPsRow, error)
 	// ============================================
 	// Reports & Analytics Queries
@@ -61,6 +62,8 @@ type Querier interface {
 	GetDailyBlockStats(ctx context.Context, arg GetDailyBlockStatsParams) ([]GetDailyBlockStatsRow, error)
 	// Gets IPs with scores above threshold for potential blocking
 	GetHighScoreTraffic(ctx context.Context, arg GetHighScoreTrafficParams) ([]GetHighScoreTrafficRow, error)
+	// Uses actual blocks from blocks table for accurate blocked_count
+	// rather than estimating from traffic_events threat_level
 	GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error)
 	// Gets historical traffic for a specific IP across all servers
 	GetIPTrafficHistory(ctx context.Context, arg GetIPTrafficHistoryParams) ([]GetIPTrafficHistoryRow, error)
@@ -117,6 +120,9 @@ type Querier interface {
 	ListThreats(ctx context.Context, arg ListThreatsParams) ([]TrafficEvent, error)
 	ListTrafficEventsByServer(ctx context.Context, arg ListTrafficEventsByServerParams) ([]TrafficEvent, error)
 	RemoveFromWhitelist(ctx context.Context, arg RemoveFromWhitelistParams) error
+	// Reset threat score for an IP after unblock (keeps history for future calculations)
+	// Sets score to 0 and level to normal, but preserves traffic counts
+	ResetTrafficScoreForIP(ctx context.Context, arg ResetTrafficScoreForIPParams) error
 	UnblockIP(ctx context.Context, arg UnblockIPParams) error
 	UpdateBlockExpiry(ctx context.Context, arg UpdateBlockExpiryParams) error
 	UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKeyParams) error
