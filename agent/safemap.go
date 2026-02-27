@@ -25,10 +25,16 @@ type IPStatsSnapshot struct {
 	PortHits         map[uint16]int
 	BytesIn          uint64
 	BytesOut         uint64
-	Direction        uint8
-	LocalIP          string
-	FirstSeen        time.Time
-	LastSeen         time.Time
+	// ICMP packet counters (from icmp_counters BPF map)
+	ICMPPacketsIn  uint64
+	ICMPPacketsOut uint64
+	// Per-port byte breakdown (from ip_port_bytes BPF map)
+	PortBytesIn  map[uint16]uint64
+	PortBytesOut map[uint16]uint64
+	Direction    uint8
+	LocalIP      string
+	FirstSeen    time.Time
+	LastSeen     time.Time
 }
 
 // NewSafeStats creates a new SafeStats instance with default max items
@@ -156,6 +162,15 @@ func (s *SafeStats) SnapshotDeep() map[string]IPStatsSnapshot {
 			portHits[p] = hits
 		}
 
+		portBytesIn := make(map[uint16]uint64, len(stats.PortBytesIn))
+		for p, b := range stats.PortBytesIn {
+			portBytesIn[p] = b
+		}
+		portBytesOut := make(map[uint16]uint64, len(stats.PortBytesOut))
+		for p, b := range stats.PortBytesOut {
+			portBytesOut[p] = b
+		}
+
 		out[ip] = IPStatsSnapshot{
 			Protocol:         stats.Protocol,
 			SYNCount:         stats.SYNCount,
@@ -166,6 +181,10 @@ func (s *SafeStats) SnapshotDeep() map[string]IPStatsSnapshot {
 			PortHits:         portHits,
 			BytesIn:          stats.BytesIn,
 			BytesOut:         stats.BytesOut,
+			ICMPPacketsIn:    stats.ICMPPacketsIn,
+			ICMPPacketsOut:   stats.ICMPPacketsOut,
+			PortBytesIn:      portBytesIn,
+			PortBytesOut:     portBytesOut,
 			Direction:        stats.Direction,
 			LocalIP:          stats.LocalIP,
 			FirstSeen:        stats.FirstSeen,
