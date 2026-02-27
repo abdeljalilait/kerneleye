@@ -1,6 +1,7 @@
 package geoip
 
 import (
+	"fmt"
 	"log"
 	"net/netip"
 	"path/filepath"
@@ -60,13 +61,13 @@ func (s *Service) Close() {
 	}
 }
 
-func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp string, err error) {
+func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp, asn string, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", "", err
 	}
 
 	if s.cityDB != nil {
@@ -89,12 +90,16 @@ func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp string, 
 
 	if s.asnDB != nil {
 		var record struct {
+			AutonomousSystemNumber       uint   `maxminddb:"autonomous_system_number"`
 			AutonomousSystemOrganization string `maxminddb:"autonomous_system_organization"`
 		}
 		if err := s.asnDB.Lookup(ip).Decode(&record); err == nil {
 			isp = record.AutonomousSystemOrganization
+			if record.AutonomousSystemNumber > 0 {
+				asn = fmt.Sprintf("AS%d", record.AutonomousSystemNumber)
+			}
 		}
 	}
 
-	return country, countryCode, city, isp, nil
+	return country, countryCode, city, isp, asn, nil
 }
