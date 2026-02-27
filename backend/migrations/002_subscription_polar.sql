@@ -121,14 +121,7 @@ INSERT INTO subscription_plans (
     10,
     7,
     '{
-        "real_time_monitoring": true,
-        "email_alerts": true,
-        "slack_alerts": false,
-        "pagerduty_alerts": false,
-        "api_access": false,
-        "custom_rules": false,
-        "priority_support": false,
-        "community_support": true
+        "real_time_monitoring": true
     }'::jsonb,
     TRUE,
     TRUE
@@ -165,15 +158,7 @@ INSERT INTO subscription_plans (
     50,
     90,
     '{
-        "real_time_monitoring": true,
-        "email_alerts": true,
-        "slack_alerts": true,
-        "pagerduty_alerts": true,
-        "api_access": true,
-        "custom_rules": true,
-        "priority_support": true,
-        "community_support": true,
-        "advanced_threat_detection": true
+        "real_time_monitoring": true
     }'::jsonb,
     TRUE,
     FALSE
