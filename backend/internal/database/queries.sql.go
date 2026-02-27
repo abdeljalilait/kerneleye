@@ -2700,7 +2700,12 @@ SELECT
     city,
     isp,
     last_seen,
-    direction
+    direction,
+    icmp_packets_in,
+    icmp_packets_out,
+    connection_duration_ms,
+    port_bytes_in,
+    port_bytes_out
 FROM traffic_events
 WHERE server_id = $1
   AND destination_port = $2
@@ -2744,20 +2749,25 @@ type ListPortSourcesByServerParams struct {
 }
 
 type ListPortSourcesByServerRow struct {
-	SourceIp      netip.Addr         `json:"source_ip"`
-	DestinationIp *netip.Addr        `json:"destination_ip"`
-	BytesIn       int64              `json:"bytes_in"`
-	BytesOut      int64              `json:"bytes_out"`
-	SynCount      int32              `json:"syn_count"`
-	AckCount      int32              `json:"ack_count"`
-	HitCount      int32              `json:"hit_count"`
-	ThreatScore   int32              `json:"threat_score"`
-	ThreatLevel   string             `json:"threat_level"`
-	Country       pgtype.Text        `json:"country"`
-	City          pgtype.Text        `json:"city"`
-	Isp           pgtype.Text        `json:"isp"`
-	LastSeen      pgtype.Timestamptz `json:"last_seen"`
-	Direction     string             `json:"direction"`
+	SourceIp             netip.Addr         `json:"source_ip"`
+	DestinationIp        *netip.Addr        `json:"destination_ip"`
+	BytesIn              int64              `json:"bytes_in"`
+	BytesOut             int64              `json:"bytes_out"`
+	SynCount             int32              `json:"syn_count"`
+	AckCount             int32              `json:"ack_count"`
+	HitCount             int32              `json:"hit_count"`
+	ThreatScore          int32              `json:"threat_score"`
+	ThreatLevel          string             `json:"threat_level"`
+	Country              pgtype.Text        `json:"country"`
+	City                 pgtype.Text        `json:"city"`
+	Isp                  pgtype.Text        `json:"isp"`
+	LastSeen             pgtype.Timestamptz `json:"last_seen"`
+	Direction            string             `json:"direction"`
+	IcmpPacketsIn        int64              `json:"icmp_packets_in"`
+	IcmpPacketsOut       int64              `json:"icmp_packets_out"`
+	ConnectionDurationMs int64              `json:"connection_duration_ms"`
+	PortBytesIn          []byte             `json:"port_bytes_in"`
+	PortBytesOut         []byte             `json:"port_bytes_out"`
 }
 
 // Returns paginated source IPs for a specific port/protocol combination
@@ -2794,6 +2804,11 @@ func (q *Queries) ListPortSourcesByServer(ctx context.Context, arg ListPortSourc
 			&i.Isp,
 			&i.LastSeen,
 			&i.Direction,
+			&i.IcmpPacketsIn,
+			&i.IcmpPacketsOut,
+			&i.ConnectionDurationMs,
+			&i.PortBytesIn,
+			&i.PortBytesOut,
 		); err != nil {
 			return nil, err
 		}
@@ -2815,6 +2830,8 @@ SELECT
     SUM(hit_count)::int as total_hits,
     SUM(syn_count)::int as total_syn,
     SUM(ack_count)::int as total_ack,
+    SUM(icmp_packets_in)::bigint as total_icmp_in,
+    SUM(icmp_packets_out)::bigint as total_icmp_out,
     MAX(threat_score) as max_threat_score,
     MAX(threat_level) as max_threat_level,
     MAX(last_seen) as last_seen,
@@ -2874,6 +2891,8 @@ type ListPortTrafficByServerRow struct {
 	TotalHits       int32       `json:"total_hits"`
 	TotalSyn        int32       `json:"total_syn"`
 	TotalAck        int32       `json:"total_ack"`
+	TotalIcmpIn     int64       `json:"total_icmp_in"`
+	TotalIcmpOut    int64       `json:"total_icmp_out"`
 	MaxThreatScore  interface{} `json:"max_threat_score"`
 	MaxThreatLevel  interface{} `json:"max_threat_level"`
 	LastSeen        interface{} `json:"last_seen"`
@@ -2908,6 +2927,8 @@ func (q *Queries) ListPortTrafficByServer(ctx context.Context, arg ListPortTraff
 			&i.TotalHits,
 			&i.TotalSyn,
 			&i.TotalAck,
+			&i.TotalIcmpIn,
+			&i.TotalIcmpOut,
 			&i.MaxThreatScore,
 			&i.MaxThreatLevel,
 			&i.LastSeen,
@@ -3083,7 +3104,7 @@ func (q *Queries) ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]
 }
 
 const listThreats = `-- name: ListThreats :many
-SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type, te.country_code FROM traffic_events te
+SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type, te.country_code, te.icmp_packets_in, te.icmp_packets_out, te.connection_duration_ms, te.port_bytes_in, te.port_bytes_out FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1 
   AND te.threat_level IN ('suspicious', 'malicious')
@@ -3131,6 +3152,11 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 			&i.Asn,
 			&i.ThreatType,
 			&i.CountryCode,
+			&i.IcmpPacketsIn,
+			&i.IcmpPacketsOut,
+			&i.ConnectionDurationMs,
+			&i.PortBytesIn,
+			&i.PortBytesOut,
 		); err != nil {
 			return nil, err
 		}
@@ -3143,7 +3169,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 }
 
 const listTrafficEventsByServer = `-- name: ListTrafficEventsByServer :many
-SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code FROM traffic_events
+SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code, icmp_packets_in, icmp_packets_out, connection_duration_ms, port_bytes_in, port_bytes_out FROM traffic_events
 WHERE server_id = $1
   AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
   AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
@@ -3212,6 +3238,11 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 			&i.Asn,
 			&i.ThreatType,
 			&i.CountryCode,
+			&i.IcmpPacketsIn,
+			&i.IcmpPacketsOut,
+			&i.ConnectionDurationMs,
+			&i.PortBytesIn,
+			&i.PortBytesOut,
 		); err != nil {
 			return nil, err
 		}
@@ -3559,8 +3590,11 @@ INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
     syn_count, ack_count, failed_handshakes, unique_ports,
     bytes_in, bytes_out, threat_score, threat_level, threat_type,
-    first_seen, last_seen, country, country_code, city, isp, asn, hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, 1)
+    first_seen, last_seen, country, country_code, city, isp, asn,
+    icmp_packets_in, icmp_packets_out, connection_duration_ms,
+    port_bytes_in, port_bytes_out,
+    hit_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -3568,38 +3602,48 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     unique_ports = GREATEST(traffic_events.unique_ports, EXCLUDED.unique_ports),
     bytes_in = traffic_events.bytes_in + EXCLUDED.bytes_in,
     bytes_out = traffic_events.bytes_out + EXCLUDED.bytes_out,
+    icmp_packets_in = traffic_events.icmp_packets_in + EXCLUDED.icmp_packets_in,
+    icmp_packets_out = traffic_events.icmp_packets_out + EXCLUDED.icmp_packets_out,
+    connection_duration_ms = GREATEST(traffic_events.connection_duration_ms, EXCLUDED.connection_duration_ms),
+    port_bytes_in = EXCLUDED.port_bytes_in,
+    port_bytes_out = EXCLUDED.port_bytes_out,
     -- Use the most recent threat score (allows scores to decrease over time)
     threat_score = EXCLUDED.threat_score,
     threat_level = EXCLUDED.threat_level,
     threat_type = EXCLUDED.threat_type,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
-RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code
+RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code, icmp_packets_in, icmp_packets_out, connection_duration_ms, port_bytes_in, port_bytes_out
 `
 
 type UpsertTrafficEventParams struct {
-	ServerID         pgtype.UUID        `json:"server_id"`
-	SourceIp         netip.Addr         `json:"source_ip"`
-	DestinationIp    *netip.Addr        `json:"destination_ip"`
-	DestinationPort  int32              `json:"destination_port"`
-	Protocol         string             `json:"protocol"`
-	Direction        string             `json:"direction"`
-	SynCount         int32              `json:"syn_count"`
-	AckCount         int32              `json:"ack_count"`
-	FailedHandshakes int32              `json:"failed_handshakes"`
-	UniquePorts      int32              `json:"unique_ports"`
-	BytesIn          int64              `json:"bytes_in"`
-	BytesOut         int64              `json:"bytes_out"`
-	ThreatScore      int32              `json:"threat_score"`
-	ThreatLevel      string             `json:"threat_level"`
-	ThreatType       pgtype.Text        `json:"threat_type"`
-	FirstSeen        pgtype.Timestamptz `json:"first_seen"`
-	LastSeen         pgtype.Timestamptz `json:"last_seen"`
-	Country          pgtype.Text        `json:"country"`
-	CountryCode      pgtype.Text        `json:"country_code"`
-	City             pgtype.Text        `json:"city"`
-	Isp              pgtype.Text        `json:"isp"`
-	Asn              pgtype.Text        `json:"asn"`
+	ServerID             pgtype.UUID        `json:"server_id"`
+	SourceIp             netip.Addr         `json:"source_ip"`
+	DestinationIp        *netip.Addr        `json:"destination_ip"`
+	DestinationPort      int32              `json:"destination_port"`
+	Protocol             string             `json:"protocol"`
+	Direction            string             `json:"direction"`
+	SynCount             int32              `json:"syn_count"`
+	AckCount             int32              `json:"ack_count"`
+	FailedHandshakes     int32              `json:"failed_handshakes"`
+	UniquePorts          int32              `json:"unique_ports"`
+	BytesIn              int64              `json:"bytes_in"`
+	BytesOut             int64              `json:"bytes_out"`
+	ThreatScore          int32              `json:"threat_score"`
+	ThreatLevel          string             `json:"threat_level"`
+	ThreatType           pgtype.Text        `json:"threat_type"`
+	FirstSeen            pgtype.Timestamptz `json:"first_seen"`
+	LastSeen             pgtype.Timestamptz `json:"last_seen"`
+	Country              pgtype.Text        `json:"country"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	City                 pgtype.Text        `json:"city"`
+	Isp                  pgtype.Text        `json:"isp"`
+	Asn                  pgtype.Text        `json:"asn"`
+	IcmpPacketsIn        int64              `json:"icmp_packets_in"`
+	IcmpPacketsOut       int64              `json:"icmp_packets_out"`
+	ConnectionDurationMs int64              `json:"connection_duration_ms"`
+	PortBytesIn          []byte             `json:"port_bytes_in"`
+	PortBytesOut         []byte             `json:"port_bytes_out"`
 }
 
 func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error) {
@@ -3626,6 +3670,11 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		arg.City,
 		arg.Isp,
 		arg.Asn,
+		arg.IcmpPacketsIn,
+		arg.IcmpPacketsOut,
+		arg.ConnectionDurationMs,
+		arg.PortBytesIn,
+		arg.PortBytesOut,
 	)
 	var i TrafficEvent
 	err := row.Scan(
@@ -3654,6 +3703,11 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.Asn,
 		&i.ThreatType,
 		&i.CountryCode,
+		&i.IcmpPacketsIn,
+		&i.IcmpPacketsOut,
+		&i.ConnectionDurationMs,
+		&i.PortBytesIn,
+		&i.PortBytesOut,
 	)
 	return i, err
 }
