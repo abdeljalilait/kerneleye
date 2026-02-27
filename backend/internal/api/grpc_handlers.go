@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/netip"
@@ -270,36 +271,42 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 			}
 		}
 
-		var country, countryCode, city, isp string
+		var country, countryCode, city, isp, asnStr string
 		if h.geoIP != nil {
-			country, countryCode, city, isp, _ = h.geoIP.Lookup(event.SourceIp)
+			country, countryCode, city, isp, asnStr, _ = h.geoIP.Lookup(event.SourceIp)
 		}
 
 		// Convert protobuf direction to string
 		direction := directionLabel(event.Direction)
 
 		_, err = h.queries.UpsertTrafficEvent(ctx, database.UpsertTrafficEventParams{
-			ServerID:         server.ID,
-			SourceIp:         sourceIP,
-			DestinationIp:    destIP,
-			DestinationPort:  int32(event.DestinationPort),
-			Protocol:         getServiceFromPort(int(event.DestinationPort)), // Derive service name from port
-			Direction:        direction,
-			SynCount:         int32(event.SynCount),
-			AckCount:         int32(event.AckCount),
-			FailedHandshakes: int32(event.FailedHandshakes),
-			UniquePorts:      int32(event.UniquePortsCount),
-			BytesIn:          int64(event.BytesIn),
-			BytesOut:         int64(event.BytesOut),
-			ThreatScore:      int32(score.Score),
-			ThreatLevel:      string(score.Level),
-			ThreatType:       database.ToPgText(string(score.Type)),
-			FirstSeen:        database.ToPgTimestamptz(event.FirstSeen.AsTime()),
-			LastSeen:         database.ToPgTimestamptz(event.LastSeen.AsTime()),
-			Country:          database.ToPgText(country),
-			CountryCode:      database.ToPgText(countryCode),
-			City:             database.ToPgText(city),
-			Isp:              database.ToPgText(isp),
+			ServerID:             server.ID,
+			SourceIp:             sourceIP,
+			DestinationIp:        destIP,
+			DestinationPort:      int32(event.DestinationPort),
+			Protocol:             getServiceFromPort(int(event.DestinationPort)),
+			Direction:            direction,
+			SynCount:             int32(event.SynCount),
+			AckCount:             int32(event.AckCount),
+			FailedHandshakes:     int32(event.FailedHandshakes),
+			UniquePorts:          int32(event.UniquePortsCount),
+			BytesIn:              int64(event.BytesIn),
+			BytesOut:             int64(event.BytesOut),
+			ThreatScore:          int32(score.Score),
+			ThreatLevel:          string(score.Level),
+			ThreatType:           database.ToPgText(string(score.Type)),
+			FirstSeen:            database.ToPgTimestamptz(event.FirstSeen.AsTime()),
+			LastSeen:             database.ToPgTimestamptz(event.LastSeen.AsTime()),
+			Country:              database.ToPgText(country),
+			CountryCode:          database.ToPgText(countryCode),
+			City:                 database.ToPgText(city),
+			Isp:                  database.ToPgText(isp),
+			Asn:                  database.ToPgText(asnStr),
+			IcmpPacketsIn:        int64(event.IcmpPacketsIn),
+			IcmpPacketsOut:       int64(event.IcmpPacketsOut),
+			ConnectionDurationMs: int64(event.ConnectionDurationMs),
+			PortBytesIn:          marshalPortBytes(event.PortBytesIn),
+			PortBytesOut:         marshalPortBytes(event.PortBytesOut),
 		})
 
 		if err == nil {
@@ -518,6 +525,19 @@ func getServiceFromPort(port int) string {
 	}
 }
 
+// marshalPortBytes serializes a port-to-bytes map as JSON for JSONB storage.
+// Returns '{}' when m is nil or empty.
+func marshalPortBytes(m map[uint32]uint64) []byte {
+	if len(m) == 0 {
+		return []byte("{}")
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return []byte("{}")
+	}
+	return b
+}
+
 func (h *GrpcIngestHandler) ReportBlockedPacket(ctx context.Context, req *pb.BlockedPacketEvent) (*pb.BlockedPacketResponse, error) {
 	// Validate API key
 	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
@@ -557,7 +577,7 @@ func (h *GrpcIngestHandler) ReportBlockedPacket(ctx context.Context, req *pb.Blo
 	// Get GeoIP info if available
 	var country, countryCode string
 	if h.geoIP != nil {
-		country, countryCode, _, _, _ = h.geoIP.Lookup(req.SourceIp)
+		country, countryCode, _, _, _, _ = h.geoIP.Lookup(req.SourceIp)
 	}
 
 	// Broadcast to connected dashboard clients
@@ -616,7 +636,7 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 	var asn int32
 	var isVPN, isTor, isDatacenter bool
 	if h.geoIP != nil {
-		country, countryCodeISO, city, isp, _ = h.geoIP.Lookup(req.IpAddress)
+		country, countryCodeISO, city, isp, _, _ = h.geoIP.Lookup(req.IpAddress)
 	}
 
 	// Map IP version
