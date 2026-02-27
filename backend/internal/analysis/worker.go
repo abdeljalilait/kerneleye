@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -163,9 +164,9 @@ func (w *Worker) processBlockableTraffic(ctx context.Context, server database.Li
 				"total_syn":    row.TotalSyn,
 				"total_failed": row.TotalFailed,
 				"unique_ports": row.UniquePorts,
-				"country":      row.Country.String,
-				"city":         row.City.String,
-				"isp":          row.Isp.String,
+				"country":      toString(row.Country),
+				"city":         toString(row.City),
+				"isp":          toString(row.Isp),
 				"last_seen":    row.LastSeen,
 			})
 		}
@@ -184,7 +185,14 @@ func (w *Worker) buildMetrics(row database.GetTrafficAggregationByIPRow) scoring
 		windowEnd = time.Now()
 	}
 
-	established := int(row.AckCount) - int(row.SynCount)
+	// Estimate established connections: minimum of SYN and ACK counts
+	// minus failed handshakes. This approximates successful TCP handshakes.
+	// In TCP, a successful handshake requires at least one SYN and one ACK.
+	synCount := int(row.SynCount)
+	ackCount := int(row.AckCount)
+	failedCount := int(row.FailedHandshakes)
+	
+	established := min(synCount, ackCount) - failedCount
 	if established < 0 {
 		established = 0
 	}
@@ -214,6 +222,12 @@ func (w *Worker) buildMetrics(row database.GetTrafficAggregationByIPRow) scoring
 		}
 	}
 
+	// Calculate cumulative window duration for slow scan detection
+	cumulativeWindowHours := windowEnd.Sub(windowStart).Hours()
+	if cumulativeWindowHours < 0 {
+		cumulativeWindowHours = 0
+	}
+
 	return scoring.IPMetrics{
 		SYNCount:               int(row.SynCount),
 		ACKCount:               int(row.AckCount),
@@ -226,7 +240,23 @@ func (w *Worker) buildMetrics(row database.GetTrafficAggregationByIPRow) scoring
 		WindowEnd:              windowEnd,
 		EstablishedConnections: established,
 		PreviousScore:          int(row.MaxThreatScore),
+		LastSeen:               windowEnd, // WindowEnd is MAX(te.last_seen)
 		MaxPortHits:            maxPortHits,
+		CumulativeUniquePorts:  uniquePorts, // Current window - extend with historical data if available
+		CumulativeWindowHours:  cumulativeWindowHours,
 		Direction:              scoring.DirectionInbound,
+	}
+}
+
+// toString converts interface{} to string
+func toString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch s := v.(type) {
+	case string:
+		return s
+	default:
+		return fmt.Sprintf("%v", s)
 	}
 }

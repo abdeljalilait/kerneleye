@@ -187,6 +187,26 @@ func main() {
 	// This ensures it doesn't inherit the AuthMiddleware from the protected group
 	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService, polarClient))
 
+	// Start scoring worker for accumulated traffic analysis (must be before routes that need it)
+	analysisWorker := analysis.NewWorker(analysis.WorkerConfig{
+		Interval:       30 * time.Second,
+		ScoreThreshold: 30,
+		BlockThreshold: 60,
+		TimeWindowMins: 5,
+		MinEvents:      3,
+	}, queries, hub)
+	go analysisWorker.Start(ctx)
+
+	// Start block manager for automatic blocking (must be before routes that need it)
+	blockManager := analysis.NewBlockManager(analysis.BlockManagerConfig{
+		AutoBlockEnabled:  true,
+		BlockThreshold:    60,
+		BaseBlockDuration: 1 * time.Hour,
+		MaxBlockDuration:  24 * time.Hour,
+		CheckInterval:     30 * time.Second,
+	}, queries, hub)
+	go blockManager.Start(ctx)
+
 	// Protected routes (require API key or JWT)
 	protected := v1.Group("", api.AuthMiddleware(queries))
 
@@ -233,7 +253,7 @@ func main() {
 	// Blocks endpoints
 	protected.Get("/blocks", api.HandleListBlocks(queries))
 	protected.Get("/blocks/stats", api.HandleGetBlockStats(queries))
-	protected.Post("/blocks/:ip/unblock", api.HandleUnblockIP(queries, hub))
+	protected.Post("/blocks/:ip/unblock", api.HandleUnblockIP(queries, hub, blockManager))
 
 	// Whitelist endpoints
 	protected.Get("/whitelist", api.HandleListWhitelist(queries))
@@ -269,26 +289,6 @@ func main() {
 			log.Printf("gRPC server error: %v", err)
 		}
 	}()
-
-	// Start scoring worker for accumulated traffic analysis
-	analysisWorker := analysis.NewWorker(analysis.WorkerConfig{
-		Interval:       30 * time.Second,
-		ScoreThreshold: 30,
-		BlockThreshold: 60,
-		TimeWindowMins: 5,
-		MinEvents:      3,
-	}, queries, hub)
-	go analysisWorker.Start(ctx)
-
-	// Start block manager for automatic blocking
-	blockManager := analysis.NewBlockManager(analysis.BlockManagerConfig{
-		AutoBlockEnabled:  true,
-		BlockThreshold:    60,
-		BaseBlockDuration: 1 * time.Hour,
-		MaxBlockDuration:  24 * time.Hour,
-		CheckInterval:     30 * time.Second,
-	}, queries, hub)
-	go blockManager.Start(ctx)
 
 	// Start HTTP server
 	port := os.Getenv("PORT")

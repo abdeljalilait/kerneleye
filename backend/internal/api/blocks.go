@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"log"
 	"strconv"
 	"time"
 
@@ -237,8 +239,13 @@ func HandleGetBlockStats(queries *database.Queries) fiber.Handler {
 	}
 }
 
+// BlockManager interface for unblock operations
+type BlockManager interface {
+	Unblock(ctx context.Context, ip string, reason string) error
+}
+
 // HandleUnblockIP handles manual unblocking
-func HandleUnblockIP(queries *database.Queries, hub *Hub) fiber.Handler {
+func HandleUnblockIP(queries *database.Queries, hub *Hub, blockManager BlockManager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id").(string)
 		userUUID := database.ToPgUUID(userID)
@@ -267,6 +274,25 @@ func HandleUnblockIP(queries *database.Queries, hub *Hub) fiber.Handler {
 		})
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to unblock")
+		}
+
+		// Reset threat score for this IP to prevent immediate re-blocking
+		// Keeps traffic history for future scoring calculations
+		// (The IP can still be re-blocked if new malicious traffic arrives)
+		err = queries.ResetTrafficScoreForIP(c.Context(), database.ResetTrafficScoreForIPParams{
+			ServerID: block.ServerID,
+			SourceIp: block.IpAddress,
+		})
+		if err != nil {
+			log.Printf("[Unblock] Warning: failed to reset traffic score for %s: %v", ip, err)
+			// Don't fail the unblock if this errors
+		}
+
+		// Update BlockManager's activeBlocks to prevent re-block until restart
+		if blockManager != nil {
+			if err := blockManager.Unblock(c.Context(), ip, req.Reason); err != nil {
+				log.Printf("[Unblock] Warning: failed to update block manager: %v", err)
+			}
 		}
 
 		// Send unblock command to agent via agent channel
