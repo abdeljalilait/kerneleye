@@ -69,3 +69,5 @@ temp/
 
 # Data
 backend/geoip/
+blocks.csv
+traffic_events.csv
