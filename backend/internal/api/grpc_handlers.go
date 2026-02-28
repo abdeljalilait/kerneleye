@@ -279,12 +279,14 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		// Convert protobuf direction to string
 		direction := directionLabel(event.Direction)
 
+		protocol := protocolToString(event.Protocol)
+
 		_, err = h.queries.UpsertTrafficEvent(ctx, database.UpsertTrafficEventParams{
 			ServerID:             server.ID,
 			SourceIp:             sourceIP,
 			DestinationIp:        destIP,
 			DestinationPort:      int32(event.DestinationPort),
-			Protocol:             getServiceFromPort(int(event.DestinationPort)),
+			Protocol:             protocol,
 			Direction:            direction,
 			SynCount:             int32(event.SynCount),
 			AckCount:             int32(event.AckCount),
@@ -323,7 +325,7 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 				"source_ip":        event.SourceIp,
 				"destination_ip":   event.DestinationIp,
 				"destination_port": event.DestinationPort,
-				"protocol":         getServiceFromPort(int(event.DestinationPort)),
+				"protocol":         protocol,
 				"direction":        direction,
 				"syn_count":        event.SynCount,
 				"bytes_in":         event.BytesIn,
@@ -525,6 +527,32 @@ func getServiceFromPort(port int) string {
 	}
 }
 
+func protocolToString(protocol pb.Protocol) string {
+	switch protocol {
+	case pb.Protocol_PROTOCOL_TCP:
+		return "TCP"
+	case pb.Protocol_PROTOCOL_UDP:
+		return "UDP"
+	case pb.Protocol_PROTOCOL_ICMP:
+		return "ICMP"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func normalizeProtocolString(protocol string) string {
+	switch protocol {
+	case "tcp", "TCP":
+		return "TCP"
+	case "udp", "UDP":
+		return "UDP"
+	case "icmp", "ICMP":
+		return "ICMP"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // marshalPortBytes serializes a port-to-bytes map as JSON for JSONB storage.
 // Returns '{}' when m is nil or empty.
 func marshalPortBytes(m map[uint32]uint64) []byte {
@@ -632,11 +660,12 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 	}
 
 	// Get GeoIP info if available
-	var country, countryCodeISO, city, isp string
+	var country, countryCodeISO, city, region, isp string
+	var latitude, longitude float64
 	var asn int32
 	var isVPN, isTor, isDatacenter bool
 	if h.geoIP != nil {
-		country, countryCodeISO, city, isp, _, _ = h.geoIP.Lookup(req.IpAddress)
+		country, countryCodeISO, city, region, latitude, longitude, isp, _, _ = h.geoIP.LookupDetailed(req.IpAddress)
 	}
 
 	// Map IP version
@@ -697,6 +726,61 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		serviceName = getServiceFromPort(int(req.TargetPort))
 	}
 
+	targetPort := int32(req.TargetPort)
+
+	// Enrich missing block context from latest traffic event for this source IP.
+	if targetPort <= 0 || serviceName == "" || protocolStr == "UNKNOWN" {
+		history, histErr := h.queries.GetIPTrafficHistory(ctx, database.GetIPTrafficHistoryParams{
+			SourceIp: ipAddr,
+			UserID:   server.UserID,
+			Limit:    10,
+		})
+		if histErr != nil {
+			log.Printf("[gRPC ReportBlockedIP] Failed to enrich from traffic history for ip=%s: %v", req.IpAddress, histErr)
+		} else {
+			var latest *database.GetIPTrafficHistoryRow
+			for i := range history {
+				row := &history[i]
+				if database.FromPgUUID(row.ServerID) == server.ID.String() && row.Direction == "inbound" {
+					latest = row
+					break
+				}
+			}
+			if latest == nil {
+				for i := range history {
+					row := &history[i]
+					if row.Direction == "inbound" {
+						latest = row
+						break
+					}
+				}
+			}
+
+			if latest != nil {
+				if targetPort <= 0 && latest.DestinationPort > 0 {
+					targetPort = latest.DestinationPort
+				}
+
+				if protocolStr == "UNKNOWN" {
+					if normalized := normalizeProtocolString(latest.Protocol); normalized != "UNKNOWN" {
+						protocolStr = normalized
+					}
+				}
+
+				if serviceName == "" {
+					if targetPort > 0 {
+						serviceName = getServiceFromPort(int(targetPort))
+					}
+					if serviceName == "" {
+						if normalized := normalizeProtocolString(latest.Protocol); normalized == "UNKNOWN" {
+							serviceName = latest.Protocol
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Create new block record in database
 	block, err := h.queries.CreateBlock(ctx, database.CreateBlockParams{
 		ServerID:        server.ID,
@@ -706,15 +790,15 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		ThreatScore:     100, // High score for auto-blocked
 		ThreatLevel:     "malicious",
 		Reasons:         []string{req.Reason},
-		TargetPort:      pgtype.Int4{Int32: int32(req.TargetPort), Valid: req.TargetPort > 0},
+		TargetPort:      pgtype.Int4{Int32: targetPort, Valid: targetPort > 0},
 		ServiceName:     pgtype.Text{String: serviceName, Valid: serviceName != ""},
 		Protocol:        pgtype.Text{String: protocolStr, Valid: true},
 		CountryCode:     pgtype.Text{String: countryCodeISO, Valid: countryCodeISO != ""},
 		CountryName:     pgtype.Text{String: country, Valid: country != ""},
 		City:            pgtype.Text{String: city, Valid: city != ""},
-		Region:          pgtype.Text{Valid: false},
-		Latitude:        pgtype.Float8{Valid: false},
-		Longitude:       pgtype.Float8{Valid: false},
+		Region:          pgtype.Text{String: region, Valid: region != ""},
+		Latitude:        pgtype.Float8{Float64: latitude, Valid: latitude != 0},
+		Longitude:       pgtype.Float8{Float64: longitude, Valid: longitude != 0},
 		Asn:             pgtype.Int4{Int32: asn, Valid: asn > 0},
 		AsnOrg:          pgtype.Text{String: isp, Valid: isp != ""},
 		IsVpn:           pgtype.Bool{Bool: isVPN, Valid: true},

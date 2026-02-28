@@ -52,10 +52,11 @@ func (h *BlockHandler) ReportBlock(ctx context.Context, req *kerneleyev1.BlockRe
 
 	// 3. Lookup GeoIP if available
 	var countryCode, countryName, city, region, asnOrg string
+	var latitude, longitude float64
 	var asn int32
 
 	if h.geoIP != nil {
-		countryName, countryCode, city, asnOrg, _, _ = h.geoIP.Lookup(req.IpAddress)
+		countryName, countryCode, city, region, latitude, longitude, asnOrg, _, _ = h.geoIP.LookupDetailed(req.IpAddress)
 	}
 
 	// 4. Detect if datacenter/VPN/Tor (simplified)
@@ -81,6 +82,8 @@ func (h *BlockHandler) ReportBlock(ctx context.Context, req *kerneleyev1.BlockRe
 		CountryName:     pgtype.Text{String: countryName, Valid: countryName != ""},
 		City:            pgtype.Text{String: city, Valid: city != ""},
 		Region:          pgtype.Text{String: region, Valid: region != ""},
+		Latitude:        pgtype.Float8{Float64: latitude, Valid: latitude != 0},
+		Longitude:       pgtype.Float8{Float64: longitude, Valid: longitude != 0},
 		Asn:             pgtype.Int4{Int32: asn, Valid: asn > 0},
 		AsnOrg:          pgtype.Text{String: asnOrg, Valid: asnOrg != ""},
 		IsVpn:           pgtype.Bool{Bool: isVPN, Valid: true},

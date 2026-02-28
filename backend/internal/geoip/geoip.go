@@ -62,12 +62,17 @@ func (s *Service) Close() {
 }
 
 func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp, asn string, err error) {
+	country, countryCode, city, _, _, _, isp, asn, err = s.LookupDetailed(ipStr)
+	return country, countryCode, city, isp, asn, err
+}
+
+func (s *Service) LookupDetailed(ipStr string) (country, countryCode, city, region string, latitude, longitude float64, isp, asn string, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", 0, 0, "", "", err
 	}
 
 	if s.cityDB != nil {
@@ -79,12 +84,24 @@ func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp, asn str
 			City struct {
 				Names map[string]string `maxminddb:"names"`
 			} `maxminddb:"city"`
+			Subdivisions []struct {
+				Names map[string]string `maxminddb:"names"`
+			} `maxminddb:"subdivisions"`
+			Location struct {
+				Latitude  float64 `maxminddb:"latitude"`
+				Longitude float64 `maxminddb:"longitude"`
+			} `maxminddb:"location"`
 		}
 
 		if err := s.cityDB.Lookup(ip).Decode(&record); err == nil {
 			country = record.Country.Names["en"]
 			countryCode = record.Country.ISOCode
 			city = record.City.Names["en"]
+			if len(record.Subdivisions) > 0 {
+				region = record.Subdivisions[0].Names["en"]
+			}
+			latitude = record.Location.Latitude
+			longitude = record.Location.Longitude
 		}
 	}
 
@@ -101,5 +118,5 @@ func (s *Service) Lookup(ipStr string) (country, countryCode, city, isp, asn str
 		}
 	}
 
-	return country, countryCode, city, isp, asn, nil
+	return country, countryCode, city, region, latitude, longitude, isp, asn, nil
 }
