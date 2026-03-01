@@ -199,7 +199,7 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 			// Create new user
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
 				Email:        githubUser.Email,
-				PasswordHash: "oauth", // OAuth users don't have passwords
+				PasswordHash: "!oauth-no-password-login", // Unusable hash — OAuth users cannot log in with password
 				Plan:         "none",
 			})
 			if err != nil {
@@ -432,7 +432,7 @@ func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
 			// Create new user with no active plan
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
 				Email:        googleUser.Email,
-				PasswordHash: "oauth", // OAuth users don't have passwords
+				PasswordHash: "!oauth-no-password-login", // Unusable hash — OAuth users cannot log in with password
 				Plan:         "none",
 			})
 			if err != nil {
@@ -504,31 +504,57 @@ func exchangeGoogleCode(config OAuthConfig, code string) (*GoogleTokenResponse, 
 }
 
 func getGoogleUser(idToken string) (*GoogleUser, error) {
-	// Decode JWT payload (base64)
-	parts := make([]string, 3)
-	idx := 0
-	for i, count := 0, 0; i < len(idToken) && count < 2; i++ {
-		if idToken[i] == '.' {
-			parts[count] = idToken[idx:i]
-			idx = i + 1
-			count++
-		}
-	}
-	parts[2] = idToken[idx:]
-
-	if parts[1] == "" {
-		return nil, fmt.Errorf("invalid ID token")
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	// Verify ID token via Google's tokeninfo endpoint (validates signature, issuer, expiry)
+	resp, err := http.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + url.QueryEscape(idToken))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to verify Google ID token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Google token verification failed (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	var user GoogleUser
-	if err := json.Unmarshal(payload, &user); err != nil {
-		return nil, err
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tokeninfo response: %w", err)
 	}
 
-	return &user, nil
+	var tokenInfo struct {
+		Sub           string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified string `json:"email_verified"`
+		Name          string `json:"name"`
+		Picture       string `json:"picture"`
+		Aud           string `json:"aud"`
+		Iss           string `json:"iss"`
+		Exp           string `json:"exp"`
+	}
+	if err := json.Unmarshal(body, &tokenInfo); err != nil {
+		return nil, fmt.Errorf("failed to parse tokeninfo response: %w", err)
+	}
+
+	// Verify the audience matches our client ID
+	config := GetOAuthConfig()
+	if tokenInfo.Aud != config.GoogleClientID {
+		return nil, fmt.Errorf("token audience mismatch: got %s, expected %s", tokenInfo.Aud, config.GoogleClientID)
+	}
+
+	// Verify the issuer is Google
+	if tokenInfo.Iss != "accounts.google.com" && tokenInfo.Iss != "https://accounts.google.com" {
+		return nil, fmt.Errorf("unexpected token issuer: %s", tokenInfo.Iss)
+	}
+
+	// Verify email is verified
+	if tokenInfo.EmailVerified != "true" {
+		return nil, fmt.Errorf("Google email not verified")
+	}
+
+	return &GoogleUser{
+		ID:      tokenInfo.Sub,
+		Email:   tokenInfo.Email,
+		Name:    tokenInfo.Name,
+		Picture: tokenInfo.Picture,
+	}, nil
 }

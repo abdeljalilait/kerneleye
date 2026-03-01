@@ -31,7 +31,7 @@ services:
     # ports:
     #   - "9091:9091"
     environment:
-      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD}@kerneleye-db:5432/kerneleye?sslmode=disable
+      DATABASE_URL: postgres://kerneleye:${DB_PASSWORD}@kerneleye-db:5432/kerneleye?sslmode=require
       GEOIP_DIR: /opt/kerneleye/geoip
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY}
       INSTALL_DOMAIN: ${INSTALL_DOMAIN}
@@ -39,7 +39,7 @@ services:
       KERNELEYE_GRPC_URL : ${KERNELEYE_GRPC_URL}
       PORT: 8080
       POLAR_ENV: ${POLAR_ENV}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
       GRPC_PORT: 9091
       CORS_ORIGINS: ${CORS_ORIGINS}
       JWT_SECRET: ${JWT_SECRET}
@@ -103,7 +103,7 @@ services:
     pull_policy: always
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
 volumes:
   postgres_data:
   redis_data:

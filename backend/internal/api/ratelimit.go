@@ -97,9 +97,11 @@ func RateLimitMiddleware(limiter *RateLimiter) fiber.Handler {
 		// Check rate limit
 		allowed, err := limiter.Allow(c.Context(), identifier, config)
 		if err != nil {
-			log.Printf("[RateLimit] Error checking rate limit: %v", err)
-			// Allow request on error (fail open)
-			return c.Next()
+			log.Printf("[RateLimit] Error checking rate limit (failing closed): %v", err)
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error":       "Rate limit service unavailable, please retry",
+				"retry_after": config.Window.Seconds(),
+			})
 		}
 
 		if !allowed {

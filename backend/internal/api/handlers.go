@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,6 +14,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
 )
+
+// sanitizeLikePattern escapes ILIKE metacharacters (%, _) in user input
+// to prevent wildcard injection in LIKE/ILIKE queries.
+func sanitizeLikePattern(input string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(input)
+}
 
 // HandleListServers returns all servers for a user
 func HandleListServers(queries *database.Queries) fiber.Handler {
@@ -80,7 +88,7 @@ func HandleServerTraffic(queries *database.Queries) fiber.Handler {
 		offset := (page - 1) * pageSize
 
 		// Optional filters
-		search := c.Query("search")
+		search := sanitizeLikePattern(c.Query("search"))
 		threatLevel := c.Query("threat_level")
 		sortBy := c.Query("sort_by", "last_seen")
 
@@ -276,7 +284,7 @@ func HandleServerPortTraffic(queries *database.Queries) fiber.Handler {
 		offset := (page - 1) * pageSize
 
 		// Optional filters
-		search := c.Query("search")
+		search := sanitizeLikePattern(c.Query("search"))
 		threatLevel := c.Query("threat_level")
 		sortBy := c.Query("sort_by", "last_seen")
 
@@ -484,7 +492,7 @@ func HandleServerPortSources(queries *database.Queries) fiber.Handler {
 		offset := (page - 1) * pageSize
 
 		// Optional filters
-		search := c.Query("search")
+		search := sanitizeLikePattern(c.Query("search"))
 		sortBy := c.Query("sort_by", "last_seen")
 		sortOrder := c.Query("sort_order", "desc")
 
@@ -611,7 +619,7 @@ func HandleServerProtocolTraffic(queries *database.Queries) fiber.Handler {
 		offset := (page - 1) * pageSize
 
 		// Optional filters
-		search := c.Query("search")
+		search := sanitizeLikePattern(c.Query("search"))
 		threatLevel := c.Query("threat_level")
 		sortBy := c.Query("sort_by", "last_seen")
 
@@ -1069,10 +1077,17 @@ func HandleDeleteServer(queries *database.Queries) fiber.Handler {
 		}
 
 		// First verify the server belongs to this user
-		_, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
+		server, err := queries.GetServerByID(c.Context(), database.ToPgUUID(serverID))
 		if err != nil {
 			log.Printf("[HandleDeleteServer] Server not found: %v", err)
 			return fiber.NewError(fiber.StatusNotFound, "Server not found")
+		}
+
+		// Verify ownership: server must belong to the authenticated user
+		if database.FromPgUUID(server.UserID) != userID.(string) {
+			log.Printf("[HandleDeleteServer] Ownership mismatch: user %s tried to delete server %s owned by %s",
+				userID, serverID, database.FromPgUUID(server.UserID))
+			return fiber.NewError(fiber.StatusForbidden, "You do not own this server")
 		}
 
 		err = queries.DeleteServer(c.Context(), database.ToPgUUID(serverID))

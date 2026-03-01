@@ -379,7 +379,17 @@ func HandleCreateCheckout(queries *database.Queries, polarClient *polar.Client) 
 // HandlePolarDebug returns Polar configuration status (admin only)
 func HandlePolarDebug(polarClient *polar.Client, queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		log.Printf("[API] GET /subscription/debug - Polar debug request")
+		// Restrict to admin users only (controlled by environment variable)
+		adminEmail := os.Getenv("ADMIN_EMAIL")
+		if adminEmail == "" {
+			return fiber.NewError(fiber.StatusForbidden, "Debug endpoint is disabled")
+		}
+		userEmail, _ := c.Locals("email").(string)
+		if userEmail != adminEmail {
+			return fiber.NewError(fiber.StatusForbidden, "Admin access required")
+		}
+
+		log.Printf("[API] GET /subscription/debug - Polar debug request from admin: %s", userEmail)
 
 		// Check if Polar client is configured
 		isConfigured := polarClient != nil && polarClient.IsConfigured()
@@ -528,7 +538,7 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 		}
 
 		log.Printf("[API] POST /webhooks/polar - Webhook ID: %s", webhookID)
-		log.Printf("[API] POST /webhooks/polar - Signature: %s...", webhookSignature[:20])
+		log.Printf("[API] POST /webhooks/polar - Signature present: %t", len(webhookSignature) > 0)
 
 		// Get raw body for signature verification
 		payload := c.Body()
@@ -537,29 +547,30 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 		// Verify using Standard Webhooks library
 		secret := getPolarWebhookSecret()
 		if secret == "" {
-			log.Println("[Polar] Warning: POLAR_WEBHOOK_SECRET not set, skipping verification")
-		} else {
-			// The secret must be base64 encoded before passing to the library
-			base64Secret := base64.StdEncoding.EncodeToString([]byte(secret))
-			wh, err := standardwebhooks.NewWebhook(base64Secret)
-			if err != nil {
-				log.Printf("[Polar] Failed to create webhook verifier: %v", err)
-				return fiber.NewError(fiber.StatusInternalServerError, "Webhook verification setup failed")
-			}
-
-			// Build http.Header with the required headers
-			headers := http.Header{
-				"Webhook-Id":        []string{webhookID},
-				"Webhook-Signature": []string{webhookSignature},
-				"Webhook-Timestamp": []string{webhookTimestamp},
-			}
-			err = wh.Verify(payload, headers)
-			if err != nil {
-				log.Printf("[Polar] Webhook signature verification failed: %v", err)
-				return fiber.NewError(fiber.StatusUnauthorized, "Invalid signature")
-			}
-			log.Println("[Polar] Webhook signature verified successfully")
+			log.Println("[Polar] POLAR_WEBHOOK_SECRET not set, rejecting webhook")
+			return fiber.NewError(fiber.StatusInternalServerError, "Webhook verification not configured")
 		}
+
+		// The secret must be base64 encoded before passing to the library
+		base64Secret := base64.StdEncoding.EncodeToString([]byte(secret))
+		wh, err := standardwebhooks.NewWebhook(base64Secret)
+		if err != nil {
+			log.Printf("[Polar] Failed to create webhook verifier: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Webhook verification setup failed")
+		}
+
+		// Build http.Header with the required headers
+		headers := http.Header{
+			"Webhook-Id":        []string{webhookID},
+			"Webhook-Signature": []string{webhookSignature},
+			"Webhook-Timestamp": []string{webhookTimestamp},
+		}
+		err = wh.Verify(payload, headers)
+		if err != nil {
+			log.Printf("[Polar] Webhook signature verification failed: %v", err)
+			return fiber.NewError(fiber.StatusUnauthorized, "Invalid signature")
+		}
+		log.Println("[Polar] Webhook signature verified successfully")
 
 		var event PolarWebhookPayload
 		if err := json.Unmarshal(payload, &event); err != nil {
@@ -838,7 +849,7 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 		}
 
 		// Store event in database for audit trail (ignore duplicate key errors - event already processed)
-		_, err := queries.CreateSubscriptionEvent(c.Context(), database.CreateSubscriptionEventParams{
+		_, err = queries.CreateSubscriptionEvent(c.Context(), database.CreateSubscriptionEventParams{
 			UserID:       database.ToPgUUID(userID),
 			PolarEventID: database.ToPgText(polarEventID),
 			EventType:    event.Type,

@@ -226,12 +226,20 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				}
 			}
 
+			ip, ok := cmd["ip"].(string)
+			if !ok || ip == "" {
+				log.Printf("[BlockHandler] Skipping command with missing or invalid 'ip' field")
+				continue
+			}
+			reason, _ := cmd["reason"].(string)
+			blockID, _ := cmd["block_id"].(string)
+
 			pbCmd := &kerneleyev1.BlockCommand{
 				Action:          action,
-				IpAddress:       cmd["ip"].(string),
+				IpAddress:       ip,
 				DurationSeconds: duration,
-				Reason:          cmd["reason"].(string),
-				BlockId:         cmd["block_id"].(string),
+				Reason:          reason,
+				BlockId:         blockID,
 				BlockType:       blockType,
 			}
 			if err := stream.Send(pbCmd); err != nil {

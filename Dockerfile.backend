@@ -51,6 +51,10 @@ COPY backend/migrations /app/migrations/
 COPY --from=builder /app/scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Run as non-root user
+RUN adduser -D -u 1001 kerneleye
+USER kerneleye
+
 EXPOSE 8080 9091
 
 ENTRYPOINT ["/entrypoint.sh"]

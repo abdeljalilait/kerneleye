@@ -218,7 +218,8 @@ func (h *GrpcIngestHandler) GetStatus(ctx context.Context, req *pb.GetStatusRequ
 
 	apiKey := ""
 	if server.Status == "active" {
-		apiKey = server.ApiKey.String
+		// Do not return the actual API key - agent already has it
+		apiKey = "configured"
 	}
 
 	return &pb.GetStatusResponse{

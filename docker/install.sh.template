@@ -201,7 +201,8 @@ create_systemd_service() {
     fi
 
     # Build agent flags based on mode
-    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL} -apikey ${API_KEY}"
+    # NOTE: API key is read from EnvironmentFile (agent.env, chmod 0600) — never passed as a CLI flag
+    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL}"
     
     case "$MODE" in
         block_ipset|block_hybrid)
@@ -259,7 +260,8 @@ start_agent() {
     if [ -z "$API_KEY" ]; then
         log_warn "No API_KEY provided. Agent not started automatically."
         echo "Set API_KEY environment variable and run again, or start manually:"
-        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"YOUR_KEY\""
+        echo "  sudo KERNELEYE_API_KEY=\"YOUR_KEY\" ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\""
+        echo "  (or set KERNELEYE_API_KEY in ${CONFIG_DIR}/agent.env and run without the env prefix)"
         return
     fi
 
@@ -270,7 +272,8 @@ start_agent() {
     fi
 
     # Build agent flags (without quotes in variable)
-    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL} -apikey ${API_KEY}"
+    # NOTE: API key is read from KERNELEYE_API_KEY env var (set by agent.env) — never passed as a CLI flag
+    local agent_flags="-server ${SERVER_HOST} -grpc-url ${GRPC_URL}"
     
     case "$MODE" in
         block_ipset|block_hybrid)
@@ -328,8 +331,12 @@ print_next_steps() {
     else
         echo -e "${YELLOW}API_KEY not provided. Agent installed but not started.${NC}"
         echo ""
-        echo "To start the agent:"
-        echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\" -apikey \"YOUR_KEY\""
+        echo "To start the agent, add your key to the config file and start the service:"
+        echo "  echo 'KERNELEYE_API_KEY=\"YOUR_KEY\"' | sudo tee -a ${CONFIG_DIR}/agent.env"
+        echo "  sudo systemctl start kerneleye-agent"
+        echo ""
+        echo "Or for a foreground run (key never appears in process list):"
+        echo "  sudo KERNELEYE_API_KEY=\"YOUR_KEY\" ${INSTALL_DIR}/${BINARY_NAME} -server \"${SERVER_HOST}\" -grpc-url \"${GRPC_URL}\""
     fi
     echo ""
 }

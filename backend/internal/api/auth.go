@@ -29,7 +29,10 @@ const (
 func init() {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "default-jwt-secret-change-in-production"
+		log.Fatal("FATAL: JWT_SECRET environment variable is required but not set")
+	}
+	if len(secret) < 32 {
+		log.Fatal("FATAL: JWT_SECRET must be at least 32 characters long")
 	}
 	jwtSecret = []byte(secret)
 }
@@ -230,7 +233,11 @@ func HandleLogin(queries *database.Queries) fiber.Handler {
 		}
 
 		return c.JSON(fiber.Map{
-			"user":  user,
+			"user": fiber.Map{
+				"id":    database.FromPgUUID(user.ID),
+				"email": user.Email,
+				"plan":  user.Plan,
+			},
 			"token": token,
 		})
 	}

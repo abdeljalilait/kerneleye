@@ -33,7 +33,6 @@ func parseConfig() AgentConfig {
 	}
 
 	serverFlag := flag.String("server", "", "Backend server address")
-	apiKeyFlag := flag.String("apikey", "", "API key")
 	grpcURLFlag := flag.String("grpc-url", "", "gRPC server URL (overrides server address)")
 	enableRemediation := flag.Bool("enable-remediation", false, "Enable active remediation with auto-blocking (requires root and iptables)")
 	enableXDP := flag.Bool("xdp", false, "Enable XDP fast-path blocking (requires root, kernel 5.4+)")
@@ -55,9 +54,6 @@ func parseConfig() AgentConfig {
 		LogFile:           *logFile,
 	}
 
-	if *apiKeyFlag != "" {
-		cfg.APIKey = *apiKeyFlag
-	}
 	if *serverFlag != "" {
 		cfg.ServerHost = *serverFlag
 	}
