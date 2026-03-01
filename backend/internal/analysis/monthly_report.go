@@ -95,10 +95,23 @@ func (m *MonthlyReportManager) checkAndSendReports(ctx context.Context) {
 			continue
 		}
 
+		// Idempotency guard: skip if report was already sent this month.
+		// This prevents duplicate emails when the server restarts on the 1st.
+		alreadySent, err := m.queries.HasMonthlyReportBeenSent(ctx, user.ID, startDate)
+		if err != nil {
+			log.Printf("[MonthlyReport] Error checking sent status for %s: %v", user.Email, err)
+			continue
+		}
+		if alreadySent {
+			log.Printf("[MonthlyReport] Report for %s %d already sent to %s, skipping",
+				prevMonth.Month(), prevMonth.Year(), user.Email)
+			continue
+		}
+
 		// Generate report for this user
 		report, err := m.generateUserReport(ctx, user.ID, startDate, endDate)
 		if err != nil {
-			log.Printf("[MonthlyReport] Failed to generate report for user %s: %v", 
+			log.Printf("[MonthlyReport] Failed to generate report for user %s: %v",
 				database.FromPgUUID(user.ID), err)
 			continue
 		}
@@ -106,6 +119,12 @@ func (m *MonthlyReportManager) checkAndSendReports(ctx context.Context) {
 		// Send email
 		if err := m.sendReportEmail(ctx, user.Email, user.Email, report, prevMonth); err != nil {
 			log.Printf("[MonthlyReport] Failed to send report to %s: %v", user.Email, err)
+			continue
+		}
+
+		// Record as sent so restarts cannot trigger a duplicate
+		if err := m.queries.RecordMonthlyReportSent(ctx, user.ID, startDate); err != nil {
+			log.Printf("[MonthlyReport] Warning: failed to record sent status for %s: %v", user.Email, err)
 		}
 	}
 }
@@ -264,7 +283,7 @@ func (m *MonthlyReportManager) sendReportEmail(
 	}
 
 	monthName := month.Format("January 2006")
-	
+
 	// Calculate percentages
 	blockedPercent := float64(0)
 	if report.TotalConnections > 0 {

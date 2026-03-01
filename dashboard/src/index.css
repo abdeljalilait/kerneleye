@@ -688,27 +688,33 @@ body {
    BlockedIPs Page Specific Styles
    ============================================ */
 
-/* Table row improvements */
+/* Table row improvements - consistent with ThreatsList */
 .blocked-ip-row {
   transition: all 0.2s ease;
 }
 
 .blocked-ip-row:hover {
-  transform: translateX(2px);
+  background: rgba(99, 102, 241, 0.03) !important;
 }
 
 /* Table cell improvements */
 .blocked-ip-row .ant-table-cell {
-  vertical-align: top;
+  padding: 16px !important;
+  vertical-align: middle !important;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-/* Better table header */
-.ant-table-thead > tr > th {
+/* Better table header in Blocked IPs card */
+.ant-card .ant-table-thead > tr > th {
   font-weight: 600;
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   padding: 12px 16px;
   white-space: nowrap;
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  text-transform: uppercase;
 }
 
 /* Progress bar in table */
@@ -717,14 +723,14 @@ body {
 }
 
 .blocked-ip-row .ant-progress-inner {
-  background-color: var(--bg-elevated);
-  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
   overflow: hidden;
 }
 
 .blocked-ip-row .ant-progress-bg {
-  border-radius: 4px;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 0 10px currentColor;
 }
 
 /* Status tags in table */
@@ -735,14 +741,22 @@ body {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
+  font-weight: 500;
 }
 
-/* Action buttons */
+/* Action buttons - consistent with ThreatsList */
 .blocked-ip-row .ant-btn {
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-  border-radius: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.blocked-ip-row .ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Table expandable row */
@@ -759,16 +773,31 @@ body {
   background: var(--bg-elevated);
   border-color: var(--border-default);
   color: var(--text-secondary);
-  border-radius: 4px;
-  width: 18px;
-  height: 18px;
-  line-height: 16px;
+  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  transition: all 0.2s ease;
 }
 
 .ant-table-row-expand-icon:hover {
   background: var(--primary-500);
   border-color: var(--primary-500);
   color: white;
+}
+
+/* First and last row rounded corners for table in card */
+.blocked-ip-row:first-child td:first-child {
+  border-top-left-radius: var(--radius-lg);
+}
+
+.blocked-ip-row:first-child td:last-child {
+  border-top-right-radius: var(--radius-lg);
+}
+
+/* Pagination styling */
+.blocked-ip-row + .ant-table-pagination {
+  margin: 16px 24px;
 }
 
 /* ============================================

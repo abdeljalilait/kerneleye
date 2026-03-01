@@ -598,6 +598,7 @@ export default function BlockedIPs() {
           background: 'var(--bg-card)',
           border: '1px solid var(--border-subtle)',
           borderRadius: 'var(--radius-lg)',
+          backdropFilter: 'blur(10px)',
         }}
         bodyStyle={{ padding: 0 }}
       >
@@ -610,9 +611,10 @@ export default function BlockedIPs() {
             pageSize: 20,
             showSizeChanger: true,
             showTotal: (total) => `Total ${total} blocked IPs`,
+            style: { margin: '16px 24px' }
           }}
           scroll={{ x: 1200 }}
-          rowClassName={() => 'blocked-ip-row'}
+          rowClassName="blocked-ip-row"
           expandable={{
             expandedRowRender: (record) => (
               <div style={{ padding: 16, background: 'var(--bg-tertiary)' }}>
@@ -626,6 +628,31 @@ export default function BlockedIPs() {
                 </ul>
               </div>
             ),
+          }}
+          locale={{
+            emptyText: (
+              <div style={{ padding: '60px 0', textAlign: 'center' }}>
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: '50%',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                }}>
+                  <Shield size={28} color="#10b981" />
+                </div>
+                <Text style={{ color: 'var(--text-secondary)', fontSize: 16, display: 'block', marginBottom: 8 }}>
+                  No blocked IPs found
+                </Text>
+                <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+                  Your systems are currently secure
+                </Text>
+              </div>
+            )
           }}
         />
       </Card>

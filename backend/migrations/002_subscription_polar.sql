@@ -176,13 +176,6 @@ ON CONFLICT (name) DO UPDATE SET
 -- Update existing users to have proper defaults
 -- ============================================
 
--- Set demo user to pro plan
-UPDATE users 
-SET plan = 'pro', 
-    max_servers = 50,
-    subscription_status = 'active'
-WHERE email = 'demo@kerneleye.net';
-
 -- Set any existing users without a plan to starter
 UPDATE users 
 SET plan = 'starter', 
