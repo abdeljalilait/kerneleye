@@ -6,4 +6,16 @@ export default defineConfig({
   server: {
     port: 3000,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-antd': ['antd', '@ant-design/pro-components'],
+          'vendor-charts': ['recharts'],
+          'vendor-router': ['@tanstack/react-router', '@tanstack/react-query'],
+        },
+      },
+    },
+  },
 });

@@ -32,17 +32,19 @@ export default function TrafficChart() {
   const [totalEvents, setTotalEvents] = useState(0)
   const [peakPps, setPeakPps] = useState(0)
   const countRef = useRef(0)
+  const totalEventsRef = useRef(0)
   const { lastMessage } = useWebSocket()
 
   // Increment count on incoming messages
   useEffect(() => {
     if (lastMessage?.type === 'new_traffic') {
       countRef.current += 1
-      setTotalEvents(prev => prev + 1)
+      totalEventsRef.current += 1
+      setTotalEvents(totalEventsRef.current)
     }
   }, [lastMessage])
 
-  // Update chart every second
+  // Update chart every second — runs once, uses refs for latest values
   useEffect(() => {
     const interval = setInterval(() => {
       const count = countRef.current
@@ -53,11 +55,10 @@ export default function TrafficChart() {
         const newPoint = {
           time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           pps: count,
-          events: totalEvents,
+          events: totalEventsRef.current,
         }
         const newData = [...prevData.slice(1), newPoint]
         
-        // Update peak
         setPeakPps(Math.max(...newData.map(d => d.pps)))
         
         return newData
@@ -65,7 +66,7 @@ export default function TrafficChart() {
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [totalEvents])
+  }, [])
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {

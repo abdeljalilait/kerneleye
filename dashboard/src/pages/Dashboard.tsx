@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Outlet, useLocation, Link, useNavigate } from '@tanstack/react-router'
 import { Layout, Menu, Button, Avatar, Dropdown, Badge, Typography } from 'antd'
 import Header from '../components/Header'
@@ -137,6 +137,18 @@ export default function Dashboard() {
     },
   ]
 
+  const menuItemsMapped = useMemo(() => mainMenuItems.map(item => ({
+    key: item.key,
+    icon: item.icon,
+    label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
+  })), [])
+
+  const analyticsItemsMapped = useMemo(() => analyticsMenuItems.map(item => ({
+    key: item.key,
+    icon: item.icon,
+    label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
+  })), [])
+
   return (
     <Layout style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
       {/* Sidebar */}
@@ -220,11 +232,7 @@ export default function Dashboard() {
               background: 'transparent',
               border: 'none',
             }}
-            items={mainMenuItems.map(item => ({
-              key: item.key,
-              icon: item.icon,
-              label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
-            }))}
+            items={menuItemsMapped}
           />
         </div>
 
@@ -251,11 +259,7 @@ export default function Dashboard() {
               background: 'transparent',
               border: 'none',
             }}
-            items={analyticsMenuItems.map(item => ({
-              key: item.key,
-              icon: item.icon,
-              label: <Link to={item.key} style={{ textDecoration: 'none' }}>{item.label}</Link>,
-            }))}
+            items={analyticsItemsMapped}
           />
         </div>
 

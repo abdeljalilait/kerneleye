@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { notification } from 'antd'
 import { useWebSocket } from '../context/WebSocketContext'
 import { Shield, AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
 
 export default function GlobalNotifications() {
   const { lastMessage } = useWebSocket()
+  const lastBlockedPacketRef = useRef<number>(0)
 
   useEffect(() => {
     if (!lastMessage) return
@@ -88,7 +89,10 @@ export default function GlobalNotifications() {
         })
         break
 
-      case 'blocked_packet':
+      case 'blocked_packet': {
+        const now = Date.now()
+        if (now - lastBlockedPacketRef.current < 5000) break
+        lastBlockedPacketRef.current = now
         notification.info({
           message: (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -111,6 +115,7 @@ export default function GlobalNotifications() {
           style: { background: '#eef2ff', border: '1px solid #c7d2fe' },
         })
         break
+      }
     }
   }, [lastMessage])
 

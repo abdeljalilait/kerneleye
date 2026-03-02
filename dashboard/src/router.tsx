@@ -1,24 +1,41 @@
 import { createRouter, createRoute, createRootRoute, Outlet, redirect } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/router-devtools'
-import Dashboard from './pages/Dashboard'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import Overview from './pages/Overview'
-import Servers from './pages/Servers'
-import Threats from './pages/Threats'
-import Alerts from './pages/Alerts'
-import ServerDetail from './pages/ServerDetail'
-import Subscription from './pages/Subscription'
-import OAuthCallback from './pages/OAuthCallback'
-import ForgotPassword from './pages/ForgotPassword'
-import Profile from './pages/Profile'
-import Reports from './pages/Reports'
-import Visualizer from './pages/Visualizer'
-import BlockedIPs from './pages/BlockedIPs'
-import Whitelist from './pages/Whitelist'
-import CheckoutSuccess from './pages/CheckoutSuccess'
+import { lazy, Suspense } from 'react'
+import { Spin } from 'antd'
 import { WebSocketProvider } from './context/WebSocketContext'
 import GlobalNotifications from './components/GlobalNotifications'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Login = lazy(() => import('./pages/Login'))
+const Register = lazy(() => import('./pages/Register'))
+const Overview = lazy(() => import('./pages/Overview'))
+const Servers = lazy(() => import('./pages/Servers'))
+const Threats = lazy(() => import('./pages/Threats'))
+const Alerts = lazy(() => import('./pages/Alerts'))
+const ServerDetail = lazy(() => import('./pages/ServerDetail'))
+const Subscription = lazy(() => import('./pages/Subscription'))
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Visualizer = lazy(() => import('./pages/Visualizer'))
+const BlockedIPs = lazy(() => import('./pages/BlockedIPs'))
+const Whitelist = lazy(() => import('./pages/Whitelist'))
+const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'))
+
+const PageLoader = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+    <Spin size="large" />
+  </div>
+)
+
+function withSuspense(Component: React.ComponentType) {
+  return () => (
+    <Suspense fallback={<PageLoader />}>
+      <Component />
+    </Suspense>
+  )
+}
 
 // 1. Create a root route
 const rootRoute = createRootRoute({
@@ -47,13 +64,13 @@ const authCheck = () => {
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  component: Login,
+  component: withSuspense(Login),
 })
 
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
-  component: Register,
+  component: withSuspense(Register),
 })
 
 const indexRoute = createRoute({
@@ -68,10 +85,12 @@ const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'dashboard',
   component: () => (
-    <WebSocketProvider>
-      <GlobalNotifications />
-      <Dashboard />
-    </WebSocketProvider>
+    <Suspense fallback={<PageLoader />}>
+      <WebSocketProvider>
+        <GlobalNotifications />
+        <Dashboard />
+      </WebSocketProvider>
+    </Suspense>
   ),
   beforeLoad: authCheck,
 })
@@ -79,85 +98,85 @@ const dashboardRoute = createRoute({
 const overviewRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/',
-  component: Overview,
+  component: withSuspense(Overview),
 })
 
 const serversRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/servers',
-  component: Servers,
+  component: withSuspense(Servers),
 })
 
 const serverDetailRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/servers/$id',
-  component: ServerDetail,
+  component: withSuspense(ServerDetail),
 })
 
 const threatsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/threats',
-  component: Threats,
+  component: withSuspense(Threats),
 })
 
 const alertsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/alerts',
-  component: Alerts,
+  component: withSuspense(Alerts),
 })
 
 const blockedIPsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/blocked-ips',
-  component: BlockedIPs,
+  component: withSuspense(BlockedIPs),
 })
 
 const whitelistRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/whitelist',
-  component: Whitelist,
+  component: withSuspense(Whitelist),
 })
 
 const subscriptionRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: 'subscription',
-  component: Subscription,
+  component: withSuspense(Subscription),
 })
 
 const checkoutSuccessRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: 'subscription/success',
-  component: CheckoutSuccess,
+  component: withSuspense(CheckoutSuccess),
 })
 
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth/callback',
-  component: OAuthCallback,
+  component: withSuspense(OAuthCallback),
 })
 
 const forgotPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/forgot-password',
-  component: ForgotPassword,
+  component: withSuspense(ForgotPassword),
 })
 
 const profileRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: 'profile',
-  component: Profile,
+  component: withSuspense(Profile),
 })
 
 const reportsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: 'reports',
-  component: Reports,
+  component: withSuspense(Reports),
 })
 
 const visualizerRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: 'visualizer',
-  component: Visualizer,
+  component: withSuspense(Visualizer),
 })
 
 // 3. Register the route tree
