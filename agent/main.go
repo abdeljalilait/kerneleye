@@ -151,7 +151,16 @@ func main() {
 
 	// Wire the block callback to report blocked IPs via gRPC
 	if remediator != nil {
-		remediator.OnBlock = aggregator.ReportBlockedIP
+		remediator.OnBlock = func(ip net.IP, action remediation.Action, reason string, duration time.Duration) {
+			// Look up the primary targeted port for this IP from live stats.
+			// This gives "Service Targeted" / port context in the blocked-IPs table.
+			port, proto := aggregator.GetPrimaryPortForIP(ip.String())
+			if port > 0 {
+				aggregator.ReportBlockedIPWithContext(ip, action, reason, duration, port, proto)
+			} else {
+				aggregator.ReportBlockedIP(ip, action, reason, duration)
+			}
+		}
 
 		// Wire the blocked packet callback to report XDP blocked packets via gRPC
 		remediator.OnBlockedPacket = aggregator.ReportBlockedPacket
@@ -183,8 +192,7 @@ func main() {
 				if err := remediator.Block(parsedIP, duration); err != nil {
 					return fmt.Errorf("block failed: %w", err)
 				}
-				// Report to backend
-				aggregator.ReportBlockedIP(parsedIP, remediation.ActionBlock, reason, duration)
+				// Reporting is handled by remediator.OnBlock callback above
 				return nil
 			},
 			// OnUnblock callback

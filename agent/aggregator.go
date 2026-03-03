@@ -680,6 +680,26 @@ func (a *Aggregator) GetStats() map[string]*IPStats {
 	return a.stats.Snapshot()
 }
 
+// GetPrimaryPortForIP returns the most frequently targeted port and its
+// protocol for a given IP address, as recorded in the current stats window.
+// Returns (0, 6) when the IP is unknown (fall back to no-port reporting).
+func (a *Aggregator) GetPrimaryPortForIP(ip string) (port uint16, protocol uint8) {
+	stats, ok := a.stats.Get(ip)
+	if !ok {
+		return 0, 6
+	}
+	stats.mu.Lock()
+	defer stats.mu.Unlock()
+	var maxCount int
+	for p, count := range stats.PortCounts {
+		if count > maxCount {
+			maxCount = count
+			port = p
+		}
+	}
+	return port, stats.Protocol
+}
+
 // ReportBlockedPacket sends a blocked packet event to the backend via gRPC
 // This is called by the XDP remediator when a packet is blocked
 func (a *Aggregator) ReportBlockedPacket(ip string, port uint16, protocol uint8, reason uint8) {
