@@ -105,8 +105,7 @@ func main() {
 			Logger.Infof("  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
 			os.Exit(1)
 		}
-		defer remediator.Teardown()
-		if remediator.IsXDPEnabled() {
+		if cfg.EnableRemediation {
 			Logger.Infof("🛡️  Remediation enabled: XDP (%s) + iptables", remediator.XDPMode())
 		} else {
 			Logger.Info("🛡️  Remediation enabled: iptables only")
@@ -140,7 +139,15 @@ func main() {
 	if err != nil {
 		Logger.Fatalf("Failed to create aggregator: %v", err)
 	}
-	defer aggregator.Close()
+	// NOTE: aggregator.Close() is intentionally NOT deferred here.
+	// handleShutdown is the single authoritative shutdown path and calls agg.Close().
+	// A deferred close would race with handleShutdown after rd.Close() unblocks runEventLoop,
+	// causing a double-close with double-flush and a second call to remediator.Teardown().
+
+	// Context for block command client lifetime.
+	// Cancelled at the very start of shutdown so gRPC streams terminate immediately,
+	// preventing grpcConn.Close() from waiting on orphaned stream.Recv() goroutines.
+	blockCtx, cancelBlock := context.WithCancel(context.Background())
 
 	// Wire the block callback to report blocked IPs via gRPC
 	if remediator != nil {
@@ -193,25 +200,31 @@ func main() {
 			Logger.Warnf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
 		} else {
 			// Start receiving block commands from backend
-			if err := blockCmdClient.Start(context.Background()); err != nil {
+			if err := blockCmdClient.Start(blockCtx); err != nil {
 				Logger.Warnf("⚠️  Failed to start block command client: %v", err)
 			} else {
 				aggregator.SetBlockCommandClient(blockCmdClient)
 				Logger.Info("📡 Block command client connected to backend")
 
 				// Sync block list from backend for state reconciliation
-				if err := blockCmdClient.SyncBlockList(context.Background()); err != nil {
+				if err := blockCmdClient.SyncBlockList(blockCtx); err != nil {
 					Logger.Warnf("⚠️  Failed to sync block list: %v", err)
 				}
 
-				// Start periodic reconcile every 1 minute
+				// Start periodic reconcile every 1 minute.
+				// The goroutine exits when blockCtx is cancelled (at shutdown start).
 				go func() {
 					ticker := time.NewTicker(1 * time.Minute)
 					defer ticker.Stop()
-					for range ticker.C {
-						if blockCmdClient.IsConnected() {
-							if err := blockCmdClient.Reconcile(context.Background()); err != nil {
-								Logger.Warnf("⚠️  Failed to reconcile block list: %v", err)
+					for {
+						select {
+						case <-blockCtx.Done():
+							return
+						case <-ticker.C:
+							if blockCmdClient.IsConnected() {
+								if err := blockCmdClient.Reconcile(blockCtx); err != nil && blockCtx.Err() == nil {
+									Logger.Warnf("⚠️  Failed to reconcile block list: %v", err)
+								}
 							}
 						}
 					}
@@ -225,19 +238,23 @@ func main() {
 	aggregator.StartFlushTimer(10 * time.Second)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	go handleShutdown(sig, aggregator, rd, remediator, analyzerCancel)
+	go handleShutdown(sig, aggregator, rd, remediator, analyzerCancel, cancelBlock)
 	runEventLoop(rd, aggregator)
 }
 
-func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem *remediation.HybridRemediator, cancelAnalyzer context.CancelFunc) {
+func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem *remediation.HybridRemediator, cancelAnalyzer context.CancelFunc, cancelBlock context.CancelFunc) {
 	select {
 	case <-sig:
 		Logger.Info("\nShutdown signal, flushing...")
 	case <-agg.stopChan:
 		Logger.Info("\nServer deleted, shutting down...")
 	}
+	// Cancel the block client context first — this immediately terminates any
+	// in-flight gRPC streams (stream.Recv goroutines) and stops the reconcile
+	// goroutine, so grpcConn.Close() inside agg.Close() is not delayed.
+	cancelBlock()
 	cancelAnalyzer() // Stop the analyzer cleanup goroutine
-	Logger.Debug("[Shutdown] Analyzer cancelled")
+	Logger.Debug("[Shutdown] Contexts cancelled")
 
 	agg.Close() // This will flush and cleanup
 	Logger.Debug("[Shutdown] Aggregator closed")

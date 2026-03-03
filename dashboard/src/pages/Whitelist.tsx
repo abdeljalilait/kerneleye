@@ -190,9 +190,6 @@ export default function Whitelist() {
             icon={<Plus size={18} />}
             onClick={() => setIsModalOpen(true)}
             size="large"
-            style={{
-              background: 'var(--primary-color)',
-            }}
           >
             Add to Whitelist
           </Button>
