@@ -179,9 +179,7 @@ func HandleGetSubscriptionStatus(queries *database.Queries) fiber.Handler {
 		if err != nil {
 			log.Printf("[Subscription] Error fetching plan %s: %v", user.Plan, err)
 			// Use default values if plan not found
-			plan.Name = "starter"
 			plan.DisplayName = "Starter"
-			plan.MaxServers = 10
 			plan.DataRetentionDays = 7
 		}
 
@@ -868,48 +866,6 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 
 		return c.JSON(fiber.Map{"status": "ok"})
 	}
-}
-
-// updateUserSubscription updates a user's subscription based on Polar data
-func updateUserSubscription(queries *database.Queries, c *fiber.Ctx, userID string, sub PolarSubscription) error {
-	// Map Polar product/price to our plan names
-	planName := "starter" // default
-
-	// You would typically have a mapping from Polar product IDs to plan names
-	// For now, we'll derive from metadata
-	if p, ok := sub.Metadata["plan"]; ok {
-		planName = p
-	}
-
-	// Handle trial status
-	status := sub.Status
-	if sub.IsTrialing {
-		status = "trialing"
-	}
-
-	log.Printf("[Polar] updateUserSubscription: userID=%s, plan=%s, status=%s, isTrialing=%v", userID, planName, status, sub.IsTrialing)
-	log.Printf("[Polar] Period: %s to %s", sub.CurrentPeriodStart.Format(time.RFC3339), sub.CurrentPeriodEnd.Format(time.RFC3339))
-
-	params := database.UpdateUserSubscriptionParams{
-		ID:                             database.ToPgUUID(userID),
-		Plan:                           planName,
-		PolarSubscriptionID:            database.ToPgText(sub.ID),
-		SubscriptionStatus:             database.ToPgText(status),
-		SubscriptionCurrentPeriodStart: database.ToPgTimestamptz(sub.CurrentPeriodStart),
-		SubscriptionCurrentPeriodEnd:   database.ToPgTimestamptz(sub.CurrentPeriodEnd),
-		SubscriptionCancelAtPeriodEnd:  database.ToPgBool(sub.CancelAtPeriodEnd),
-		TrialEndsAt:                    database.ToPgTimestamptzPtr(sub.TrialEndsAt),
-	}
-
-	log.Printf("[Polar] Calling UpdateUserSubscription with params: %+v", params)
-
-	if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
-		log.Printf("[Polar] UpdateUserSubscription ERROR: %v", err)
-		return fmt.Errorf("failed to update subscription: %w", err)
-	}
-
-	log.Printf("[Polar] Updated subscription for user %s to plan %s (status: %s, trial: %v)", userID, planName, status, sub.IsTrialing)
-	return nil
 }
 
 // cancelUserSubscription marks a user's subscription as canceled

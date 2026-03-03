@@ -946,8 +946,11 @@ type ConnectionEvent struct {
 	ConnectionDurationMs uint64 `protobuf:"varint,21,opt,name=connection_duration_ms,json=connectionDurationMs,proto3" json:"connection_duration_ms,omitempty"`
 	// Per-service-port byte breakdown (limited to top 10 ports, from ip_port_bytes BPF map).
 	// Keys are port numbers as uint32 (proto3 map keys must be integral or string).
-	PortBytesIn   map[uint32]uint64 `protobuf:"bytes,22,rep,name=port_bytes_in,json=portBytesIn,proto3" json:"port_bytes_in,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	PortBytesOut  map[uint32]uint64 `protobuf:"bytes,23,rep,name=port_bytes_out,json=portBytesOut,proto3" json:"port_bytes_out,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	PortBytesIn  map[uint32]uint64 `protobuf:"bytes,22,rep,name=port_bytes_in,json=portBytesIn,proto3" json:"port_bytes_in,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	PortBytesOut map[uint32]uint64 `protobuf:"bytes,23,rep,name=port_bytes_out,json=portBytesOut,proto3" json:"port_bytes_out,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// Process name from the eBPF comm field (e.g. "sshd", "nginx", "mysqld").
+	// Used by the backend to identify the application-layer service regardless of port number.
+	ProcessName   string `protobuf:"bytes,24,opt,name=process_name,json=processName,proto3" json:"process_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1141,6 +1144,13 @@ func (x *ConnectionEvent) GetPortBytesOut() map[uint32]uint64 {
 		return x.PortBytesOut
 	}
 	return nil
+}
+
+func (x *ConnectionEvent) GetProcessName() string {
+	if x != nil {
+		return x.ProcessName
+	}
+	return ""
 }
 
 type TrafficResponse struct {
@@ -1830,7 +1840,7 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\rtimestamp_end\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ftimestampEnd\x125\n" +
 	"\x06events\x18\x05 \x03(\v2\x1d.kerneleye.v1.ConnectionEventR\x06events\x12!\n" +
 	"\ftotal_events\x18\x06 \x01(\x04R\vtotalEvents\x12<\n" +
-	"\x1aaggregation_window_seconds\x18\a \x01(\rR\x18aggregationWindowSeconds\"\xbd\t\n" +
+	"\x1aaggregation_window_seconds\x18\a \x01(\rR\x18aggregationWindowSeconds\"\xe0\t\n" +
 	"\x0fConnectionEvent\x12\x1b\n" +
 	"\tsource_ip\x18\x01 \x01(\tR\bsourceIp\x12)\n" +
 	"\x10destination_port\x18\x02 \x01(\rR\x0fdestinationPort\x122\n" +
@@ -1857,7 +1867,8 @@ const file_kerneleye_v1_ingest_proto_rawDesc = "" +
 	"\x10icmp_packets_out\x18\x14 \x01(\x04R\x0eicmpPacketsOut\x124\n" +
 	"\x16connection_duration_ms\x18\x15 \x01(\x04R\x14connectionDurationMs\x12R\n" +
 	"\rport_bytes_in\x18\x16 \x03(\v2..kerneleye.v1.ConnectionEvent.PortBytesInEntryR\vportBytesIn\x12U\n" +
-	"\x0eport_bytes_out\x18\x17 \x03(\v2/.kerneleye.v1.ConnectionEvent.PortBytesOutEntryR\fportBytesOut\x1a>\n" +
+	"\x0eport_bytes_out\x18\x17 \x03(\v2/.kerneleye.v1.ConnectionEvent.PortBytesOutEntryR\fportBytesOut\x12!\n" +
+	"\fprocess_name\x18\x18 \x01(\tR\vprocessName\x1a>\n" +
 	"\x10PortBytesInEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\rR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\x1a?\n" +

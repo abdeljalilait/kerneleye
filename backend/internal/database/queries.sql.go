@@ -154,7 +154,7 @@ func (q *Queries) CountPortSourcesByServer(ctx context.Context, arg CountPortSou
 }
 
 const countPortTrafficByServer = `-- name: CountPortTrafficByServer :one
-SELECT COUNT(DISTINCT (destination_port, protocol))::int as total_count
+SELECT COUNT(DISTINCT (destination_port, protocol, service_name))::int as total_count
 FROM traffic_events
 WHERE server_id = $1
   AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
@@ -171,7 +171,7 @@ type CountPortTrafficByServerParams struct {
 	Column5  pgtype.Timestamptz `json:"column_5"`
 }
 
-// Returns count of unique port/protocol combinations
+// Returns count of unique port/protocol/service combinations
 func (q *Queries) CountPortTrafficByServer(ctx context.Context, arg CountPortTrafficByServerParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countPortTrafficByServer,
 		arg.ServerID,
@@ -2824,6 +2824,7 @@ const listPortTrafficByServer = `-- name: ListPortTrafficByServer :many
 SELECT 
     destination_port,
     protocol,
+    service_name,
     COUNT(DISTINCT source_ip) as unique_ips,
     SUM(bytes_in)::bigint as total_bytes_in,
     SUM(bytes_out)::bigint as total_bytes_out,
@@ -2862,7 +2863,7 @@ WHERE server_id = $1
   AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
   AND ($4::timestamptz IS NULL OR last_seen >= $4)
   AND ($5::timestamptz IS NULL OR last_seen <= $5)
-GROUP BY destination_port, protocol
+GROUP BY destination_port, protocol, service_name
 ORDER BY 
     CASE WHEN $6::text = 'threat_score' THEN MAX(threat_score) END DESC,
     CASE WHEN $6::text = 'hits' THEN SUM(hit_count) END DESC,
@@ -2885,6 +2886,7 @@ type ListPortTrafficByServerParams struct {
 type ListPortTrafficByServerRow struct {
 	DestinationPort int32       `json:"destination_port"`
 	Protocol        string      `json:"protocol"`
+	ServiceName     string      `json:"service_name"`
 	UniqueIps       int64       `json:"unique_ips"`
 	TotalBytesIn    int64       `json:"total_bytes_in"`
 	TotalBytesOut   int64       `json:"total_bytes_out"`
@@ -2921,6 +2923,7 @@ func (q *Queries) ListPortTrafficByServer(ctx context.Context, arg ListPortTraff
 		if err := rows.Scan(
 			&i.DestinationPort,
 			&i.Protocol,
+			&i.ServiceName,
 			&i.UniqueIps,
 			&i.TotalBytesIn,
 			&i.TotalBytesOut,
@@ -3104,7 +3107,7 @@ func (q *Queries) ListServersByUser(ctx context.Context, userID pgtype.UUID) ([]
 }
 
 const listThreats = `-- name: ListThreats :many
-SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type, te.country_code, te.icmp_packets_in, te.icmp_packets_out, te.connection_duration_ms, te.port_bytes_in, te.port_bytes_out FROM traffic_events te
+SELECT te.id, te.server_id, te.source_ip, te.destination_port, te.protocol, te.syn_count, te.ack_count, te.failed_handshakes, te.unique_ports, te.bytes_in, te.bytes_out, te.threat_score, te.threat_level, te.first_seen, te.last_seen, te.created_at, te.country, te.city, te.isp, te.hit_count, te.direction, te.destination_ip, te.asn, te.threat_type, te.country_code, te.icmp_packets_in, te.icmp_packets_out, te.connection_duration_ms, te.port_bytes_in, te.port_bytes_out, te.service_name FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1 
   AND te.threat_level IN ('suspicious', 'malicious')
@@ -3157,6 +3160,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 			&i.ConnectionDurationMs,
 			&i.PortBytesIn,
 			&i.PortBytesOut,
+			&i.ServiceName,
 		); err != nil {
 			return nil, err
 		}
@@ -3169,7 +3173,7 @@ func (q *Queries) ListThreats(ctx context.Context, arg ListThreatsParams) ([]Tra
 }
 
 const listTrafficEventsByServer = `-- name: ListTrafficEventsByServer :many
-SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code, icmp_packets_in, icmp_packets_out, connection_duration_ms, port_bytes_in, port_bytes_out FROM traffic_events
+SELECT id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code, icmp_packets_in, icmp_packets_out, connection_duration_ms, port_bytes_in, port_bytes_out, service_name FROM traffic_events
 WHERE server_id = $1
   AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')
   AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
@@ -3243,6 +3247,7 @@ func (q *Queries) ListTrafficEventsByServer(ctx context.Context, arg ListTraffic
 			&i.ConnectionDurationMs,
 			&i.PortBytesIn,
 			&i.PortBytesOut,
+			&i.ServiceName,
 		); err != nil {
 			return nil, err
 		}
@@ -3592,9 +3597,9 @@ INSERT INTO traffic_events (
     bytes_in, bytes_out, threat_score, threat_level, threat_type,
     first_seen, last_seen, country, country_code, city, isp, asn,
     icmp_packets_in, icmp_packets_out, connection_duration_ms,
-    port_bytes_in, port_bytes_out,
+    port_bytes_in, port_bytes_out, service_name,
     hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, 1)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -3611,9 +3616,10 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     threat_score = EXCLUDED.threat_score,
     threat_level = EXCLUDED.threat_level,
     threat_type = EXCLUDED.threat_type,
+    service_name = EXCLUDED.service_name,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
-RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code, icmp_packets_in, icmp_packets_out, connection_duration_ms, port_bytes_in, port_bytes_out
+RETURNING id, server_id, source_ip, destination_port, protocol, syn_count, ack_count, failed_handshakes, unique_ports, bytes_in, bytes_out, threat_score, threat_level, first_seen, last_seen, created_at, country, city, isp, hit_count, direction, destination_ip, asn, threat_type, country_code, icmp_packets_in, icmp_packets_out, connection_duration_ms, port_bytes_in, port_bytes_out, service_name
 `
 
 type UpsertTrafficEventParams struct {
@@ -3644,6 +3650,7 @@ type UpsertTrafficEventParams struct {
 	ConnectionDurationMs int64              `json:"connection_duration_ms"`
 	PortBytesIn          []byte             `json:"port_bytes_in"`
 	PortBytesOut         []byte             `json:"port_bytes_out"`
+	ServiceName          string             `json:"service_name"`
 }
 
 func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error) {
@@ -3675,6 +3682,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		arg.ConnectionDurationMs,
 		arg.PortBytesIn,
 		arg.PortBytesOut,
+		arg.ServiceName,
 	)
 	var i TrafficEvent
 	err := row.Scan(
@@ -3708,6 +3716,7 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.ConnectionDurationMs,
 		&i.PortBytesIn,
 		&i.PortBytesOut,
+		&i.ServiceName,
 	)
 	return i, err
 }

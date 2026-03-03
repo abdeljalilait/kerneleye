@@ -74,22 +74,6 @@ const Navigation = ({ onHomeClick }: NavigationProps) => {
             ))}
           </div>
 
-          <motion.div 
-            className="nav-cta"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5 }}
-          >
-            <motion.a 
-              href="#contact" 
-              className="btn btn-primary"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Get started
-            </motion.a>
-          </motion.div>
-
           <motion.button 
             className="mobile-menu-btn"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -181,20 +165,6 @@ const Navigation = ({ onHomeClick }: NavigationProps) => {
                   {link.label}
                 </motion.a>
               ))}
-              <motion.a 
-                href="#contact" 
-                className="btn btn-primary" 
-                style={{ marginTop: '1rem', width: '100%' }}
-                onClick={() => setIsMobileMenuOpen(false)}
-                variants={{
-                  hidden: { opacity: 0, y: 20 },
-                  visible: { opacity: 1, y: 0 },
-                }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                Get started
-              </motion.a>
             </motion.div>
           </motion.div>
         )}

@@ -125,6 +125,7 @@ export interface PortSourceIP {
 export interface PortTraffic {
   port: number;
   protocol: string;
+  service_name: string;
   unique_ips: number;
   total_bytes_in: number;
   total_bytes_out: number;

@@ -41,6 +41,27 @@ func TestTrackedPortForEvent(t *testing.T) {
 	if got := trackedPortForEvent(inbound); got != 22 {
 		t.Fatalf("inbound tracked port = %d, want 22", got)
 	}
+
+	// UDP response to our outbound DNS query: lport is the kernel's ephemeral
+	// source port, rport is the remote service port (53).  We must track rport
+	// so the dashboard shows "DNS server IP → port 53" instead of a unique row
+	// for every ephemeral port the kernel picks.
+	udpDNSResponse := Event{Direction: DirInbound, Protocol: 17, Lport: 47696, Rport: 53}
+	if got := trackedPortForEvent(udpDNSResponse); got != 53 {
+		t.Fatalf("inbound UDP (ephemeral lport) tracked port = %d, want 53 (rport)", got)
+	}
+
+	// Same pattern for NTP (port 123)
+	udpNTPResponse := Event{Direction: DirInbound, Protocol: 17, Lport: 34836, Rport: 123}
+	if got := trackedPortForEvent(udpNTPResponse); got != 123 {
+		t.Fatalf("inbound UDP (ephemeral lport) tracked port = %d, want 123 (rport)", got)
+	}
+
+	// A service port below the ephemeral range must still use lport (e.g. our HTTP server)
+	inboundHTTP := Event{Direction: DirInbound, Protocol: 6, Lport: 80, Rport: 55000}
+	if got := trackedPortForEvent(inboundHTTP); got != 80 {
+		t.Fatalf("inbound TCP service port (lport=80) tracked port = %d, want 80", got)
+	}
 }
 
 func TestProcessEventOutboundTracksRemoteServicePort(t *testing.T) {

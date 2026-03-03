@@ -347,6 +347,7 @@ func (a *Aggregator) buildProtoEventsFromSnapshot(snapshot map[string]IPStatsSna
 			ConnectionDurationMs: connDurationMs,
 			PortBytesIn:          portBytesIn,
 			PortBytesOut:         portBytesOut,
+			ProcessName:          stats.ProcessName,
 		})
 	}
 	return pbEvents

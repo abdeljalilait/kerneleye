@@ -97,6 +97,10 @@ func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, rem remedia
 		Logger.Warnf("⚠️  History store unavailable; persistent periodic scoring disabled: %v", err)
 	}
 
+	// Detect the kernel's ephemeral port range once at startup so
+	// trackedPortForEvent can skip transient local ports (DNS, NTP replies, …).
+	initEphemeralPortRange()
+
 	// Get server's local IPs at startup (IPv4 + IPv6)
 	serverIPs := getServerIPs()
 
@@ -209,8 +213,51 @@ func getServerIPs() map[string]bool {
 	return ips
 }
 
-// trackedPortForEvent returns the destination/service port to aggregate for a remote IP.
-// For outbound connections, Lport is usually a local ephemeral source port, so we use Rport.
+// ephemeralPortMin/Max define the kernel's local ephemeral port range.
+// Initialised once at startup from /proc/sys/net/ipv4/ip_local_port_range;
+// falls back to the Linux kernels default range (32768–60999).
+var (
+	ephemeralPortMin uint16 = 32768
+	ephemeralPortMax uint16 = 60999
+)
+
+// initEphemeralPortRange reads the kernel's ephemeral port range so we can
+// distinguish service ports (22, 80, 443 …) from transient client-side ports.
+func initEphemeralPortRange() {
+	data, err := os.ReadFile("/proc/sys/net/ipv4/ip_local_port_range")
+	if err != nil {
+		Logger.Debugf("Could not read ephemeral port range, using defaults 32768-60999: %v", err)
+		return
+	}
+	var lo, hi int
+	// The file contains two numbers separated by a tab
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d %d", &lo, &hi); err != nil {
+		Logger.Debugf("Could not parse ephemeral port range, using defaults: %v", err)
+		return
+	}
+	if lo > 0 && hi > 0 && lo < hi && hi <= 65535 {
+		ephemeralPortMin = uint16(lo)
+		ephemeralPortMax = uint16(hi)
+		Logger.Infof("ℹ️  Ephemeral port range: %d–%d", lo, hi)
+	}
+}
+
+// isEphemeralPort reports whether port is in the kernel's ephemeral range.
+// These ports are assigned by the OS for outbound connections, not bound services.
+func isEphemeralPort(port uint16) bool {
+	return port >= ephemeralPortMin && port <= ephemeralPortMax
+}
+
+// trackedPortForEvent returns the service/destination port to use as the
+// aggregation key for a given eBPF event.
+//
+// Outbound events: Lport is an ephemeral client port → use Rport.
+//
+// Inbound events: Lport is normally the server's bound service port (22, 80, …).
+// Exception: UDP responses arriving at an ephemeral Lport — these are replies to
+// an outbound query the kernel sent (e.g. DNS, NTP).  In that case Lport is the
+// transient source port we used, so we fall back to Rport (the remote service).
+// This prevents dozens of one-off ephemeral ports filling the dashboard.
 func trackedPortForEvent(event Event) uint16 {
 	if event.Direction == DirOutbound {
 		if event.Rport != 0 {
@@ -218,7 +265,8 @@ func trackedPortForEvent(event Event) uint16 {
 		}
 		return event.Lport
 	}
-	if event.Lport != 0 {
+	// Inbound: use Lport unless it is itself ephemeral (= UDP response to our query).
+	if event.Lport != 0 && !isEphemeralPort(event.Lport) {
 		return event.Lport
 	}
 	return event.Rport
@@ -349,6 +397,9 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	stats.UniquePorts[trackedPort] = true
 	stats.PortCounts[trackedPort]++
 	stats.PortHits[trackedPort]++ // Track hits per port for service abuse detection
+	if comm := eventCommName(event); comm != "" {
+		stats.ProcessName = comm
+	}
 	stats.mu.Unlock()
 
 	// Analyze traffic for remediation

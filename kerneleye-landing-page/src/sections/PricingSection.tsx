@@ -25,7 +25,7 @@ const plans: Plan[] = [
       'Real-time monitoring',
       'Email alerts',
       '7-day data retention',
-      'Community support',
+      'Standard support',
     ],
     cta: 'Get started',
     featured: false,
@@ -39,11 +39,8 @@ const plans: Plan[] = [
     features: [
       'Up to 50 servers',
       'Advanced threat detection',
-      'Slack/PagerDuty alerts',
       '90-day data retention',
       'Priority support',
-      'API access',
-      'Custom rules',
     ],
     cta: 'Get started',
     featured: true,
@@ -62,7 +59,7 @@ const PricingSection = () => {
 
     // Redirect to dashboard for authenticated checkout
     // The dashboard will handle login and then proceed to checkout
-    const checkoutUrl = `${DASHBOARD_URL}/subscription/checkout?plan=${plan.planName}`;
+    const checkoutUrl = `${DASHBOARD_URL}/dashboard/subscription?plan=${plan.planName}`;
     
     // Small delay to show loading state
     setTimeout(() => {
@@ -84,11 +81,6 @@ const PricingSection = () => {
             <h2 className="heading-2 mb-md">
               Simple, <span className="text-gradient">transparent</span> pricing
             </h2>
-          </Reveal>
-          <Reveal delay={0.2}>
-            <p className="text-body text-large">
-              Sign up free with GitHub or Google. Start monitoring in minutes.
-            </p>
           </Reveal>
         </div>
 

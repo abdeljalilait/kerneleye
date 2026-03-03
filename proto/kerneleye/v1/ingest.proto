@@ -146,6 +146,10 @@ message ConnectionEvent {
   // Keys are port numbers as uint32 (proto3 map keys must be integral or string).
   map<uint32, uint64> port_bytes_in = 22;
   map<uint32, uint64> port_bytes_out = 23;
+
+  // Process name from the eBPF comm field (e.g. "sshd", "nginx", "mysqld").
+  // Used by the backend to identify the application-layer service regardless of port number.
+  string process_name = 24;
 }
 
 enum ThreatLevel {

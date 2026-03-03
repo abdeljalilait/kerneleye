@@ -4,7 +4,6 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { useAuth } from '../context/AuthContext'
 import { versionAPI } from '../api/client'
 import { useEffect, useState } from 'react'
-import logo from '../../logo_kerneleye_dark.png'
 
 const { Sider } = Layout
 
@@ -66,7 +65,7 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     >
       <div style={{ margin: collapsed ? '16px 0' : 16, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12 }}>
          <img 
-           src={logo} 
+           src="https://r2.kerneleye.net/logo_kerneleye.png" 
            alt="KernelEye" 
            style={{ height: collapsed ? 36 : 48, width: 'auto', borderRadius: 8 }} 
          />

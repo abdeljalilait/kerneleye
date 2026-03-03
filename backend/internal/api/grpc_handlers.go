@@ -281,6 +281,7 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		direction := directionLabel(event.Direction)
 
 		protocol := protocolToString(event.Protocol)
+		serviceName := resolveServiceName(event.ProcessName, int(event.DestinationPort), event.Protocol)
 
 		_, err = h.queries.UpsertTrafficEvent(ctx, database.UpsertTrafficEventParams{
 			ServerID:             server.ID,
@@ -310,6 +311,7 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 			ConnectionDurationMs: int64(event.ConnectionDurationMs),
 			PortBytesIn:          marshalPortBytes(event.PortBytesIn),
 			PortBytesOut:         marshalPortBytes(event.PortBytesOut),
+			ServiceName:          serviceName,
 		})
 
 		if err == nil {
@@ -524,8 +526,56 @@ func getServiceFromPort(port int) string {
 	case 27017:
 		return "MongoDB"
 	default:
-		return "TCP"
+		return ""
 	}
+}
+
+// processNameToService maps well-known daemon/process names to their service label.
+// This is the primary identification path — it works correctly regardless of port number.
+var processNameToService = map[string]string{
+	"sshd":          "SSH",
+	"nginx":         "HTTP",
+	"apache2":       "HTTP",
+	"httpd":         "HTTP",
+	"lighttpd":      "HTTP",
+	"caddy":         "HTTP",
+	"mysqld":        "MySQL",
+	"mariadbd":      "MySQL",
+	"postgres":      "PostgreSQL",
+	"redis-server":  "Redis",
+	"mongod":        "MongoDB",
+	"named":         "DNS",
+	"unbound":       "DNS",
+	"dnsmasq":       "DNS",
+	"vsftpd":        "FTP",
+	"proftpd":       "FTP",
+	"pure-ftpd":     "FTP",
+	"postfix":       "SMTP",
+	"sendmail":      "SMTP",
+	"dovecot":       "IMAP/POP3",
+	"xrdp":          "RDP",
+	"telnetd":       "Telnet",
+	"memcached":     "Memcached",
+	"rabbitmq":      "RabbitMQ",
+	"kafka":         "Kafka",
+	"elasticsearch": "Elasticsearch",
+}
+
+// resolveServiceName returns the application-layer service name.
+// Priority order:
+//  1. Process name from eBPF comm field (works for custom ports, e.g. sshd on 2222)
+//  2. Well-known port number lookup (fallback when process name is unavailable)
+//  3. L4 protocol string as last resort
+func resolveServiceName(processName string, port int, proto pb.Protocol) string {
+	if processName != "" {
+		if svc, ok := processNameToService[processName]; ok {
+			return svc
+		}
+	}
+	if svc := getServiceFromPort(port); svc != "" {
+		return svc
+	}
+	return protocolToString(proto)
 }
 
 func protocolToString(protocol pb.Protocol) string {

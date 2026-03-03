@@ -94,6 +94,7 @@ type IPStats struct {
 	LocalIP      string // Our server's IP (for proper source/destination)
 	FirstSeen    time.Time
 	LastSeen     time.Time
+	ProcessName  string // Most recently seen process name (from eBPF comm field)
 }
 
 // Global BPF map references — set in SetupBandwidthTracking after eBPF objects are loaded.

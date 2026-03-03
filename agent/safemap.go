@@ -35,6 +35,7 @@ type IPStatsSnapshot struct {
 	LocalIP      string
 	FirstSeen    time.Time
 	LastSeen     time.Time
+	ProcessName  string // Process name from eBPF comm field
 }
 
 // NewSafeStats creates a new SafeStats instance with default max items
@@ -189,6 +190,7 @@ func (s *SafeStats) SnapshotDeep() map[string]IPStatsSnapshot {
 			LocalIP:          stats.LocalIP,
 			FirstSeen:        stats.FirstSeen,
 			LastSeen:         stats.LastSeen,
+			ProcessName:      stats.ProcessName,
 		}
 
 		stats.mu.Unlock()

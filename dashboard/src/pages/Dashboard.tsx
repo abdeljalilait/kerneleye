@@ -182,21 +182,11 @@ export default function Dashboard() {
             borderBottom: '1px solid var(--glass-border)',
           }}
         >
-          <div 
-            style={{ 
-              width: 44, 
-              height: 44, 
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              borderRadius: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
-              flexShrink: 0,
-            }}
-          >
-            <Shield size={24} color="white" />
-          </div>
+          <img 
+            src="https://r2.kerneleye.net/logo_kerneleye.png" 
+            alt="KernelEye" 
+            style={{ height: collapsed ? 36 : 44, width: 'auto', borderRadius: 8, flexShrink: 0 }} 
+          />
           {!collapsed && (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <Text strong style={{ fontSize: 20, color: 'var(--text-primary)', lineHeight: 1.2 }}>

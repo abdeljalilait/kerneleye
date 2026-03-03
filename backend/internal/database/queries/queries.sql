@@ -95,9 +95,9 @@ INSERT INTO traffic_events (
     bytes_in, bytes_out, threat_score, threat_level, threat_type,
     first_seen, last_seen, country, country_code, city, isp, asn,
     icmp_packets_in, icmp_packets_out, connection_duration_ms,
-    port_bytes_in, port_bytes_out,
+    port_bytes_in, port_bytes_out, service_name,
     hit_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, 1)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 1)
 ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) DO UPDATE SET
     syn_count = traffic_events.syn_count + EXCLUDED.syn_count,
     ack_count = traffic_events.ack_count + EXCLUDED.ack_count,
@@ -114,6 +114,7 @@ ON CONFLICT (server_id, source_ip, destination_ip, destination_port, direction) 
     threat_score = EXCLUDED.threat_score,
     threat_level = EXCLUDED.threat_level,
     threat_type = EXCLUDED.threat_type,
+    service_name = EXCLUDED.service_name,
     last_seen = EXCLUDED.last_seen,
     hit_count = traffic_events.hit_count + 1
 RETURNING *;
@@ -203,6 +204,7 @@ WHERE server_id = $1;
 SELECT 
     destination_port,
     protocol,
+    service_name,
     COUNT(DISTINCT source_ip) as unique_ips,
     SUM(bytes_in)::bigint as total_bytes_in,
     SUM(bytes_out)::bigint as total_bytes_out,
@@ -241,7 +243,7 @@ WHERE server_id = $1
   AND ($3::text IS NULL OR $3 = '' OR threat_level = $3)
   AND ($4::timestamptz IS NULL OR last_seen >= $4)
   AND ($5::timestamptz IS NULL OR last_seen <= $5)
-GROUP BY destination_port, protocol
+GROUP BY destination_port, protocol, service_name
 ORDER BY 
     CASE WHEN $6::text = 'threat_score' THEN MAX(threat_score) END DESC,
     CASE WHEN $6::text = 'hits' THEN SUM(hit_count) END DESC,
@@ -250,8 +252,8 @@ ORDER BY
 LIMIT $7 OFFSET $8;
 
 -- name: CountPortTrafficByServer :one
--- Returns count of unique port/protocol combinations
-SELECT COUNT(DISTINCT (destination_port, protocol))::int as total_count
+-- Returns count of unique port/protocol/service combinations
+SELECT COUNT(DISTINCT (destination_port, protocol, service_name))::int as total_count
 FROM traffic_events
 WHERE server_id = $1
   AND ($2::text IS NULL OR $2 = '' OR source_ip::text ILIKE '%' || $2 || '%')

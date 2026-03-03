@@ -60,17 +60,6 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
-// intToIP converts a uint32 IP address from host byte order to net.IP
-// The eBPF code uses bpf_ntohl() to convert IPs from network byte order to host byte order.
-// On little-endian systems (x86), this means the uint32 value is in little-endian format.
-// net.IP expects bytes in network byte order (big-endian), so we use BigEndian.PutUint32
-// which writes the bytes in the correct order for display.
-func intToIP(ipNum uint32) net.IP {
-	ip := make(net.IP, 4)
-	binary.BigEndian.PutUint32(ip, ipNum)
-	return ip
-}
-
 // bytesToIP converts the 16-byte address array from the eBPF event to net.IP
 // Family: AF_INET (2) for IPv4, AF_INET6 (10) for IPv6
 func bytesToIP(addr []byte, family uint16) net.IP {

@@ -1,6 +1,6 @@
 import { useParams, Link } from '@tanstack/react-router'
 import { Typography, Card, Row, Col, Table, Tag, Spin, Alert, Button, Badge, Popconfirm, App, Tooltip, Progress, Space, Avatar, Modal, Input } from 'antd'
-import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown, ArrowDownLeft, ArrowUpRight, Flag, AlertTriangle, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, MapPin, Wifi, Users, Search, ArrowUpDown, ArrowDownLeft, ArrowUpRight, AlertTriangle, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react'
 import { CountryFlag } from '../components/CountryFlag'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerPortTraffic, useDeleteServer, useServerPortSources } from '../hooks/useQueries'
@@ -152,11 +152,22 @@ export default function ServerDetail() {
       render: (port) => <Text strong style={{ fontFamily: 'monospace', color: 'var(--primary-400)' }}>{port}</Text>,
     },
     {
-      title: 'Protocol',
-      dataIndex: 'protocol',
-      key: 'protocol',
-      width: 100,
-      render: (proto) => <Tag style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>{proto}</Tag>,
+      title: 'Service',
+      dataIndex: 'service_name',
+      key: 'service_name',
+      width: 120,
+      render: (service: string, record: PortTraffic) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Tag style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', marginBottom: 0 }}>
+            {service || record.protocol}
+          </Tag>
+          {service && service !== record.protocol && (
+            <Text style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1 }}>
+              {record.protocol}
+            </Text>
+          )}
+        </div>
+      ),
     },
     {
       title: 'Sources',
@@ -1002,7 +1013,7 @@ export default function ServerDetail() {
           <Space>
             <Users size={20} color="#3b82f6" />
             <span>
-              Source IPs for Port {selectedPortTraffic?.port}/{selectedPortTraffic?.protocol}
+              Source IPs for Port {selectedPortTraffic?.port} / {selectedPortTraffic?.service_name || selectedPortTraffic?.protocol}
             </span>
             <Badge 
               count={sourcesPagination?.total_count || selectedPortTraffic?.sources.length || 0} 

@@ -23,8 +23,6 @@ const Footer = () => {
             <ul className="footer-links">
               <li><a href="#features" className="footer-link">Features</a></li>
               <li><a href="#pricing" className="footer-link">Pricing</a></li>
-              <li><a href="#" className="footer-link">Changelog</a></li>
-              <li><a href="#" className="footer-link">Documentation</a></li>
             </ul>
           </div>
 
@@ -32,8 +30,6 @@ const Footer = () => {
             <h4 className="footer-title">Company</h4>
             <ul className="footer-links">
               <li><a href="#" className="footer-link">About</a></li>
-              <li><a href="#" className="footer-link">Blog</a></li>
-              <li><a href="#" className="footer-link">Careers</a></li>
               <li><a href="#contact" className="footer-link">Contact</a></li>
             </ul>
           </div>
@@ -43,8 +39,6 @@ const Footer = () => {
             <ul className="footer-links">
               <li><a href="/privacy" className="footer-link">Privacy</a></li>
               <li><a href="/terms" className="footer-link">Terms</a></li>
-              <li><a href="#" className="footer-link">Security</a></li>
-              <li><a href="#" className="footer-link">Cookies</a></li>
             </ul>
           </div>
         </div>

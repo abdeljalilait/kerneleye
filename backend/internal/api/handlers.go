@@ -203,6 +203,7 @@ func HandleServerStats(queries *database.Queries) fiber.Handler {
 type PortTrafficResponse struct {
 	Port           int32          `json:"port"`
 	Protocol       string         `json:"protocol"`
+	ServiceName    string         `json:"service_name"`
 	UniqueIps      int32          `json:"unique_ips"`
 	TotalBytesIn   int64          `json:"total_bytes_in"`
 	TotalBytesOut  int64          `json:"total_bytes_out"`
@@ -419,6 +420,7 @@ func HandleServerPortTraffic(queries *database.Queries) fiber.Handler {
 			items = append(items, PortTrafficResponse{
 				Port:           row.DestinationPort,
 				Protocol:       row.Protocol,
+				ServiceName:    row.ServiceName,
 				UniqueIps:      int32(row.UniqueIps),
 				TotalBytesIn:   row.TotalBytesIn,
 				TotalBytesOut:  row.TotalBytesOut,

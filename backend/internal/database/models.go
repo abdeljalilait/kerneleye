@@ -118,6 +118,13 @@ type IpStat struct {
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }
 
+type MonthlyReportsSent struct {
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	ReportMonth pgtype.Date        `json:"report_month"`
+	SentAt      pgtype.Timestamptz `json:"sent_at"`
+}
+
 // Monitored servers with agent installations
 type Server struct {
 	ID           pgtype.UUID        `json:"id"`
@@ -200,6 +207,7 @@ type TrafficEvent struct {
 	ConnectionDurationMs int64              `json:"connection_duration_ms"`
 	PortBytesIn          []byte             `json:"port_bytes_in"`
 	PortBytesOut         []byte             `json:"port_bytes_out"`
+	ServiceName          string             `json:"service_name"`
 }
 
 type TrafficEventsArchive struct {

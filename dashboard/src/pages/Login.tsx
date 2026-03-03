@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Shield, Github, Chrome } from 'lucide-react'
+import { Github, Chrome } from 'lucide-react'
 import { Button, Card, Typography, Space } from 'antd'
 import { useOAuthProviders } from '../hooks/useQueries'
 
@@ -42,11 +42,23 @@ export default function Login() {
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 80, height: 80, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', borderRadius: 20, marginBottom: 24, boxShadow: '0 8px 32px rgba(99, 102, 241, 0.4)' }}>
-            <Shield size={40} color="white" />
+          <div style={{ 
+            display: 'inline-block',
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)', 
+            padding: '24px 32px', 
+            borderRadius: 16, 
+            marginBottom: 20,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+          }}>
+            <img 
+              src="https://r2.kerneleye.net/logo_kerneleye_dark.png" 
+              alt="KernelEye" 
+              style={{ width: 180, height: 'auto', display: 'block' }}
+            />
           </div>
-          <Title level={2} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>KernelEye</Title>
-          <Text style={{ color: 'var(--text-secondary)', fontSize: 15 }}>Security Intelligence Dashboard</Text>
+          <div>
+            <Text style={{ color: 'var(--text-secondary)', fontSize: 15 }}>Security Intelligence Dashboard</Text>
+          </div>
         </div>
 
         <Card

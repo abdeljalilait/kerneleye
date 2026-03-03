@@ -30,7 +30,7 @@ type Querier interface {
 	CountBlocksToday(ctx context.Context, userID pgtype.UUID) (int64, error)
 	// Returns count of source IPs for a specific port/protocol combination
 	CountPortSourcesByServer(ctx context.Context, arg CountPortSourcesByServerParams) (int32, error)
-	// Returns count of unique port/protocol combinations
+	// Returns count of unique port/protocol/service combinations
 	CountPortTrafficByServer(ctx context.Context, arg CountPortTrafficByServerParams) (int32, error)
 	// Returns count of unique protocols
 	CountProtocolTrafficByServer(ctx context.Context, arg CountProtocolTrafficByServerParams) (int32, error)
