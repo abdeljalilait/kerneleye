@@ -25,7 +25,7 @@ func TestHistoryStorePersistAndLoadSignals(t *testing.T) {
 	base := time.Unix(1700000000, 0).UTC()
 	ip := "203.0.113.10"
 
-	err = store.PersistBucket(ip, DirInbound, scoring.IPMetrics{
+	err = store.PersistBucket(ip, DirInbound, 6, "sshd", scoring.IPMetrics{
 		SYNCount:         5,
 		ACKCount:         4,
 		FailedHandshakes: 1,
@@ -39,7 +39,7 @@ func TestHistoryStorePersistAndLoadSignals(t *testing.T) {
 		t.Fatalf("first PersistBucket failed: %v", err)
 	}
 
-	err = store.PersistBucket(ip, DirInbound, scoring.IPMetrics{
+	err = store.PersistBucket(ip, DirInbound, 6, "sshd", scoring.IPMetrics{
 		SYNCount:         6,
 		ACKCount:         6,
 		FailedHandshakes: 0,

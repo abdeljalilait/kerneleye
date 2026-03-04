@@ -758,6 +758,7 @@ SELECT
     te.threat_type,
     te.destination_port,
     te.protocol,
+    te.service_name,
     te.direction,
     te.first_seen,
     te.last_seen,
@@ -834,9 +835,10 @@ SELECT
     MAX(te.city) as city,
     MAX(te.isp) as isp,
     MAX(te.asn) as asn,
-    -- Get the most targeted port (mode) and protocol
+    -- Get the most targeted port, protocol and service name (mode)
     MODE() WITHIN GROUP (ORDER BY te.destination_port)::int as top_target_port,
-    MODE() WITHIN GROUP (ORDER BY te.protocol)::text as top_protocol
+    MODE() WITHIN GROUP (ORDER BY te.protocol)::text as top_protocol,
+    MODE() WITHIN GROUP (ORDER BY te.service_name)::text as top_service_name
 FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE te.last_seen >= $1

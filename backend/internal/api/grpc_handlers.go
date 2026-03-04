@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/geoip"
+	"github.com/kerneleye/backend/internal/services"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc/codes"
@@ -498,67 +499,7 @@ func scoringThreatType(threatType pb.ThreatType) scoring.ThreatType {
 
 // getServiceFromPort returns a service name string based on port number
 func getServiceFromPort(port int) string {
-	switch port {
-	case 22:
-		return "SSH"
-	case 80:
-		return "HTTP"
-	case 443:
-		return "HTTPS"
-	case 53:
-		return "DNS"
-	case 3306:
-		return "MySQL"
-	case 5432:
-		return "PostgreSQL"
-	case 6379:
-		return "Redis"
-	case 8080, 8000, 3000:
-		return "HTTP-Alt"
-	case 21:
-		return "FTP"
-	case 25, 587:
-		return "SMTP"
-	case 110:
-		return "POP3"
-	case 143:
-		return "IMAP"
-	case 27017:
-		return "MongoDB"
-	default:
-		return ""
-	}
-}
-
-// processNameToService maps well-known daemon/process names to their service label.
-// This is the primary identification path — it works correctly regardless of port number.
-var processNameToService = map[string]string{
-	"sshd":          "SSH",
-	"nginx":         "HTTP",
-	"apache2":       "HTTP",
-	"httpd":         "HTTP",
-	"lighttpd":      "HTTP",
-	"caddy":         "HTTP",
-	"mysqld":        "MySQL",
-	"mariadbd":      "MySQL",
-	"postgres":      "PostgreSQL",
-	"redis-server":  "Redis",
-	"mongod":        "MongoDB",
-	"named":         "DNS",
-	"unbound":       "DNS",
-	"dnsmasq":       "DNS",
-	"vsftpd":        "FTP",
-	"proftpd":       "FTP",
-	"pure-ftpd":     "FTP",
-	"postfix":       "SMTP",
-	"sendmail":      "SMTP",
-	"dovecot":       "IMAP/POP3",
-	"xrdp":          "RDP",
-	"telnetd":       "Telnet",
-	"memcached":     "Memcached",
-	"rabbitmq":      "RabbitMQ",
-	"kafka":         "Kafka",
-	"elasticsearch": "Elasticsearch",
+	return services.ServiceFromPort(port)
 }
 
 // resolveServiceName returns the application-layer service name.
@@ -567,15 +508,7 @@ var processNameToService = map[string]string{
 //  2. Well-known port number lookup (fallback when process name is unavailable)
 //  3. L4 protocol string as last resort
 func resolveServiceName(processName string, port int, proto pb.Protocol) string {
-	if processName != "" {
-		if svc, ok := processNameToService[processName]; ok {
-			return svc
-		}
-	}
-	if svc := getServiceFromPort(port); svc != "" {
-		return svc
-	}
-	return protocolToString(proto)
+	return services.ResolveService(processName, port, protocolToString(proto))
 }
 
 func protocolToString(protocol pb.Protocol) string {
@@ -721,8 +654,11 @@ func enrichContextFromHistory(
 
 	port = best.DestinationPort
 	proto = normalizeProtocolString(best.Protocol)
-	if port > 0 {
-		service = getServiceFromPort(int(port))
+	// Prefer the service name already resolved and stored in traffic_events
+	// (set by resolveServiceName at ingest time, process-aware).
+	service = best.ServiceName
+	if service == "" && port > 0 {
+		service = services.ServiceFromPort(int(port))
 	}
 	return port, service, proto
 }

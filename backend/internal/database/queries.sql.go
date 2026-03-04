@@ -845,9 +845,10 @@ SELECT
     MAX(te.city) as city,
     MAX(te.isp) as isp,
     MAX(te.asn) as asn,
-    -- Get the most targeted port (mode) and protocol
+    -- Get the most targeted port, protocol and service name (mode)
     MODE() WITHIN GROUP (ORDER BY te.destination_port)::int as top_target_port,
-    MODE() WITHIN GROUP (ORDER BY te.protocol)::text as top_protocol
+    MODE() WITHIN GROUP (ORDER BY te.protocol)::text as top_protocol,
+    MODE() WITHIN GROUP (ORDER BY te.service_name)::text as top_service_name
 FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE te.last_seen >= $1
@@ -863,26 +864,27 @@ type GetBlockableIPsParams struct {
 }
 
 type GetBlockableIPsRow struct {
-	SourceIp      netip.Addr  `json:"source_ip"`
-	ServerID      pgtype.UUID `json:"server_id"`
-	ServerName    string      `json:"server_name"`
-	UserID        pgtype.UUID `json:"user_id"`
-	ThreatScore   int32       `json:"threat_score"`
-	ThreatLevel   string      `json:"threat_level"`
-	ThreatType    string      `json:"threat_type"`
-	TotalSyn      int64       `json:"total_syn"`
-	TotalAck      int64       `json:"total_ack"`
-	TotalFailed   int64       `json:"total_failed"`
-	UniquePorts   int32       `json:"unique_ports"`
-	ServerCount   int32       `json:"server_count"`
-	LastSeen      interface{} `json:"last_seen"`
-	Country       interface{} `json:"country"`
-	CountryCode   interface{} `json:"country_code"`
-	City          interface{} `json:"city"`
-	Isp           interface{} `json:"isp"`
-	Asn           interface{} `json:"asn"`
-	TopTargetPort int32       `json:"top_target_port"`
-	TopProtocol   string      `json:"top_protocol"`
+	SourceIp       netip.Addr  `json:"source_ip"`
+	ServerID       pgtype.UUID `json:"server_id"`
+	ServerName     string      `json:"server_name"`
+	UserID         pgtype.UUID `json:"user_id"`
+	ThreatScore    int32       `json:"threat_score"`
+	ThreatLevel    string      `json:"threat_level"`
+	ThreatType     string      `json:"threat_type"`
+	TotalSyn       int64       `json:"total_syn"`
+	TotalAck       int64       `json:"total_ack"`
+	TotalFailed    int64       `json:"total_failed"`
+	UniquePorts    int32       `json:"unique_ports"`
+	ServerCount    int32       `json:"server_count"`
+	LastSeen       interface{} `json:"last_seen"`
+	Country        interface{} `json:"country"`
+	CountryCode    interface{} `json:"country_code"`
+	City           interface{} `json:"city"`
+	Isp            interface{} `json:"isp"`
+	Asn            interface{} `json:"asn"`
+	TopTargetPort  int32       `json:"top_target_port"`
+	TopProtocol    string      `json:"top_protocol"`
+	TopServiceName string      `json:"top_service_name"`
 }
 
 // Gets IPs that exceed the scoring threshold for potential blocking
@@ -917,6 +919,7 @@ func (q *Queries) GetBlockableIPs(ctx context.Context, arg GetBlockableIPsParams
 			&i.Asn,
 			&i.TopTargetPort,
 			&i.TopProtocol,
+			&i.TopServiceName,
 		); err != nil {
 			return nil, err
 		}
@@ -1202,6 +1205,7 @@ SELECT
     te.threat_type,
     te.destination_port,
     te.protocol,
+    te.service_name,
     te.direction,
     te.first_seen,
     te.last_seen,
@@ -1235,6 +1239,7 @@ type GetIPTrafficHistoryRow struct {
 	ThreatType       pgtype.Text        `json:"threat_type"`
 	DestinationPort  int32              `json:"destination_port"`
 	Protocol         string             `json:"protocol"`
+	ServiceName      string             `json:"service_name"`
 	Direction        string             `json:"direction"`
 	FirstSeen        pgtype.Timestamptz `json:"first_seen"`
 	LastSeen         pgtype.Timestamptz `json:"last_seen"`
@@ -1266,6 +1271,7 @@ func (q *Queries) GetIPTrafficHistory(ctx context.Context, arg GetIPTrafficHisto
 			&i.ThreatType,
 			&i.DestinationPort,
 			&i.Protocol,
+			&i.ServiceName,
 			&i.Direction,
 			&i.FirstSeen,
 			&i.LastSeen,

@@ -755,6 +755,50 @@ func (r *XDPRemediator) ListCurrentlyBlocked() ([]BlockedEntry, error) {
 	return entries, nil
 }
 
+// FlushBlocklistMaps removes all entries from the XDP blocklist BPF maps.
+// Works both on a live (attached) remediator and standalone (opens pinned maps
+// from /sys/fs/bpf/kerneleye). This is what --flush-blocklists uses.
+func (r *XDPRemediator) FlushBlocklistMaps() error {
+	v4Map, v6Map, cleanup, err := r.openBlocklistMaps()
+	if err != nil {
+		return fmt.Errorf("open XDP blocklist maps: %w", err)
+	}
+	defer cleanup()
+
+	// Collect then delete — cannot delete while iterating.
+	var v4Keys []uint32
+	var k4 uint32
+	var v4val blockEntry
+	iter4 := v4Map.Iterate()
+	for iter4.Next(&k4, &v4val) {
+		v4Keys = append(v4Keys, k4)
+	}
+	if err := iter4.Err(); err != nil {
+		return fmt.Errorf("iterating xdp_blocklist: %w", err)
+	}
+	for _, k := range v4Keys {
+		_ = v4Map.Delete(k)
+	}
+
+	var v6Keys [][16]byte
+	var k6 [16]byte
+	var v6val blockEntry
+	iter6 := v6Map.Iterate()
+	for iter6.Next(&k6, &v6val) {
+		v6Keys = append(v6Keys, k6)
+	}
+	if err := iter6.Err(); err != nil {
+		return fmt.Errorf("iterating xdp_blocklist_v6: %w", err)
+	}
+	for _, k := range v6Keys {
+		_ = v6Map.Delete(k)
+	}
+
+	logger.Infof("🧹 XDP blocklist flushed (%d IPv4, %d IPv6 entries removed)",
+		len(v4Keys), len(v6Keys))
+	return nil
+}
+
 // openBlocklistMaps returns references to xdp_blocklist and xdp_blocklist_v6.
 // If the remediator is attached and live, the existing map handles are returned
 // directly (no-op cleanup). Otherwise, the pinned maps are opened from the BPF

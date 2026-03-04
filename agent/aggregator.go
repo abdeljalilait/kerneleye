@@ -400,6 +400,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	if comm := eventCommName(event); comm != "" {
 		stats.ProcessName = comm
 	}
+	processName := stats.ProcessName
 	stats.mu.Unlock()
 
 	// Analyze traffic for remediation
@@ -417,12 +418,14 @@ func (a *Aggregator) ProcessEvent(event Event) {
 				if err := a.remediator.Block(decision.IP, decision.Duration); err != nil {
 					Logger.Errorf("❌ Failed to block IP %s: %v", decision.IP, err)
 				}
-				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionBlock, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol)
+				svcName := resolveAgentService(processName, decision.DestPort, decision.Protocol)
+				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionBlock, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol, svcName)
 			case remediation.ActionRateLimit:
 				if err := a.remediator.RateLimit(decision.IP, decision.Duration); err != nil {
 					Logger.Errorf("❌ Failed to rate-limit IP %s: %v", decision.IP, err)
 				}
-				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionRateLimit, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol)
+				svcName := resolveAgentService(processName, decision.DestPort, decision.Protocol)
+				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionRateLimit, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol, svcName)
 			}
 		}
 	}
@@ -680,13 +683,13 @@ func (a *Aggregator) GetStats() map[string]*IPStats {
 	return a.stats.Snapshot()
 }
 
-// GetPrimaryPortForIP returns the most frequently targeted port and its
-// protocol for a given IP address, as recorded in the current stats window.
-// Returns (0, 6) when the IP is unknown (fall back to no-port reporting).
-func (a *Aggregator) GetPrimaryPortForIP(ip string) (port uint16, protocol uint8) {
+// GetPrimaryPortForIP returns the most frequently targeted port, its protocol,
+// and the process name for a given IP address, as recorded in the current stats window.
+// Returns (0, 6, "") when the IP is unknown (fall back to no-port reporting).
+func (a *Aggregator) GetPrimaryPortForIP(ip string) (port uint16, protocol uint8, processName string) {
 	stats, ok := a.stats.Get(ip)
 	if !ok {
-		return 0, 6
+		return 0, 6, ""
 	}
 	stats.mu.Lock()
 	defer stats.mu.Unlock()
@@ -697,7 +700,76 @@ func (a *Aggregator) GetPrimaryPortForIP(ip string) (port uint16, protocol uint8
 			port = p
 		}
 	}
-	return port, stats.Protocol
+	return port, stats.Protocol, stats.ProcessName
+}
+
+// resolveAgentService derives the service name from process name and/or port/protocol.
+// Mirrors the logic in backend/internal/services for consistent block reporting.
+func resolveAgentService(processName string, port uint16, protocol uint8) string {
+	processToService := map[string]string{
+		"nginx":      "nginx",
+		"apache2":    "apache",
+		"httpd":      "apache",
+		"sshd":       "ssh",
+		"mysqld":     "mysql",
+		"postgres":   "postgresql",
+		"redis-serv": "redis",
+		"mongod":     "mongodb",
+		"vsftpd":     "ftp",
+		"proftpd":    "ftp",
+		"postfix":    "smtp",
+		"dovecot":    "imap",
+		"named":      "dns",
+		"dnsmasq":    "dns",
+		"openvpn":    "vpn",
+	}
+	if processName != "" {
+		lp := strings.ToLower(processName)
+		if svc, ok := processToService[lp]; ok {
+			return svc
+		}
+		for proc, svc := range processToService {
+			if strings.HasPrefix(lp, proc) || strings.HasPrefix(proc, lp) {
+				return svc
+			}
+		}
+	}
+	portToService := map[uint16]string{
+		22:    "ssh",
+		80:    "http",
+		443:   "https",
+		53:    "dns",
+		3306:  "mysql",
+		5432:  "postgresql",
+		6379:  "redis",
+		27017: "mongodb",
+		21:    "ftp",
+		23:    "telnet",
+		3389:  "rdp",
+		587:   "smtp",
+		110:   "pop3",
+		143:   "imap",
+		8080:  "http-alt",
+		8000:  "http-alt",
+		3000:  "http-dev",
+		993:   "imaps",
+		995:   "pop3s",
+		25:    "smtp",
+		67:    "dhcp",
+		68:    "dhcp",
+		161:   "snmp",
+		389:   "ldap",
+		636:   "ldaps",
+		1194:  "openvpn",
+		8443:  "https-alt",
+	}
+	if svc, ok := portToService[port]; ok {
+		return svc
+	}
+	if protocol == 17 {
+		return "udp"
+	}
+	return ""
 }
 
 // ReportBlockedPacket sends a blocked packet event to the backend via gRPC
@@ -813,71 +885,74 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 	Logger.Errorf("❌ Failed to report blocked IP %s after 3 attempts: %v", ip, err)
 }
 
-// SyncIPSetToBackend reports any IP currently in the local ipset that the backend
-// doesn't already know about. Called once on startup so IPs that survived a restart
-// (via Restore()) appear in the dashboard without waiting for a new block event.
-func (a *Aggregator) SyncIPSetToBackend(ipsetRem *remediation.IPSetRemediator) {
-	if ipsetRem == nil {
-		return
-	}
-	entries, err := ipsetRem.ListCurrentlyBlocked()
-	if err != nil {
-		Logger.Warnf("⚠️  SyncIPSetToBackend: failed to read ipset: %v", err)
-		return
-	}
-	if len(entries) == 0 {
-		Logger.Info("📋 SyncIPSetToBackend: ipset is empty, nothing to sync")
-		return
-	}
-	Logger.Infof("📋 SyncIPSetToBackend: syncing %d locally-blocked IPs to backend", len(entries))
+// SyncBlocklistsToBackend reports all currently-blocked IPs (ipset + XDP) to the
+// backend exactly once per IP, deduplicating across both sources. XDP entries are
+// preferred when an IP appears in both (XDP is the active enforcement layer).
+// Called once on startup so IPs that survived a restart appear in the dashboard
+// immediately without waiting for a new block event.
+func (a *Aggregator) SyncBlocklistsToBackend(ipsetRem *remediation.IPSetRemediator, xdpRem *remediation.XDPRemediator) {
+	reported := make(map[string]bool)
 	now := time.Now()
-	for _, e := range entries {
-		action := remediation.ActionBlock
-		reason := "ipset_block"
-		if e.BlockType == remediation.BlockTypeRateLimit {
-			action = remediation.ActionRateLimit
-			reason = "ipset_ratelimit"
-		}
-		port, proto := a.history.GetContext(e.IP.String(), 0, now)
-		if port > 0 {
-			a.ReportBlockedIPWithContext(e.IP, action, reason, 0, port, proto)
-		} else {
-			a.ReportBlockedIP(e.IP, action, reason, 0)
+
+	// --- XDP first (preferred source when active) ---
+	if xdpRem != nil {
+		entries, err := xdpRem.ListCurrentlyBlocked()
+		if err != nil {
+			Logger.Warnf("⚠️  SyncBlocklistsToBackend: failed to read XDP maps: %v", err)
+		} else if len(entries) > 0 {
+			Logger.Infof("📋 SyncBlocklistsToBackend: %d XDP-blocked IPs", len(entries))
+			for _, e := range entries {
+				ipStr := e.IP.String()
+				if reported[ipStr] {
+					continue
+				}
+				reported[ipStr] = true
+				port, proto, procName := a.history.GetContext(ipStr, 0, now)
+				if port > 0 {
+					svcName := resolveAgentService(procName, port, proto)
+					a.ReportBlockedIPWithContext(e.IP, remediation.ActionBlock, "xdp_block", 0, port, proto, svcName)
+				} else {
+					a.ReportBlockedIP(e.IP, remediation.ActionBlock, "xdp_block", 0)
+				}
+			}
 		}
 	}
-	Logger.Infof("✅ SyncIPSetToBackend: sync complete")
+
+	// --- ipset second (skip IPs already reported from XDP) ---
+	if ipsetRem != nil {
+		entries, err := ipsetRem.ListCurrentlyBlocked()
+		if err != nil {
+			Logger.Warnf("⚠️  SyncBlocklistsToBackend: failed to read ipset: %v", err)
+		} else if len(entries) > 0 {
+			Logger.Infof("📋 SyncBlocklistsToBackend: %d ipset-blocked IPs", len(entries))
+			for _, e := range entries {
+				ipStr := e.IP.String()
+				if reported[ipStr] {
+					continue
+				}
+				reported[ipStr] = true
+				action := remediation.ActionBlock
+				reason := "ipset_block"
+				if e.BlockType == remediation.BlockTypeRateLimit {
+					action = remediation.ActionRateLimit
+					reason = "ipset_ratelimit"
+				}
+				port, proto, procName := a.history.GetContext(ipStr, 0, now)
+				if port > 0 {
+					svcName := resolveAgentService(procName, port, proto)
+					a.ReportBlockedIPWithContext(e.IP, action, reason, 0, port, proto, svcName)
+				} else {
+					a.ReportBlockedIP(e.IP, action, reason, 0)
+				}
+			}
+		}
+	}
+
+	Logger.Infof("✅ SyncBlocklistsToBackend: reported %d unique blocked IPs", len(reported))
 }
 
-// SyncXDPToBackend reports IPs currently in the XDP blocklist BPF maps to the
-// backend so the dashboard reflects kernel-level XDP state on startup.
-func (a *Aggregator) SyncXDPToBackend(xdpRem *remediation.XDPRemediator) {
-	if xdpRem == nil {
-		return
-	}
-	entries, err := xdpRem.ListCurrentlyBlocked()
-	if err != nil {
-		Logger.Warnf("⚠️  SyncXDPToBackend: failed to read XDP maps: %v", err)
-		return
-	}
-	if len(entries) == 0 {
-		Logger.Info("📋 SyncXDPToBackend: XDP blocklist is empty, nothing to sync")
-		return
-	}
-	Logger.Infof("📋 SyncXDPToBackend: syncing %d XDP-blocked IPs to backend", len(entries))
-	now := time.Now()
-	for _, e := range entries {
-		port, proto := a.history.GetContext(e.IP.String(), 0, now)
-		if port > 0 {
-			a.ReportBlockedIPWithContext(e.IP, remediation.ActionBlock, "xdp_block", 0, port, proto)
-		} else {
-			a.ReportBlockedIP(e.IP, remediation.ActionBlock, "xdp_block", 0)
-		}
-	}
-	Logger.Infof("✅ SyncXDPToBackend: sync complete")
-}
-
-// ReportBlockedIPWithContext sends a blocked IP event with port/protocol context
-func (a *Aggregator) ReportBlockedIPWithContext(ip net.IP, action remediation.Action, reason string, duration time.Duration, targetPort uint16, protocol uint8) {
+// ReportBlockedIPWithContext sends a blocked IP event with port/protocol/service context
+func (a *Aggregator) ReportBlockedIPWithContext(ip net.IP, action remediation.Action, reason string, duration time.Duration, targetPort uint16, protocol uint8, serviceName string) {
 	var blockAction pb.BlockAction
 	switch action {
 	case remediation.ActionBlock:
@@ -910,6 +985,7 @@ func (a *Aggregator) ReportBlockedIPWithContext(ip net.IP, action remediation.Ac
 		Reason:          reason,
 		TargetPort:      uint32(targetPort),
 		Protocol:        proto,
+		ServiceName:     serviceName,
 		AgentVersion:    a.agentVersion,
 	}
 

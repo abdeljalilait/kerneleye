@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
+	"github.com/kerneleye/backend/internal/services"
 )
 
 type BlockManagerConfig struct {
@@ -362,8 +363,12 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 	// Parse ASN from text to int
 	asnInt := parseASN(row.Asn)
 
-	// Get service name from top target port
-	serviceName := getServiceName(int(row.TopTargetPort))
+	// Get service name: prefer the process-aware value already stored in
+	// traffic_events, fall back to port-based lookup for older/empty rows.
+	serviceName := row.TopServiceName
+	if serviceName == "" {
+		serviceName = services.ServiceFromPort(int(row.TopTargetPort))
+	}
 
 	// Convert interface{} geo fields to proper pgtype
 	countryCode := toPgText(row.CountryCode)
@@ -538,7 +543,7 @@ func (bm *BlockManager) buildBlockReasons(row database.GetBlockableIPsRow) []str
 		}
 	case "service_abuse":
 		if row.TopTargetPort > 0 {
-			reasons = append(reasons, fmt.Sprintf("Target port: %d (%s)", row.TopTargetPort, getServiceName(int(row.TopTargetPort))))
+			reasons = append(reasons, fmt.Sprintf("Target port: %d (%s)", row.TopTargetPort, services.ServiceFromPort(int(row.TopTargetPort))))
 		}
 	case "failed_handshake":
 		if row.TotalFailed > 0 {
@@ -604,39 +609,4 @@ func toPgText(v interface{}) pgtype.Text {
 		}
 		return pgtype.Text{String: str, Valid: true}
 	}
-}
-
-// getServiceName returns the service name for a given port
-func getServiceName(port int) string {
-	services := map[int]string{
-		22:    "SSH",
-		80:    "HTTP",
-		443:   "HTTPS",
-		25:    "SMTP",
-		3306:  "MySQL",
-		5432:  "PostgreSQL",
-		6379:  "Redis",
-		27017: "MongoDB",
-		21:    "FTP",
-		23:    "Telnet",
-		3389:  "RDP",
-		587:   "SMTP",
-		110:   "POP3",
-		143:   "IMAP",
-		53:    "DNS",
-		67:    "DHCP",
-		68:    "DHCP",
-		161:   "SNMP",
-		389:   "LDAP",
-		636:   "LDAPS",
-		993:   "IMAPS",
-		995:   "POP3S",
-		1194:  "OpenVPN",
-		8080:  "HTTP-Proxy",
-		8443:  "HTTPS-Alt",
-	}
-	if name, ok := services[port]; ok {
-		return name
-	}
-	return ""
 }

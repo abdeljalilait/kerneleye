@@ -384,7 +384,7 @@ func (a *Aggregator) calculateScoreContexts(snapshot map[string]IPStatsSnapshot,
 		}
 
 		if a.history != nil {
-			if err := a.history.PersistBucket(ip, stats.Direction, metrics, score, now); err != nil {
+			if err := a.history.PersistBucket(ip, stats.Direction, stats.Protocol, stats.ProcessName, metrics, score, now); err != nil {
 				Logger.Warnf("⚠️  Failed to persist history bucket for %s: %v", ip, err)
 			}
 		}

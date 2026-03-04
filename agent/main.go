@@ -63,6 +63,11 @@ func main() {
 		clearDataAndExit()
 	}
 
+	// -flush-blocklists: flush ipset and XDP kernel structures and exit
+	if cfg.FlushBlocklists {
+		flushBlocklistsAndExit()
+	}
+
 	// Print banner immediately to show version on startup
 	printBanner(cfg)
 
@@ -164,9 +169,10 @@ func main() {
 		remediator.OnBlock = func(ip net.IP, action remediation.Action, reason string, duration time.Duration) {
 			// Look up the primary targeted port for this IP from live stats.
 			// This gives "Service Targeted" / port context in the blocked-IPs table.
-			port, proto := aggregator.GetPrimaryPortForIP(ip.String())
+			port, proto, procName := aggregator.GetPrimaryPortForIP(ip.String())
 			if port > 0 {
-				aggregator.ReportBlockedIPWithContext(ip, action, reason, duration, port, proto)
+				svcName := resolveAgentService(procName, port, proto)
+				aggregator.ReportBlockedIPWithContext(ip, action, reason, duration, port, proto, svcName)
 			} else {
 				aggregator.ReportBlockedIP(ip, action, reason, duration)
 			}
@@ -244,8 +250,8 @@ func main() {
 
 				// Report any IPs already in ipset/XDP (from previous run) to the backend
 				// so the dashboard reflects actual kernel-level state immediately.
-				go aggregator.SyncIPSetToBackend(remediator.GetIPSetRemediator())
-				go aggregator.SyncXDPToBackend(remediator.GetXDPRemediator())
+				// Both sources are deduplicated in a single pass (XDP preferred).
+				go aggregator.SyncBlocklistsToBackend(remediator.GetIPSetRemediator(), remediator.GetXDPRemediator())
 
 				// Start periodic reconcile every 1 minute.
 				// The goroutine exits when blockCtx is cancelled (at shutdown start).
@@ -356,6 +362,37 @@ func printVersion() {
 	fmt.Printf("  Build Date: %s\n", BuildDate)
 	fmt.Printf("  Built By:   %s@%s\n", BuildUser, BuildHost)
 	fmt.Printf("  Go Version: %s\n", GoVersion)
+}
+
+// flushBlocklistsAndExit tears down all ipset and XDP blocklists (kernel
+// structures), prints a summary, then exits. Does NOT touch SQLite stores.
+// Safe to run while the agent is stopped.
+func flushBlocklistsAndExit() {
+	ipsetOK := true
+	xdpOK := true
+
+	// --- ipset ---
+	ipsetRem := remediation.NewIPSetRemediator()
+	if err := ipsetRem.Teardown(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌  ipset flush failed: %v\n", err)
+		ipsetOK = false
+	} else {
+		fmt.Println("✅  Flushed ipset blocklists (kernel_eye_block, kernel_eye_ratelimit, CIDR sets, iptables chain)")
+	}
+
+	// --- XDP BPF maps ---
+	xdpRem := remediation.NewXDPRemediator("")
+	if err := xdpRem.FlushBlocklistMaps(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌  XDP flush failed: %v\n", err)
+		xdpOK = false
+	} else {
+		fmt.Println("✅  Flushed XDP blocklists (xdp_blocklist, xdp_blocklist_v6 BPF maps)")
+	}
+
+	if !ipsetOK || !xdpOK {
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // clearDataAndExit deletes all local data stores used by the agent, prints a
