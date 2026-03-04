@@ -853,6 +853,7 @@ SELECT
     city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
     blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
     unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    enforcement_type,
     created_at, updated_at
 FROM blocks
 WHERE server_id = $1
@@ -861,17 +862,19 @@ WHERE server_id = $1
 ORDER BY blocked_at DESC;
 
 -- name: GetAllActiveBlocks :many
--- Gets all active blocks across all servers (for BlockManager state recovery)
+-- Gets all active blocks across all servers (for BlockManager state recovery).
+-- Includes permanent blocks (expires_at IS NULL) which have no expiry.
 SELECT 
     id, server_id, user_id, ip_address, ip_version, threat_score, threat_level,
     reasons, target_port, service_name, protocol, country_code, country_name,
     city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
     blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
     unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    enforcement_type,
     created_at, updated_at
 FROM blocks
 WHERE is_active = true
-  AND expires_at > NOW()
+  AND (expires_at > NOW() OR expires_at IS NULL)
 ORDER BY blocked_at DESC;
 
 

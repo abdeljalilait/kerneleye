@@ -26,19 +26,6 @@ type Alert struct {
 	ResolvedAt     pgtype.Timestamptz `json:"resolved_at"`
 }
 
-// User action audit trail
-type AuditLog struct {
-	ID           pgtype.UUID        `json:"id"`
-	UserID       pgtype.UUID        `json:"user_id"`
-	Action       string             `json:"action"`
-	ResourceType pgtype.Text        `json:"resource_type"`
-	ResourceID   pgtype.UUID        `json:"resource_id"`
-	Metadata     []byte             `json:"metadata"`
-	IpAddress    *netip.Addr        `json:"ip_address"`
-	UserAgent    pgtype.Text        `json:"user_agent"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-}
-
 // IP blocks reported by agents with threat details and GeoIP
 type Block struct {
 	ID          pgtype.UUID `json:"id"`
@@ -78,6 +65,7 @@ type Block struct {
 	RawMetrics      []byte             `json:"raw_metrics"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	EnforcementType string             `json:"enforcement_type"`
 }
 
 type BlockStatsDaily struct {
@@ -94,28 +82,6 @@ type BlockStatsDaily struct {
 	HttpsAttacks    int64       `json:"https_attacks"`
 	AvgScore        float64     `json:"avg_score"`
 	MaxScore        interface{} `json:"max_score"`
-}
-
-// Daily aggregated statistics per IP address
-type IpStat struct {
-	ID                    pgtype.UUID        `json:"id"`
-	ServerID              pgtype.UUID        `json:"server_id"`
-	SourceIp              netip.Addr         `json:"source_ip"`
-	Date                  pgtype.Date        `json:"date"`
-	TotalConnections      int32              `json:"total_connections"`
-	TotalSyn              int32              `json:"total_syn"`
-	TotalAck              int32              `json:"total_ack"`
-	TotalFailedHandshakes int32              `json:"total_failed_handshakes"`
-	MaxThreatScore        int32              `json:"max_threat_score"`
-	UniquePortsCount      int32              `json:"unique_ports_count"`
-	TotalBytesIn          int64              `json:"total_bytes_in"`
-	TotalBytesOut         int64              `json:"total_bytes_out"`
-	CountryCode           pgtype.Text        `json:"country_code"`
-	City                  pgtype.Text        `json:"city"`
-	Asn                   pgtype.Int4        `json:"asn"`
-	AsnOrg                pgtype.Text        `json:"asn_org"`
-	CreatedAt             pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }
 
 type MonthlyReportsSent struct {

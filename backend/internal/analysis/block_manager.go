@@ -38,17 +38,35 @@ type BlockManager struct {
 	wg           sync.WaitGroup
 }
 
+// EnforcementType defines what action is taken against a threat IP.
+type EnforcementType string
+
+const (
+	EnforcementRateLimit EnforcementType = "ratelimit"
+	EnforcementBlock     EnforcementType = "block"
+	EnforcementPermanent EnforcementType = "permanent"
+)
+
+// EnforcementDecision is the output of the escalation engine.
+type EnforcementDecision struct {
+	Type        EnforcementType
+	Duration    time.Duration // 0 = permanent
+	ThreatLevel string
+	Escalation  string // human-readable reason for escalation, for logging
+}
+
 type ActiveBlock struct {
-	IP          string
-	ServerID    pgtype.UUID
-	UserID      pgtype.UUID
-	Score       int
-	Reason      string
-	Duration    time.Duration
-	BlockedAt   time.Time
-	ExpiresAt   time.Time
-	IsPermanent bool
-	AgentToken  string
+	IP              string
+	ServerID        pgtype.UUID
+	UserID          pgtype.UUID
+	Score           int
+	Reason          string
+	EnforcementType EnforcementType
+	Duration        time.Duration
+	BlockedAt       time.Time
+	ExpiresAt       time.Time
+	IsPermanent     bool
+	AgentToken      string
 }
 
 func NewBlockManager(cfg BlockManagerConfig, queries *database.Queries, hub interface {
@@ -105,15 +123,16 @@ func (bm *BlockManager) loadActiveBlocks(ctx context.Context) {
 		}
 
 		bm.activeBlocks[ipStr] = &ActiveBlock{
-			IP:          ipStr,
-			ServerID:    block.ServerID,
-			UserID:      block.UserID,
-			Score:       int(block.ThreatScore),
-			Reason:      strings.Join(block.Reasons, ", "),
-			Duration:    time.Duration(block.DurationSeconds) * time.Second,
-			BlockedAt:   block.BlockedAt.Time,
-			ExpiresAt:   expires,
-			IsPermanent: isPermanent,
+			IP:              ipStr,
+			ServerID:        block.ServerID,
+			UserID:          block.UserID,
+			Score:           int(block.ThreatScore),
+			Reason:          strings.Join(block.Reasons, ", "),
+			EnforcementType: EnforcementType(block.EnforcementType),
+			Duration:        time.Duration(block.DurationSeconds) * time.Second,
+			BlockedAt:       block.BlockedAt.Time,
+			ExpiresAt:       expires,
+			IsPermanent:     isPermanent,
 		}
 	}
 
@@ -220,36 +239,119 @@ func (bm *BlockManager) evaluateAndBlock(ctx context.Context) {
 	}
 }
 
-func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockableIPsRow) {
-	ipStr := row.SourceIp.String()
-	
-	// Determine if this should be a permanent block based on threat level
-	// malicious/critical = permanent block (no expiry)
-	// suspicious/normal = temporary block with duration
-	var duration time.Duration
-	var expiresAt time.Time
-	var expiresAtPg pgtype.Timestamptz
-	
-	threatLevel := strings.ToLower(row.ThreatLevel)
-	if threatLevel == "malicious" || threatLevel == "critical" {
-		// Permanent block - no expiration
-		duration = 0
-		expiresAtPg = pgtype.Timestamptz{Valid: false}
-	} else {
-		// Temporary block with duration based on score
-		duration = bm.config.BaseBlockDuration
-		if row.ThreatScore > 80 {
-			duration = duration * 2
+// determineEnforcement queries the IP's full history and applies the escalation
+// matrix to return a decisive enforcement action.
+func (bm *BlockManager) determineEnforcement(ctx context.Context, row database.GetBlockableIPsRow) EnforcementDecision {
+	score := int(row.ThreatScore)
+
+	// Score 90-100: always permanent regardless of history
+	if score >= 90 {
+		return EnforcementDecision{
+			Type:        EnforcementPermanent,
+			Duration:    0,
+			ThreatLevel: "malicious",
+			Escalation:  "score >= 90 → permanent",
 		}
-		if duration > bm.config.MaxBlockDuration {
-			duration = bm.config.MaxBlockDuration
-		}
-		expiresAt = time.Now().Add(duration)
-		expiresAtPg = database.ToPgTimestamptz(expiresAt)
 	}
 
-	// Build detailed reasons based on threat type and traffic metrics
+	// Look up prior enforcement history for this IP
+	history, err := bm.queries.GetIPEnforcementHistory(ctx, database.GetIPEnforcementHistoryParams{
+		UserID:    row.UserID,
+		IpAddress: row.SourceIp,
+	})
+	if err != nil {
+		// On DB error fall back to conservative block
+		log.Printf("[BlockManager] Failed to fetch enforcement history for %s: %v — using conservative default", row.SourceIp.String(), err)
+		return EnforcementDecision{
+			Type:        EnforcementBlock,
+			Duration:    bm.config.BaseBlockDuration,
+			ThreatLevel: strings.ToLower(row.ThreatLevel),
+			Escalation:  "history lookup failed",
+		}
+	}
+
+	blockCount := int(history.BlockCount)
+	ratelimitCount := int(history.RatelimitCount)
+	permanentCount := int(history.PermanentCount)
+
+	// Any recorded permanent or the IP was already promoted to malicious → stay permanent
+	if permanentCount > 0 {
+		return EnforcementDecision{
+			Type:        EnforcementPermanent,
+			Duration:    0,
+			ThreatLevel: "malicious",
+			Escalation:  fmt.Sprintf("previously permanent (%d records) → permanent", permanentCount),
+		}
+	}
+
+	switch {
+	// Score 70–89: fast escalation path
+	case score >= 70:
+		switch {
+		case blockCount >= 2:
+			return EnforcementDecision{Type: EnforcementPermanent, Duration: 0, ThreatLevel: "malicious",
+				Escalation: fmt.Sprintf("score %d + %d prior blocks ≥ 2 → permanent", score, blockCount)}
+		case blockCount == 1:
+			return EnforcementDecision{Type: EnforcementBlock, Duration: 24 * time.Hour, ThreatLevel: "malicious",
+				Escalation: fmt.Sprintf("score %d + 1 prior block → 24h block", score)}
+		default:
+			return EnforcementDecision{Type: EnforcementBlock, Duration: 6 * time.Hour, ThreatLevel: "malicious",
+				Escalation: fmt.Sprintf("score %d, first offense → 6h block", score)}
+		}
+
+	// Score 50–69: moderate escalation path
+	case score >= 50:
+		switch {
+		case blockCount >= 3:
+			return EnforcementDecision{Type: EnforcementPermanent, Duration: 0, ThreatLevel: "malicious",
+				Escalation: fmt.Sprintf("score %d + %d prior blocks ≥ 3 → permanent", score, blockCount)}
+		case blockCount == 2:
+			return EnforcementDecision{Type: EnforcementBlock, Duration: 24 * time.Hour, ThreatLevel: "malicious",
+				Escalation: fmt.Sprintf("score %d + 2 prior blocks → 24h block", score)}
+		case blockCount == 1:
+			return EnforcementDecision{Type: EnforcementBlock, Duration: 6 * time.Hour, ThreatLevel: "suspicious",
+				Escalation: fmt.Sprintf("score %d + 1 prior block → 6h block", score)}
+		default:
+			return EnforcementDecision{Type: EnforcementBlock, Duration: bm.config.BaseBlockDuration, ThreatLevel: "suspicious",
+				Escalation: fmt.Sprintf("score %d, first offense → %v block", score, bm.config.BaseBlockDuration)}
+		}
+
+	// Score 30–49 (suspicious, below block threshold but still actionable)
+	default:
+		switch {
+		case blockCount >= 1 || ratelimitCount >= 2:
+			return EnforcementDecision{Type: EnforcementBlock, Duration: 2 * time.Hour, ThreatLevel: "suspicious",
+				Escalation: fmt.Sprintf("score %d + history (blocks=%d rl=%d) → escalated to 2h block", score, blockCount, ratelimitCount)}
+		case ratelimitCount == 1:
+			return EnforcementDecision{Type: EnforcementRateLimit, Duration: time.Hour, ThreatLevel: "suspicious",
+				Escalation: fmt.Sprintf("score %d + 1 prior ratelimit → 1h ratelimit", score)}
+		default:
+			return EnforcementDecision{Type: EnforcementRateLimit, Duration: 30 * time.Minute, ThreatLevel: "suspicious",
+				Escalation: fmt.Sprintf("score %d, first offense → 30min ratelimit", score)}
+		}
+	}
+}
+
+func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockableIPsRow) {
+	ipStr := row.SourceIp.String()
+
+	// Determine enforcement type, duration, and threat level via escalation matrix
+	decision := bm.determineEnforcement(ctx, row)
+	log.Printf("[BlockManager] Enforcement decision for %s (score=%d): %s — %s",
+		ipStr, row.ThreatScore, decision.Type, decision.Escalation)
+
+	var expiresAt time.Time
+	var expiresAtPg pgtype.Timestamptz
+	if decision.Duration > 0 {
+		expiresAt = time.Now().Add(decision.Duration)
+		expiresAtPg = database.ToPgTimestamptz(expiresAt)
+	} // else Valid=false → permanent (NULL in DB)
+
+	// Build detailed reasons
 	reasons := bm.buildBlockReasons(row)
+	if decision.Escalation != "" {
+		reasons = append(reasons, "Escalation: "+decision.Escalation)
+	}
 
 	// Determine IP version
 	ipVersion := int32(4)
@@ -257,9 +359,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ipVersion = 6
 	}
 
-	isPermanent := threatLevel == "malicious" || threatLevel == "critical"
-
-	// Parse ASN from text to int (ASN is stored as text in traffic_events)
+	// Parse ASN from text to int
 	asnInt := parseASN(row.Asn)
 
 	// Get service name from top target port
@@ -277,7 +377,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		IpAddress:       row.SourceIp,
 		IpVersion:       pgtype.Int4{Int32: ipVersion, Valid: true},
 		ThreatScore:     row.ThreatScore,
-		ThreatLevel:     row.ThreatLevel,
+		ThreatLevel:     decision.ThreatLevel,
 		Reasons:         reasons,
 		TargetPort:      pgtype.Int4{Int32: row.TopTargetPort, Valid: row.TopTargetPort > 0},
 		ServiceName:     pgtype.Text{String: serviceName, Valid: serviceName != ""},
@@ -285,7 +385,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		CountryCode:     countryCode,
 		CountryName:     countryName,
 		City:            city,
-		Region:          pgtype.Text{Valid: false}, // Not available from traffic_events
+		Region:          pgtype.Text{Valid: false},
 		Latitude:        pgtype.Float8{Valid: false},
 		Longitude:       pgtype.Float8{Valid: false},
 		Asn:             asnInt,
@@ -295,10 +395,11 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		IsDatacenter:    pgtype.Bool{Bool: false, Valid: true},
 		BlockedAt:       database.ToPgTimestamptz(time.Now()),
 		ExpiresAt:       expiresAtPg,
-		DurationSeconds: int32(duration.Seconds()),
+		DurationSeconds: int32(decision.Duration.Seconds()),
 		IsAutoBlocked:   pgtype.Bool{Bool: true, Valid: true},
 		AgentVersion:    pgtype.Text{Valid: false},
 		RawMetrics:      nil,
+		EnforcementType: string(decision.Type),
 	})
 	if err != nil {
 		log.Printf("[BlockManager] Failed to create block for %s: %v", ipStr, err)
@@ -307,20 +408,21 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 
 	bm.mu.Lock()
 	bm.activeBlocks[ipStr] = &ActiveBlock{
-		IP:          ipStr,
-		ServerID:    row.ServerID,
-		UserID:      row.UserID,
-		Score:       int(row.ThreatScore),
-		Reason:      row.ThreatType,
-		Duration:    duration,
-		BlockedAt:   time.Now(),
-		ExpiresAt:   expiresAt,
-		IsPermanent: isPermanent,
+		IP:              ipStr,
+		ServerID:        row.ServerID,
+		UserID:          row.UserID,
+		Score:           int(row.ThreatScore),
+		Reason:          row.ThreatType,
+		EnforcementType: decision.Type,
+		Duration:        decision.Duration,
+		BlockedAt:       time.Now(),
+		ExpiresAt:       expiresAt,
+		IsPermanent:     decision.Type == EnforcementPermanent,
 	}
 	agentID := row.ServerID.String()
 	bm.mu.Unlock()
 
-	// Create alert for this block
+	// Alert severity based on score
 	severity := "medium"
 	if row.ThreatScore >= 70 {
 		severity = "critical"
@@ -333,7 +435,7 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		ServerID:    row.ServerID,
 		SourceIp:    ipAddr,
 		ThreatScore: row.ThreatScore,
-		Reason:      "Auto-blocked: " + row.ThreatType,
+		Reason:      fmt.Sprintf("Auto-%s: %s (%s)", decision.Type, row.ThreatType, decision.Escalation),
 		Severity:    severity,
 		Status:      "active",
 	})
@@ -341,30 +443,32 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		log.Printf("[BlockManager] Failed to create alert for %s: %v", ipStr, err)
 	}
 
-	// Determine block type: ratelimit for low scores (< 50), blocklist for higher scores
-	blockType := "blocklist"
-	if row.ThreatScore < 50 {
-		blockType = "ratelimit"
+	// Map enforcement type to agent block command type
+	agentBlockType := "blocklist"
+	if decision.Type == EnforcementRateLimit {
+		agentBlockType = "ratelimit"
 	}
 
-	bm.sendBlockCommand(agentID, ipStr, duration, row.ThreatType, blockType, block.ID.String())
+	bm.sendBlockCommand(agentID, ipStr, decision.Duration, row.ThreatType, agentBlockType, block.ID.String())
 
 	if bm.hub != nil && row.UserID.Valid {
 		bm.hub.BroadcastToUser(database.FromPgUUID(row.UserID), "new_block", map[string]interface{}{
-			"block_id":     block.ID.String(),
-			"ip_address":   ipStr,
-			"server_id":    row.ServerID.String(),
-			"threat_score": row.ThreatScore,
-			"threat_level": row.ThreatLevel,
-			"threat_type":  row.ThreatType,
-			"duration":     duration.Seconds(),
-			"expires_at":   expiresAt,
-			"block_type":   blockType,
+			"block_id":         block.ID.String(),
+			"ip_address":       ipStr,
+			"server_id":        row.ServerID.String(),
+			"threat_score":     row.ThreatScore,
+			"threat_level":     decision.ThreatLevel,
+			"threat_type":      row.ThreatType,
+			"enforcement_type": string(decision.Type),
+			"duration":         decision.Duration.Seconds(),
+			"expires_at":       expiresAt,
+			"block_type":       agentBlockType,
+			"escalation":       decision.Escalation,
 		})
 	}
 
-	log.Printf("[BlockManager] Blocked %s (score: %d, duration: %v)",
-		ipStr, row.ThreatScore, duration)
+	log.Printf("[BlockManager] %s %s (score=%d, duration=%v, escalation=%s)",
+		decision.Type, ipStr, row.ThreatScore, decision.Duration, decision.Escalation)
 }
 
 func (bm *BlockManager) sendBlockCommand(agentID, ip string, duration time.Duration, reason, blockType, blockID string) {
@@ -416,12 +520,12 @@ func (bm *BlockManager) GetActiveBlocks() []*ActiveBlock {
 // buildBlockReasons creates detailed reasons based on threat type and traffic metrics
 func (bm *BlockManager) buildBlockReasons(row database.GetBlockableIPsRow) []string {
 	reasons := []string{}
-	
+
 	// Add threat type as first reason
 	if row.ThreatType != "" {
 		reasons = append(reasons, row.ThreatType)
 	}
-	
+
 	// Add traffic details based on threat type
 	switch row.ThreatType {
 	case "syn_flood":
@@ -441,15 +545,15 @@ func (bm *BlockManager) buildBlockReasons(row database.GetBlockableIPsRow) []str
 			reasons = append(reasons, fmt.Sprintf("Failed handshakes: %d", row.TotalFailed))
 		}
 	}
-	
+
 	// Add protocol info
 	if row.TopProtocol != "" {
 		reasons = append(reasons, fmt.Sprintf("Protocol: %s", row.TopProtocol))
 	}
-	
+
 	// Add score info
 	reasons = append(reasons, fmt.Sprintf("Threat score: %d", row.ThreatScore))
-	
+
 	return reasons
 }
 
@@ -458,7 +562,7 @@ func parseASN(asn interface{}) pgtype.Int4 {
 	if asn == nil {
 		return pgtype.Int4{Valid: false}
 	}
-	
+
 	switch v := asn.(type) {
 	case string:
 		if v == "" || v == "Unknown" {
@@ -477,7 +581,7 @@ func parseASN(asn interface{}) pgtype.Int4 {
 	case int64:
 		return pgtype.Int4{Int32: int32(v), Valid: true}
 	}
-	
+
 	return pgtype.Int4{Valid: false}
 }
 
@@ -486,7 +590,7 @@ func toPgText(v interface{}) pgtype.Text {
 	if v == nil {
 		return pgtype.Text{Valid: false}
 	}
-	
+
 	switch s := v.(type) {
 	case string:
 		if s == "" || s == "Unknown" {

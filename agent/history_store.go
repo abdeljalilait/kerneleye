@@ -182,6 +182,51 @@ func (h *HistoryStore) PersistBucket(ip string, direction uint8, metrics scoring
 	return nil
 }
 
+// GetContext returns the most-recently-seen primary_port for an IP and a best-effort
+// protocol guess (6 = TCP when SYN activity is recorded, 0 = unknown otherwise).
+// Both values will be zero / 0 if no history is found.
+func (h *HistoryStore) GetContext(ip string, direction uint8, now time.Time) (primaryPort uint16, protocol uint8) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	sinceBucket := now.UTC().Add(-h.config.LookbackWindow).Truncate(h.config.BucketSize).Unix()
+
+	// Pick the bucket with the highest max_port_hits within the lookback window.
+	// Also sum syn_count across all recent buckets to estimate protocol.
+	var port int
+	var totalSyn int
+	err := h.db.QueryRow(`
+		SELECT
+			COALESCE((
+				SELECT primary_port FROM ip_metric_buckets
+				WHERE ip = ? AND direction = ? AND bucket_start >= ? AND primary_port > 0
+				ORDER BY max_port_hits DESC, last_seen DESC LIMIT 1
+			), 0),
+			COALESCE((
+				SELECT SUM(syn_count) FROM ip_metric_buckets
+				WHERE ip = ? AND direction = ? AND bucket_start >= ?
+			), 0)
+	`, ip, int(direction), sinceBucket,
+		ip, int(direction), sinceBucket).Scan(&port, &totalSyn)
+	if err != nil || port == 0 {
+		// Fall back to all-time most recent entry for this IP
+		_ = h.db.QueryRow(`
+			SELECT COALESCE(primary_port, 0), COALESCE(syn_count, 0)
+			FROM ip_metric_buckets
+			WHERE ip = ? AND direction = ? AND primary_port > 0
+			ORDER BY last_seen DESC
+			LIMIT 1
+		`, ip, int(direction)).Scan(&port, &totalSyn)
+	}
+	if port > 0 {
+		primaryPort = uint16(port)
+		if totalSyn > 0 {
+			protocol = 6 // TCP
+		}
+	}
+	return
+}
+
 func (h *HistoryStore) Close() error {
 	return h.db.Close()
 }

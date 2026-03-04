@@ -307,7 +307,7 @@ export default function BlockedIPs() {
               <Tag style={{ fontSize: 11, margin: 0 }}>Unknown</Tag>
             )}
           </div>
-          {(record.service_name || (record.target_port && record.target_port > 0) || record.protocol) && (
+          {(record.service_name || (record.target_port && record.target_port > 0) || (record.protocol && record.protocol.toLowerCase() !== 'unknown')) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: 'var(--text-secondary)' }}>
                 {serviceIcons[record.service_name] || <Server size={12} />}
@@ -316,7 +316,7 @@ export default function BlockedIPs() {
                 {record.service_name ? record.service_name.toUpperCase() : ''}
                 {record.service_name && record.target_port > 0 && ' · '}
                 {record.target_port > 0 && `Port ${record.target_port}`}
-                {record.protocol && ` (${record.protocol.toUpperCase()})`}
+                {record.protocol && record.protocol.toLowerCase() !== 'unknown' && ` (${record.protocol.toUpperCase()})`}
               </Text>
             </div>
           )}
@@ -788,7 +788,7 @@ export default function BlockedIPs() {
             </Descriptions>
 
             <Descriptions title="Attack Details" bordered column={1}>
-              {(selectedBlock.service_name || selectedBlock.target_port > 0 || selectedBlock.protocol) && (
+              {(selectedBlock.service_name || selectedBlock.target_port > 0 || (selectedBlock.protocol && selectedBlock.protocol.toLowerCase() !== 'unknown')) && (
                 <Descriptions.Item label="Target Service">
                   <Space>
                     {serviceIcons[selectedBlock.service_name] || <Server size={16} />}
@@ -800,7 +800,7 @@ export default function BlockedIPs() {
                     {selectedBlock.target_port > 0 && (
                       <Text type="secondary">Port {selectedBlock.target_port}</Text>
                     )}
-                    {selectedBlock.protocol && (
+                    {selectedBlock.protocol && selectedBlock.protocol.toLowerCase() !== 'unknown' && (
                       <Text type="secondary">({selectedBlock.protocol.toUpperCase()})</Text>
                     )}
                   </Space>

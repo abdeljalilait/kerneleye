@@ -55,7 +55,11 @@ export default function ServerDetail() {
   const trafficPagination = trafficResponse?.pagination
 
   // Server-side paginated sources
-  const { data: sourcesResponse, isLoading: sourcesLoading } = useServerPortSources(
+  const { 
+    data: sourcesResponse, 
+    isLoading: sourcesLoading, 
+    refetch: refetchSources 
+  } = useServerPortSources(
     id, 
     selectedPortTraffic?.port, 
     selectedPortTraffic?.protocol,
@@ -76,9 +80,13 @@ export default function ServerDetail() {
       if (payload?.server_id === id) {
         refetchTraffic()
         refetchStats()
+        // Also refresh modal sources if it's open
+        if (ipModalOpen && selectedPortTraffic) {
+          refetchSources()
+        }
       }
     }
-  }, [lastMessage, id, refetchTraffic, refetchStats])
+  }, [lastMessage, id, refetchTraffic, refetchStats, ipModalOpen, selectedPortTraffic, refetchSources])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -1016,7 +1024,7 @@ export default function ServerDetail() {
               Source IPs for Port {selectedPortTraffic?.port} / {selectedPortTraffic?.service_name || selectedPortTraffic?.protocol}
             </span>
             <Badge 
-              count={sourcesPagination?.total_count || selectedPortTraffic?.sources.length || 0} 
+              count={sourcesPagination?.total_count ?? selectedPortTraffic?.unique_ips ?? 0} 
               style={{ background: '#3b82f6' }}
             />
             {ipFilter && (
@@ -1024,6 +1032,7 @@ export default function ServerDetail() {
                 Searching "{ipFilter}"
               </Tag>
             )}
+            {sourcesLoading && <Spin size="small" />}
           </Space>
         }
         open={ipModalOpen}
@@ -1074,7 +1083,19 @@ export default function ServerDetail() {
                   Clear Sort
                 </Button>
               )}
-              {sourcesLoading && <Spin size="small" />}
+              <div style={{ flex: 1 }} />
+              <Button
+                size="small"
+                icon={<RefreshCw size={14} />}
+                loading={sourcesLoading}
+                onClick={() => refetchSources()}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-subtle)'
+                }}
+              >
+                Refresh
+              </Button>
             </div>
             
             {/* TanStack Table */}

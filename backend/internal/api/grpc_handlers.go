@@ -677,6 +677,56 @@ func (h *GrpcIngestHandler) ReportBlockedPacket(ctx context.Context, req *pb.Blo
 	}, nil
 }
 
+// enrichContextFromHistory looks up the most recent inbound traffic event for
+// the given IP and returns port, service and normalised protocol string.
+// Returns zeroed values when nothing is found – callers must check before use.
+func enrichContextFromHistory(
+	ctx context.Context,
+	queries interface {
+		GetIPTrafficHistory(context.Context, database.GetIPTrafficHistoryParams) ([]database.GetIPTrafficHistoryRow, error)
+	},
+	ipAddr netip.Addr,
+	server database.Server,
+) (port int32, service string, proto string) {
+	history, err := queries.GetIPTrafficHistory(ctx, database.GetIPTrafficHistoryParams{
+		SourceIp: ipAddr,
+		UserID:   server.UserID,
+		Limit:    10,
+	})
+	if err != nil {
+		return 0, "", ""
+	}
+
+	var best *database.GetIPTrafficHistoryRow
+	// Prefer a row from the same server
+	for i := range history {
+		row := &history[i]
+		if database.FromPgUUID(row.ServerID) == database.FromPgUUID(server.ID) && row.Direction == "inbound" {
+			best = row
+			break
+		}
+	}
+	if best == nil {
+		for i := range history {
+			row := &history[i]
+			if row.Direction == "inbound" {
+				best = row
+				break
+			}
+		}
+	}
+	if best == nil {
+		return 0, "", ""
+	}
+
+	port = best.DestinationPort
+	proto = normalizeProtocolString(best.Protocol)
+	if port > 0 {
+		service = getServiceFromPort(int(port))
+	}
+	return port, service, proto
+}
+
 func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.BlockedIPEvent) (*pb.BlockedIPResponse, error) {
 	// Validate API key
 	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
@@ -701,14 +751,12 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		isAutoBlocked = false
 	}
 
-	// Calculate expiry time
-	var expiresAt pgtype.Timestamptz
-	if req.DurationSeconds > 0 {
-		expiresAt = pgtype.Timestamptz{
-			Time:  time.Now().Add(time.Duration(req.DurationSeconds) * time.Second),
-			Valid: true,
-		}
-	}
+	// Calculate expiry time.
+	// Agent-reported XDP blocks are always classified as "malicious" (score 100),
+	// so they are permanent blocks - do not use the agent's kernel-level duration
+	// (which only reflects how long the XDP rule lives in the kernel, not how long
+	// we want the IP to remain blocked in the database).
+	var expiresAt pgtype.Timestamptz // Valid=false → permanent block
 
 	// Get GeoIP info if available
 	var country, countryCodeISO, city, region, isp string
@@ -735,26 +783,41 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		log.Printf("[gRPC ReportBlockedIP] IP %s already blocked (id=%s), extending expiry",
 			req.IpAddress, existingBlock.ID.String())
 
-		// Calculate new expiry (extend from now or keep existing, whichever is longer)
-		var newExpiresAt pgtype.Timestamptz
-		if req.DurationSeconds > 0 {
-			newExpiry := time.Now().Add(time.Duration(req.DurationSeconds) * time.Second)
-			if existingBlock.ExpiresAt.Valid && existingBlock.ExpiresAt.Time.After(newExpiry) {
-				newExpiresAt = existingBlock.ExpiresAt
-			} else {
-				newExpiresAt = pgtype.Timestamptz{Time: newExpiry, Valid: true}
-			}
+		// Agent XDP blocks are permanent (malicious threat level) - preserve
+		// permanent status. If the existing block was already permanent (Valid=false),
+		// keep it that way.
+		var newExpiresAt pgtype.Timestamptz // Valid=false → permanent block
+		if existingBlock.ExpiresAt.Valid {
+			// Existing block had an expiry (created before this fix) - upgrade to permanent
+			newExpiresAt = pgtype.Timestamptz{Valid: false}
 		}
 
-		// Update existing block
+		// Update existing block - permanent block so DurationSeconds=0
 		err = h.queries.UpdateBlockExpiry(ctx, database.UpdateBlockExpiryParams{
 			ID:              existingBlock.ID,
 			ExpiresAt:       newExpiresAt,
 			BlockedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
-			DurationSeconds: int32(req.DurationSeconds),
+			DurationSeconds: 0,
+			EnforcementType: "permanent",
 		})
 		if err != nil {
 			log.Printf("[gRPC ReportBlockedIP] Failed to update block: %v", err)
+		}
+
+		// Backfill context (port / service / protocol) if the existing record has
+		// NULL values - happens when the block was first created via startup sync.
+		if !existingBlock.TargetPort.Valid || !existingBlock.ServiceName.Valid || !existingBlock.Protocol.Valid {
+			bfPort, bfService, bfProto := enrichContextFromHistory(ctx, h.queries, ipAddr, server)
+			if bfPort > 0 || bfService != "" || (bfProto != "" && bfProto != "UNKNOWN") {
+				_ = h.queries.UpdateBlockContext(ctx, database.UpdateBlockContextParams{
+					ID:          existingBlock.ID,
+					TargetPort:  pgtype.Int4{Int32: bfPort, Valid: bfPort > 0},
+					ServiceName: pgtype.Text{String: bfService, Valid: bfService != ""},
+					Protocol:    pgtype.Text{String: bfProto, Valid: bfProto != "" && bfProto != "UNKNOWN"},
+				})
+				log.Printf("[gRPC ReportBlockedIP] Backfilled context for existing block %s: port=%d service=%s proto=%s",
+					existingBlock.ID.String(), bfPort, bfService, bfProto)
+			}
 		}
 
 		return &pb.BlockedIPResponse{Success: true}, nil
@@ -781,52 +844,31 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 
 	// Enrich missing block context from latest traffic event for this source IP.
 	if targetPort <= 0 || serviceName == "" || protocolStr == "UNKNOWN" {
-		history, histErr := h.queries.GetIPTrafficHistory(ctx, database.GetIPTrafficHistoryParams{
-			SourceIp: ipAddr,
-			UserID:   server.UserID,
-			Limit:    10,
-		})
-		if histErr != nil {
-			log.Printf("[gRPC ReportBlockedIP] Failed to enrich from traffic history for ip=%s: %v", req.IpAddress, histErr)
-		} else {
-			var latest *database.GetIPTrafficHistoryRow
-			for i := range history {
-				row := &history[i]
-				if database.FromPgUUID(row.ServerID) == server.ID.String() && row.Direction == "inbound" {
-					latest = row
-					break
-				}
-			}
-			if latest == nil {
-				for i := range history {
-					row := &history[i]
-					if row.Direction == "inbound" {
-						latest = row
-						break
-					}
-				}
-			}
+		bfPort, bfService, bfProto := enrichContextFromHistory(ctx, h.queries, ipAddr, server)
+		if bfPort > 0 && targetPort <= 0 {
+			targetPort = bfPort
+		}
+		if bfService != "" && serviceName == "" {
+			serviceName = bfService
+		}
+		if bfProto != "" && bfProto != "UNKNOWN" && protocolStr == "UNKNOWN" {
+			protocolStr = bfProto
+		}
 
-			if latest != nil {
-				if targetPort <= 0 && latest.DestinationPort > 0 {
-					targetPort = latest.DestinationPort
+		// Second fallback: reuse context from the most recent prior block record.
+		if targetPort <= 0 || serviceName == "" {
+			if prior, prErr := h.queries.GetLatestBlockByIP(ctx, database.GetLatestBlockByIPParams{
+				UserID:    server.UserID,
+				IpAddress: ipAddr,
+			}); prErr == nil {
+				if targetPort <= 0 && prior.TargetPort.Valid {
+					targetPort = prior.TargetPort.Int32
 				}
-
-				if protocolStr == "UNKNOWN" {
-					if normalized := normalizeProtocolString(latest.Protocol); normalized != "UNKNOWN" {
-						protocolStr = normalized
-					}
+				if serviceName == "" && prior.ServiceName.Valid {
+					serviceName = prior.ServiceName.String
 				}
-
-				if serviceName == "" {
-					if targetPort > 0 {
-						serviceName = getServiceFromPort(int(targetPort))
-					}
-					if serviceName == "" {
-						if normalized := normalizeProtocolString(latest.Protocol); normalized == "UNKNOWN" {
-							serviceName = latest.Protocol
-						}
-					}
+				if protocolStr == "UNKNOWN" && prior.Protocol.Valid {
+					protocolStr = prior.Protocol.String
 				}
 			}
 		}
@@ -843,7 +885,7 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		Reasons:         []string{req.Reason},
 		TargetPort:      pgtype.Int4{Int32: targetPort, Valid: targetPort > 0},
 		ServiceName:     pgtype.Text{String: serviceName, Valid: serviceName != ""},
-		Protocol:        pgtype.Text{String: protocolStr, Valid: true},
+		Protocol:        pgtype.Text{String: protocolStr, Valid: protocolStr != "" && protocolStr != "UNKNOWN"},
 		CountryCode:     pgtype.Text{String: countryCodeISO, Valid: countryCodeISO != ""},
 		CountryName:     pgtype.Text{String: country, Valid: country != ""},
 		City:            pgtype.Text{String: city, Valid: city != ""},
@@ -856,11 +898,12 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		IsTor:           pgtype.Bool{Bool: isTor, Valid: true},
 		IsDatacenter:    pgtype.Bool{Bool: isDatacenter, Valid: true},
 		BlockedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		ExpiresAt:       expiresAt,
-		DurationSeconds: int32(req.DurationSeconds),
+		ExpiresAt:       expiresAt, // Valid=false → permanent block
+		DurationSeconds: 0,         // permanent block - no duration
 		IsAutoBlocked:   pgtype.Bool{Bool: isAutoBlocked, Valid: true},
 		AgentVersion:    database.ToPgText(req.AgentVersion),
 		RawMetrics:      nil,
+		EnforcementType: "permanent",
 	})
 
 	if err != nil {

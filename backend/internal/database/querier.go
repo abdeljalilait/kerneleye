@@ -47,9 +47,10 @@ type Querier interface {
 	DeleteServer(ctx context.Context, id pgtype.UUID) error
 	GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIPParams) (Block, error)
 	// Gets active blocks for a specific server (for state reconciliation)
-	GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]Block, error)
-	// Gets all active blocks across all servers (for BlockManager state recovery)
-	GetAllActiveBlocks(ctx context.Context) ([]Block, error)
+	GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]GetActiveBlocksForServerRow, error)
+	// Gets all active blocks across all servers (for BlockManager state recovery).
+	// Includes permanent blocks (expires_at IS NULL) which have no expiry.
+	GetAllActiveBlocks(ctx context.Context) ([]GetAllActiveBlocksRow, error)
 	// Gets all servers with their data retention settings for archival job
 	GetAllServersWithRetention(ctx context.Context) ([]GetAllServersWithRetentionRow, error)
 	// Returns count of archived events for a server
@@ -76,8 +77,14 @@ type Querier interface {
 	// Uses actual blocks from blocks table for accurate blocked_count
 	// rather than estimating from traffic_events threat_level
 	GetHourlyAttackDistribution(ctx context.Context, arg GetHourlyAttackDistributionParams) ([]GetHourlyAttackDistributionRow, error)
+	// Returns aggregate prior enforcement counts for a given IP+user across all
+	// time (including expired/unblocked records). Used by the escalation engine.
+	GetIPEnforcementHistory(ctx context.Context, arg GetIPEnforcementHistoryParams) (GetIPEnforcementHistoryRow, error)
 	// Gets historical traffic for a specific IP across all servers
 	GetIPTrafficHistory(ctx context.Context, arg GetIPTrafficHistoryParams) ([]GetIPTrafficHistoryRow, error)
+	// Returns the most recent block record for a given IP and user regardless of
+	// active status – used as a context fallback during startup sync.
+	GetLatestBlockByIP(ctx context.Context, arg GetLatestBlockByIPParams) (Block, error)
 	// Gets total blocked connection count for a user in a date range
 	GetMonthlyBlockStats(ctx context.Context, arg GetMonthlyBlockStatsParams) (int64, error)
 	// Gets count of threat-level traffic events (non-normal)
@@ -156,6 +163,10 @@ type Querier interface {
 	// Sets score to 0 and level to normal, but preserves traffic counts
 	ResetTrafficScoreForIP(ctx context.Context, arg ResetTrafficScoreForIPParams) error
 	UnblockIP(ctx context.Context, arg UnblockIPParams) error
+	// Backfill target_port / service_name / protocol on an existing block that was
+	// created without context (e.g. startup-sync from XDP/ipset).
+	// Only overwrites columns that are still NULL so we never clobber real data.
+	UpdateBlockContext(ctx context.Context, arg UpdateBlockContextParams) error
 	UpdateBlockExpiry(ctx context.Context, arg UpdateBlockExpiryParams) error
 	UpdateServerAPIKey(ctx context.Context, arg UpdateServerAPIKeyParams) error
 	UpdateServerConfig(ctx context.Context, arg UpdateServerConfigParams) error

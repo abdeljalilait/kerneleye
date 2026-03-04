@@ -25,13 +25,22 @@ type BlockCommandClient struct {
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 
-	onBlock   func(ip string, duration time.Duration, reason string) error
-	onUnblock func(ip string, blockType remediation.BlockType, reason string) error
+	onBlock     func(ip string, duration time.Duration, reason string) error
+	onRateLimit func(ip string, duration time.Duration, reason string) error
+	onUnblock   func(ip string, blockType remediation.BlockType, reason string) error
 
 	reconnectMu       sync.Mutex
 	reconnectCount    int
 	maxReconnectDelay time.Duration
 	reconnecting      bool
+}
+
+// SetOnRateLimit sets the callback invoked when the backend sends a RATE_LIMIT command.
+// Must be called before Start().
+func (b *BlockCommandClient) SetOnRateLimit(fn func(ip string, duration time.Duration, reason string) error) {
+	b.mu.Lock()
+	b.onRateLimit = fn
+	b.mu.Unlock()
 }
 
 // NewBlockCommandClient creates a new block command client
@@ -360,7 +369,34 @@ func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
 		}
 
 	case pb.BlockCommand_RATE_LIMIT:
-		Logger.Warnf("[BlockCommandClient] Rate limit command not yet implemented for %s", cmd.IpAddress)
+		b.mu.RLock()
+		onRateLimit := b.onRateLimit
+		b.mu.RUnlock()
+		if onRateLimit != nil {
+			var duration time.Duration
+			if cmd.DurationSeconds > 0 {
+				duration = time.Duration(cmd.DurationSeconds) * time.Second
+			}
+			ip := cmd.IpAddress
+			reason := cmd.Reason
+			go func() {
+				if err := onRateLimit(ip, duration, reason); err != nil {
+					Logger.Errorf("[BlockCommandClient] Failed to rate-limit %s: %v", ip, err)
+				} else {
+					Logger.Infof("[BlockCommandClient] Rate-limited %s for %v", ip, duration)
+				}
+			}()
+		} else {
+			Logger.Warnf("[BlockCommandClient] No onRateLimit handler set, falling back to block for %s", cmd.IpAddress)
+			if b.onBlock != nil {
+				var duration time.Duration
+				if cmd.DurationSeconds > 0 {
+					duration = time.Duration(cmd.DurationSeconds) * time.Second
+				}
+				ipCopy, reasonCopy := cmd.IpAddress, cmd.Reason
+				go func() { _ = b.onBlock(ipCopy, duration, reasonCopy) }()
+			}
+		}
 
 	default:
 		Logger.Warnf("[BlockCommandClient] Unknown command action: %v", cmd.Action)
@@ -403,20 +439,34 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 
 	// Apply each block locally
 	for _, block := range resp.Blocks {
-		if b.onBlock != nil {
-			var duration time.Duration
-			// duration = 0 means permanent block
-			if block.DurationSeconds > 0 {
-				duration = time.Duration(block.DurationSeconds) * time.Second
+		// Check if already expired
+		if block.ExpiresAt > 0 {
+			expiresAt := time.Unix(block.ExpiresAt, 0)
+			if time.Now().After(expiresAt) {
+				Logger.Warnf("[BlockCommandClient] Skipping expired block: %s (expired %v ago)", block.IpAddress, time.Since(expiresAt))
+				continue
 			}
-			// Check if already expired
-			if block.ExpiresAt > 0 {
-				expiresAt := time.Unix(block.ExpiresAt, 0)
-				if time.Now().After(expiresAt) {
-					Logger.Warnf("[BlockCommandClient] Skipping expired block: %s (expired %v ago)", block.IpAddress, time.Since(expiresAt))
-					continue
+		}
+
+		var duration time.Duration
+		// duration = 0 means permanent block
+		if block.DurationSeconds > 0 {
+			duration = time.Duration(block.DurationSeconds) * time.Second
+		}
+
+		if block.BlockType == pb.BlockListEntry_BLOCK_TYPE_RATE_LIMIT {
+			// Route ratelimit entries to onRateLimit handler
+			b.mu.RLock()
+			onRateLimit := b.onRateLimit
+			b.mu.RUnlock()
+			if onRateLimit != nil {
+				if err := onRateLimit(block.IpAddress, duration, block.Reason); err != nil {
+					Logger.Errorf("[BlockCommandClient] Failed to apply rate-limit %s: %v", block.IpAddress, err)
+				} else {
+					Logger.Debugf("[BlockCommandClient] Applied rate-limit %s for %v", block.IpAddress, duration)
 				}
 			}
+		} else if b.onBlock != nil {
 			if err := b.onBlock(block.IpAddress, duration, block.Reason); err != nil {
 				Logger.Errorf("[BlockCommandClient] Failed to apply block %s: %v", block.IpAddress, err)
 			} else {

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
+	"github.com/kerneleye/backend/internal/geoip"
 )
 
 // sanitizeLikePattern escapes ILIKE metacharacters (%, _) in user input
@@ -22,8 +23,18 @@ func sanitizeLikePattern(input string) string {
 	return r.Replace(input)
 }
 
-// HandleListServers returns all servers for a user
-func HandleListServers(queries *database.Queries) fiber.Handler {
+// ServerWithLocation extends a Server row with GeoIP-derived location fields.
+type ServerWithLocation struct {
+	database.Server
+	CountryCode string  `json:"country_code"`
+	CountryName string  `json:"country_name"`
+	City        string  `json:"city"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+}
+
+// HandleListServers returns all servers for a user, enriched with GeoIP location data.
+func HandleListServers(queries *database.Queries, geoIP *geoip.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id")
 		if userID == nil {
@@ -37,7 +48,24 @@ func HandleListServers(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to fetch servers")
 		}
 
-		return c.JSON(servers)
+		if geoIP == nil {
+			return c.JSON(servers)
+		}
+
+		enriched := make([]ServerWithLocation, 0, len(servers))
+		for _, s := range servers {
+			row := ServerWithLocation{Server: s}
+			if s.IpAddress != nil {
+				country, countryCode, city, _, lat, lng, _, _, _ := geoIP.LookupDetailed(s.IpAddress.String())
+				row.CountryCode = countryCode
+				row.CountryName = country
+				row.City = city
+				row.Latitude = lat
+				row.Longitude = lng
+			}
+			enriched = append(enriched, row)
+		}
+		return c.JSON(enriched)
 	}
 }
 

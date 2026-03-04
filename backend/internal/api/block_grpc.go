@@ -199,20 +199,24 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				action = kerneleyev1.BlockCommand_UNBLOCK
 			}
 
+			// Read block_type from the command map (set by block_manager based on EnforcementDecision).
+			// This is authoritative — do not infer from reason strings.
+			blockType := kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST
+			if bt, ok := cmd["block_type"].(string); ok {
+				switch bt {
+				case "ratelimit":
+					blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT
+					if action == kerneleyev1.BlockCommand_BLOCK {
+						action = kerneleyev1.BlockCommand_RATE_LIMIT
+					}
+				case "cidr":
+					blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_CIDR
+				}
+			}
+
 			duration := int64(0)
 			if d, ok := cmd["duration"].(int64); ok {
 				duration = d
-			}
-
-			// Determine block type from reason
-			blockType := kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST
-			if reason, ok := cmd["reason"].(string); ok {
-				reasonLower := strings.ToLower(reason)
-				if strings.Contains(reasonLower, "rate limit") || strings.Contains(reasonLower, "ratelimit") {
-					blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT
-				} else if strings.Contains(reasonLower, "cidr") || strings.Contains(reasonLower, "range") {
-					blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_CIDR
-				}
 			}
 
 			ip, ok := cmd["ip"].(string)
@@ -304,22 +308,20 @@ func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlo
 			expiresAt = block.ExpiresAt.Time.Unix()
 		}
 
-		// Determine block type from reasons
+		// Determine block type from enforcement_type DB column (authoritative)
 		blockType := kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST
-		reasonStr := strings.Join(block.Reasons, ", ")
-		reasonLower := strings.ToLower(reasonStr)
-
-		if strings.Contains(reasonLower, "rate limit") || strings.Contains(reasonLower, "ratelimit") {
+		switch block.EnforcementType {
+		case "ratelimit":
 			blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT
-		} else if strings.Contains(reasonLower, "cidr") || strings.Contains(reasonLower, "range") {
-			blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_CIDR
+		case "permanent", "block":
+			blockType = kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST
 		}
 
 		result = append(result, &kerneleyev1.BlockListEntry{
 			IpAddress:       block.IpAddress.String(),
 			IpVersion:       int32(block.IpVersion.Int32),
 			DurationSeconds: int64(block.DurationSeconds),
-			Reason:          reasonStr,
+			Reason:          strings.Join(block.Reasons, ", "),
 			BlockId:         block.ID.String(),
 			ExpiresAt:       expiresAt,
 			BlockType:       blockType,

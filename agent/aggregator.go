@@ -830,6 +830,7 @@ func (a *Aggregator) SyncIPSetToBackend(ipsetRem *remediation.IPSetRemediator) {
 		return
 	}
 	Logger.Infof("📋 SyncIPSetToBackend: syncing %d locally-blocked IPs to backend", len(entries))
+	now := time.Now()
 	for _, e := range entries {
 		action := remediation.ActionBlock
 		reason := "ipset_block"
@@ -837,7 +838,12 @@ func (a *Aggregator) SyncIPSetToBackend(ipsetRem *remediation.IPSetRemediator) {
 			action = remediation.ActionRateLimit
 			reason = "ipset_ratelimit"
 		}
-		a.ReportBlockedIP(e.IP, action, reason, 0)
+		port, proto := a.history.GetContext(e.IP.String(), 0, now)
+		if port > 0 {
+			a.ReportBlockedIPWithContext(e.IP, action, reason, 0, port, proto)
+		} else {
+			a.ReportBlockedIP(e.IP, action, reason, 0)
+		}
 	}
 	Logger.Infof("✅ SyncIPSetToBackend: sync complete")
 }
@@ -858,8 +864,14 @@ func (a *Aggregator) SyncXDPToBackend(xdpRem *remediation.XDPRemediator) {
 		return
 	}
 	Logger.Infof("📋 SyncXDPToBackend: syncing %d XDP-blocked IPs to backend", len(entries))
+	now := time.Now()
 	for _, e := range entries {
-		a.ReportBlockedIP(e.IP, remediation.ActionBlock, "xdp_block", 0)
+		port, proto := a.history.GetContext(e.IP.String(), 0, now)
+		if port > 0 {
+			a.ReportBlockedIPWithContext(e.IP, remediation.ActionBlock, "xdp_block", 0, port, proto)
+		} else {
+			a.ReportBlockedIP(e.IP, remediation.ActionBlock, "xdp_block", 0)
+		}
 	}
 	Logger.Infof("✅ SyncXDPToBackend: sync complete")
 }

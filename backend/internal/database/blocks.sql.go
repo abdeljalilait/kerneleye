@@ -90,12 +90,13 @@ INSERT INTO blocks (
     duration_seconds,
     is_auto_blocked,
     agent_version,
-    raw_metrics
+    raw_metrics,
+    enforcement_type
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-    $21, $22, $23, $24, $25, $26, $27
-) RETURNING id, server_id, user_id, ip_address, ip_version, threat_score, threat_level, reasons, target_port, service_name, protocol, country_code, country_name, city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter, blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked, unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics, created_at, updated_at
+    $21, $22, $23, $24, $25, $26, $27, $28
+) RETURNING id, server_id, user_id, ip_address, ip_version, threat_score, threat_level, reasons, target_port, service_name, protocol, country_code, country_name, city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter, blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked, unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics, created_at, updated_at, enforcement_type
 `
 
 type CreateBlockParams struct {
@@ -126,6 +127,7 @@ type CreateBlockParams struct {
 	IsAutoBlocked   pgtype.Bool        `json:"is_auto_blocked"`
 	AgentVersion    pgtype.Text        `json:"agent_version"`
 	RawMetrics      []byte             `json:"raw_metrics"`
+	EnforcementType string             `json:"enforcement_type"`
 }
 
 // Blocks queries for the dashboard and API
@@ -158,6 +160,7 @@ func (q *Queries) CreateBlock(ctx context.Context, arg CreateBlockParams) (Block
 		arg.IsAutoBlocked,
 		arg.AgentVersion,
 		arg.RawMetrics,
+		arg.EnforcementType,
 	)
 	var i Block
 	err := row.Scan(
@@ -195,12 +198,13 @@ func (q *Queries) CreateBlock(ctx context.Context, arg CreateBlockParams) (Block
 		&i.RawMetrics,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnforcementType,
 	)
 	return i, err
 }
 
 const getActiveBlockByIP = `-- name: GetActiveBlockByIP :one
-SELECT id, server_id, user_id, ip_address, ip_version, threat_score, threat_level, reasons, target_port, service_name, protocol, country_code, country_name, city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter, blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked, unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics, created_at, updated_at FROM blocks
+SELECT id, server_id, user_id, ip_address, ip_version, threat_score, threat_level, reasons, target_port, service_name, protocol, country_code, country_name, city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter, blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked, unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics, created_at, updated_at, enforcement_type FROM blocks
 WHERE user_id = $1 
   AND ip_address = $2
   AND is_active = true
@@ -250,12 +254,13 @@ func (q *Queries) GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIP
 		&i.RawMetrics,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnforcementType,
 	)
 	return i, err
 }
 
 const getBlockByID = `-- name: GetBlockByID :one
-SELECT b.id, b.server_id, b.user_id, b.ip_address, b.ip_version, b.threat_score, b.threat_level, b.reasons, b.target_port, b.service_name, b.protocol, b.country_code, b.country_name, b.city, b.region, b.latitude, b.longitude, b.asn, b.asn_org, b.is_vpn, b.is_tor, b.is_datacenter, b.blocked_at, b.expires_at, b.duration_seconds, b.is_active, b.is_auto_blocked, b.unblocked_at, b.unblocked_by, b.unblock_reason, b.agent_version, b.raw_metrics, b.created_at, b.updated_at, s.hostname as server_name
+SELECT b.id, b.server_id, b.user_id, b.ip_address, b.ip_version, b.threat_score, b.threat_level, b.reasons, b.target_port, b.service_name, b.protocol, b.country_code, b.country_name, b.city, b.region, b.latitude, b.longitude, b.asn, b.asn_org, b.is_vpn, b.is_tor, b.is_datacenter, b.blocked_at, b.expires_at, b.duration_seconds, b.is_active, b.is_auto_blocked, b.unblocked_at, b.unblocked_by, b.unblock_reason, b.agent_version, b.raw_metrics, b.created_at, b.updated_at, b.enforcement_type, s.hostname as server_name
 FROM blocks b
 JOIN servers s ON b.server_id = s.id
 WHERE b.id = $1 AND b.user_id = $2
@@ -301,6 +306,7 @@ type GetBlockByIDRow struct {
 	RawMetrics      []byte             `json:"raw_metrics"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	EnforcementType string             `json:"enforcement_type"`
 	ServerName      string             `json:"server_name"`
 }
 
@@ -342,6 +348,7 @@ func (q *Queries) GetBlockByID(ctx context.Context, arg GetBlockByIDParams) (Get
 		&i.RawMetrics,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnforcementType,
 		&i.ServerName,
 	)
 	return i, err
@@ -515,9 +522,107 @@ func (q *Queries) GetBlockStatsByThreatLevel(ctx context.Context, userID pgtype.
 	return items, nil
 }
 
+const getIPEnforcementHistory = `-- name: GetIPEnforcementHistory :one
+SELECT
+    COUNT(*)::int                                                          AS total_prior,
+    COUNT(*) FILTER (WHERE enforcement_type = 'ratelimit')::int            AS ratelimit_count,
+    COUNT(*) FILTER (WHERE enforcement_type = 'block')::int                AS block_count,
+    COUNT(*) FILTER (WHERE enforcement_type = 'permanent')::int            AS permanent_count,
+    MAX(threat_score)::int                                                 AS max_prior_score
+FROM blocks
+WHERE user_id    = $1
+  AND ip_address = $2
+`
+
+type GetIPEnforcementHistoryParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	IpAddress netip.Addr  `json:"ip_address"`
+}
+
+type GetIPEnforcementHistoryRow struct {
+	TotalPrior     int32 `json:"total_prior"`
+	RatelimitCount int32 `json:"ratelimit_count"`
+	BlockCount     int32 `json:"block_count"`
+	PermanentCount int32 `json:"permanent_count"`
+	MaxPriorScore  int32 `json:"max_prior_score"`
+}
+
+// Returns aggregate prior enforcement counts for a given IP+user across all
+// time (including expired/unblocked records). Used by the escalation engine.
+func (q *Queries) GetIPEnforcementHistory(ctx context.Context, arg GetIPEnforcementHistoryParams) (GetIPEnforcementHistoryRow, error) {
+	row := q.db.QueryRow(ctx, getIPEnforcementHistory, arg.UserID, arg.IpAddress)
+	var i GetIPEnforcementHistoryRow
+	err := row.Scan(
+		&i.TotalPrior,
+		&i.RatelimitCount,
+		&i.BlockCount,
+		&i.PermanentCount,
+		&i.MaxPriorScore,
+	)
+	return i, err
+}
+
+const getLatestBlockByIP = `-- name: GetLatestBlockByIP :one
+SELECT id, server_id, user_id, ip_address, ip_version, threat_score, threat_level, reasons, target_port, service_name, protocol, country_code, country_name, city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter, blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked, unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics, created_at, updated_at, enforcement_type FROM blocks
+WHERE user_id = $1
+  AND ip_address = $2
+ORDER BY blocked_at DESC
+LIMIT 1
+`
+
+type GetLatestBlockByIPParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	IpAddress netip.Addr  `json:"ip_address"`
+}
+
+// Returns the most recent block record for a given IP and user regardless of
+// active status – used as a context fallback during startup sync.
+func (q *Queries) GetLatestBlockByIP(ctx context.Context, arg GetLatestBlockByIPParams) (Block, error) {
+	row := q.db.QueryRow(ctx, getLatestBlockByIP, arg.UserID, arg.IpAddress)
+	var i Block
+	err := row.Scan(
+		&i.ID,
+		&i.ServerID,
+		&i.UserID,
+		&i.IpAddress,
+		&i.IpVersion,
+		&i.ThreatScore,
+		&i.ThreatLevel,
+		&i.Reasons,
+		&i.TargetPort,
+		&i.ServiceName,
+		&i.Protocol,
+		&i.CountryCode,
+		&i.CountryName,
+		&i.City,
+		&i.Region,
+		&i.Latitude,
+		&i.Longitude,
+		&i.Asn,
+		&i.AsnOrg,
+		&i.IsVpn,
+		&i.IsTor,
+		&i.IsDatacenter,
+		&i.BlockedAt,
+		&i.ExpiresAt,
+		&i.DurationSeconds,
+		&i.IsActive,
+		&i.IsAutoBlocked,
+		&i.UnblockedAt,
+		&i.UnblockedBy,
+		&i.UnblockReason,
+		&i.AgentVersion,
+		&i.RawMetrics,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EnforcementType,
+	)
+	return i, err
+}
+
 const getRecentBlocks = `-- name: GetRecentBlocks :many
 SELECT 
-    b.id, b.server_id, b.user_id, b.ip_address, b.ip_version, b.threat_score, b.threat_level, b.reasons, b.target_port, b.service_name, b.protocol, b.country_code, b.country_name, b.city, b.region, b.latitude, b.longitude, b.asn, b.asn_org, b.is_vpn, b.is_tor, b.is_datacenter, b.blocked_at, b.expires_at, b.duration_seconds, b.is_active, b.is_auto_blocked, b.unblocked_at, b.unblocked_by, b.unblock_reason, b.agent_version, b.raw_metrics, b.created_at, b.updated_at,
+    b.id, b.server_id, b.user_id, b.ip_address, b.ip_version, b.threat_score, b.threat_level, b.reasons, b.target_port, b.service_name, b.protocol, b.country_code, b.country_name, b.city, b.region, b.latitude, b.longitude, b.asn, b.asn_org, b.is_vpn, b.is_tor, b.is_datacenter, b.blocked_at, b.expires_at, b.duration_seconds, b.is_active, b.is_auto_blocked, b.unblocked_at, b.unblocked_by, b.unblock_reason, b.agent_version, b.raw_metrics, b.created_at, b.updated_at, b.enforcement_type,
     s.hostname as server_name
 FROM blocks b
 JOIN servers s ON b.server_id = s.id
@@ -566,6 +671,7 @@ type GetRecentBlocksRow struct {
 	RawMetrics      []byte             `json:"raw_metrics"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	EnforcementType string             `json:"enforcement_type"`
 	ServerName      string             `json:"server_name"`
 }
 
@@ -613,6 +719,7 @@ func (q *Queries) GetRecentBlocks(ctx context.Context, arg GetRecentBlocksParams
 			&i.RawMetrics,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EnforcementType,
 			&i.ServerName,
 		); err != nil {
 			return nil, err
@@ -648,7 +755,7 @@ func (q *Queries) IsIPBlocked(ctx context.Context, arg IsIPBlockedParams) (bool,
 
 const listBlocks = `-- name: ListBlocks :many
 SELECT 
-    b.id, b.server_id, b.user_id, b.ip_address, b.ip_version, b.threat_score, b.threat_level, b.reasons, b.target_port, b.service_name, b.protocol, b.country_code, b.country_name, b.city, b.region, b.latitude, b.longitude, b.asn, b.asn_org, b.is_vpn, b.is_tor, b.is_datacenter, b.blocked_at, b.expires_at, b.duration_seconds, b.is_active, b.is_auto_blocked, b.unblocked_at, b.unblocked_by, b.unblock_reason, b.agent_version, b.raw_metrics, b.created_at, b.updated_at,
+    b.id, b.server_id, b.user_id, b.ip_address, b.ip_version, b.threat_score, b.threat_level, b.reasons, b.target_port, b.service_name, b.protocol, b.country_code, b.country_name, b.city, b.region, b.latitude, b.longitude, b.asn, b.asn_org, b.is_vpn, b.is_tor, b.is_datacenter, b.blocked_at, b.expires_at, b.duration_seconds, b.is_active, b.is_auto_blocked, b.unblocked_at, b.unblocked_by, b.unblock_reason, b.agent_version, b.raw_metrics, b.created_at, b.updated_at, b.enforcement_type,
     s.hostname as server_name
 FROM blocks b
 JOIN servers s ON b.server_id = s.id
@@ -714,6 +821,7 @@ type ListBlocksRow struct {
 	RawMetrics      []byte             `json:"raw_metrics"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	EnforcementType string             `json:"enforcement_type"`
 	ServerName      string             `json:"server_name"`
 }
 
@@ -771,6 +879,7 @@ func (q *Queries) ListBlocks(ctx context.Context, arg ListBlocksParams) ([]ListB
 			&i.RawMetrics,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EnforcementType,
 			&i.ServerName,
 		); err != nil {
 			return nil, err
@@ -810,11 +919,41 @@ func (q *Queries) UnblockIP(ctx context.Context, arg UnblockIPParams) error {
 	return err
 }
 
+const updateBlockContext = `-- name: UpdateBlockContext :exec
+UPDATE blocks SET
+    target_port   = CASE WHEN target_port IS NULL THEN $2 ELSE target_port END,
+    service_name  = CASE WHEN service_name IS NULL THEN $3 ELSE service_name END,
+    protocol      = CASE WHEN protocol IS NULL THEN $4 ELSE protocol END,
+    updated_at    = NOW()
+WHERE id = $1
+`
+
+type UpdateBlockContextParams struct {
+	ID          pgtype.UUID `json:"id"`
+	TargetPort  pgtype.Int4 `json:"target_port"`
+	ServiceName pgtype.Text `json:"service_name"`
+	Protocol    pgtype.Text `json:"protocol"`
+}
+
+// Backfill target_port / service_name / protocol on an existing block that was
+// created without context (e.g. startup-sync from XDP/ipset).
+// Only overwrites columns that are still NULL so we never clobber real data.
+func (q *Queries) UpdateBlockContext(ctx context.Context, arg UpdateBlockContextParams) error {
+	_, err := q.db.Exec(ctx, updateBlockContext,
+		arg.ID,
+		arg.TargetPort,
+		arg.ServiceName,
+		arg.Protocol,
+	)
+	return err
+}
+
 const updateBlockExpiry = `-- name: UpdateBlockExpiry :exec
 UPDATE blocks SET
     expires_at = $2,
     blocked_at = COALESCE($3, blocked_at),
-    duration_seconds = COALESCE($4, duration_seconds),
+    duration_seconds = $4,
+    enforcement_type = $5,
     updated_at = NOW()
 WHERE id = $1
 `
@@ -824,6 +963,7 @@ type UpdateBlockExpiryParams struct {
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	BlockedAt       pgtype.Timestamptz `json:"blocked_at"`
 	DurationSeconds int32              `json:"duration_seconds"`
+	EnforcementType string             `json:"enforcement_type"`
 }
 
 func (q *Queries) UpdateBlockExpiry(ctx context.Context, arg UpdateBlockExpiryParams) error {
@@ -832,6 +972,7 @@ func (q *Queries) UpdateBlockExpiry(ctx context.Context, arg UpdateBlockExpiryPa
 		arg.ExpiresAt,
 		arg.BlockedAt,
 		arg.DurationSeconds,
+		arg.EnforcementType,
 	)
 	return err
 }

@@ -500,6 +500,7 @@ SELECT
     city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
     blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
     unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    enforcement_type,
     created_at, updated_at
 FROM blocks
 WHERE server_id = $1
@@ -508,16 +509,54 @@ WHERE server_id = $1
 ORDER BY blocked_at DESC
 `
 
+type GetActiveBlocksForServerRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	ServerID        pgtype.UUID        `json:"server_id"`
+	UserID          pgtype.UUID        `json:"user_id"`
+	IpAddress       netip.Addr         `json:"ip_address"`
+	IpVersion       pgtype.Int4        `json:"ip_version"`
+	ThreatScore     int32              `json:"threat_score"`
+	ThreatLevel     string             `json:"threat_level"`
+	Reasons         []string           `json:"reasons"`
+	TargetPort      pgtype.Int4        `json:"target_port"`
+	ServiceName     pgtype.Text        `json:"service_name"`
+	Protocol        pgtype.Text        `json:"protocol"`
+	CountryCode     pgtype.Text        `json:"country_code"`
+	CountryName     pgtype.Text        `json:"country_name"`
+	City            pgtype.Text        `json:"city"`
+	Region          pgtype.Text        `json:"region"`
+	Latitude        pgtype.Float8      `json:"latitude"`
+	Longitude       pgtype.Float8      `json:"longitude"`
+	Asn             pgtype.Int4        `json:"asn"`
+	AsnOrg          pgtype.Text        `json:"asn_org"`
+	IsVpn           pgtype.Bool        `json:"is_vpn"`
+	IsTor           pgtype.Bool        `json:"is_tor"`
+	IsDatacenter    pgtype.Bool        `json:"is_datacenter"`
+	BlockedAt       pgtype.Timestamptz `json:"blocked_at"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	DurationSeconds int32              `json:"duration_seconds"`
+	IsActive        pgtype.Bool        `json:"is_active"`
+	IsAutoBlocked   pgtype.Bool        `json:"is_auto_blocked"`
+	UnblockedAt     pgtype.Timestamptz `json:"unblocked_at"`
+	UnblockedBy     pgtype.UUID        `json:"unblocked_by"`
+	UnblockReason   pgtype.Text        `json:"unblock_reason"`
+	AgentVersion    pgtype.Text        `json:"agent_version"`
+	RawMetrics      []byte             `json:"raw_metrics"`
+	EnforcementType string             `json:"enforcement_type"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Gets active blocks for a specific server (for state reconciliation)
-func (q *Queries) GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]Block, error) {
+func (q *Queries) GetActiveBlocksForServer(ctx context.Context, serverID pgtype.UUID) ([]GetActiveBlocksForServerRow, error) {
 	rows, err := q.db.Query(ctx, getActiveBlocksForServer, serverID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Block{}
+	items := []GetActiveBlocksForServerRow{}
 	for rows.Next() {
-		var i Block
+		var i GetActiveBlocksForServerRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ServerID,
@@ -551,6 +590,7 @@ func (q *Queries) GetActiveBlocksForServer(ctx context.Context, serverID pgtype.
 			&i.UnblockReason,
 			&i.AgentVersion,
 			&i.RawMetrics,
+			&i.EnforcementType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -571,23 +611,63 @@ SELECT
     city, region, latitude, longitude, asn, asn_org, is_vpn, is_tor, is_datacenter,
     blocked_at, expires_at, duration_seconds, is_active, is_auto_blocked,
     unblocked_at, unblocked_by, unblock_reason, agent_version, raw_metrics,
+    enforcement_type,
     created_at, updated_at
 FROM blocks
 WHERE is_active = true
-  AND expires_at > NOW()
+  AND (expires_at > NOW() OR expires_at IS NULL)
 ORDER BY blocked_at DESC
 `
 
-// Gets all active blocks across all servers (for BlockManager state recovery)
-func (q *Queries) GetAllActiveBlocks(ctx context.Context) ([]Block, error) {
+type GetAllActiveBlocksRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	ServerID        pgtype.UUID        `json:"server_id"`
+	UserID          pgtype.UUID        `json:"user_id"`
+	IpAddress       netip.Addr         `json:"ip_address"`
+	IpVersion       pgtype.Int4        `json:"ip_version"`
+	ThreatScore     int32              `json:"threat_score"`
+	ThreatLevel     string             `json:"threat_level"`
+	Reasons         []string           `json:"reasons"`
+	TargetPort      pgtype.Int4        `json:"target_port"`
+	ServiceName     pgtype.Text        `json:"service_name"`
+	Protocol        pgtype.Text        `json:"protocol"`
+	CountryCode     pgtype.Text        `json:"country_code"`
+	CountryName     pgtype.Text        `json:"country_name"`
+	City            pgtype.Text        `json:"city"`
+	Region          pgtype.Text        `json:"region"`
+	Latitude        pgtype.Float8      `json:"latitude"`
+	Longitude       pgtype.Float8      `json:"longitude"`
+	Asn             pgtype.Int4        `json:"asn"`
+	AsnOrg          pgtype.Text        `json:"asn_org"`
+	IsVpn           pgtype.Bool        `json:"is_vpn"`
+	IsTor           pgtype.Bool        `json:"is_tor"`
+	IsDatacenter    pgtype.Bool        `json:"is_datacenter"`
+	BlockedAt       pgtype.Timestamptz `json:"blocked_at"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	DurationSeconds int32              `json:"duration_seconds"`
+	IsActive        pgtype.Bool        `json:"is_active"`
+	IsAutoBlocked   pgtype.Bool        `json:"is_auto_blocked"`
+	UnblockedAt     pgtype.Timestamptz `json:"unblocked_at"`
+	UnblockedBy     pgtype.UUID        `json:"unblocked_by"`
+	UnblockReason   pgtype.Text        `json:"unblock_reason"`
+	AgentVersion    pgtype.Text        `json:"agent_version"`
+	RawMetrics      []byte             `json:"raw_metrics"`
+	EnforcementType string             `json:"enforcement_type"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Gets all active blocks across all servers (for BlockManager state recovery).
+// Includes permanent blocks (expires_at IS NULL) which have no expiry.
+func (q *Queries) GetAllActiveBlocks(ctx context.Context) ([]GetAllActiveBlocksRow, error) {
 	rows, err := q.db.Query(ctx, getAllActiveBlocks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Block{}
+	items := []GetAllActiveBlocksRow{}
 	for rows.Next() {
-		var i Block
+		var i GetAllActiveBlocksRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ServerID,
@@ -621,6 +701,7 @@ func (q *Queries) GetAllActiveBlocks(ctx context.Context) ([]Block, error) {
 			&i.UnblockReason,
 			&i.AgentVersion,
 			&i.RawMetrics,
+			&i.EnforcementType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

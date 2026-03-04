@@ -10,6 +10,13 @@ export interface Server {
   last_seen: string;
   created_at: string;
   updated_at: string;
+  metadata?: string; // JSON string with server metadata including location
+  // GeoIP-enriched location (from backend)
+  country_code?: string;
+  country_name?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Threat {

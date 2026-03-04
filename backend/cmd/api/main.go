@@ -228,7 +228,7 @@ func main() {
 	protected.Get("/ws", api.WebSocketHandler(hub))
 
 	// Dashboard endpoints (used by React frontend)
-	protected.Get("/servers", api.HandleListServers(queries))
+	protected.Get("/servers", api.HandleListServers(queries, geoIP))
 	protected.Get("/servers/generate-api-key", api.HandleGenerateAPIKey(queries))
 	protected.Post("/servers", api.HandleCreateServerWithConfig(queries))
 	protected.Patch("/servers/:id/status", api.HandleUpdateServerStatus(queries, hub))

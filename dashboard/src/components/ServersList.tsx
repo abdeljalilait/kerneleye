@@ -1,4 +1,4 @@
-import { Table, Tag, Typography, Button, Popconfirm, Space, Card, Avatar, Badge, Progress } from 'antd'
+import { Table, Tag, Typography, Button, Popconfirm, Space, Card, Avatar, Badge } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Server } from '../types'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -98,27 +98,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
         )
       },
     },
-    {
-      title: 'Health',
-      key: 'health',
-      width: '25%',
-      minWidth: 120,
-      render: () => (
-        <div style={{ width: 100 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>CPU</Text>
-            <Text style={{ fontSize: 11, color: 'var(--success)' }}>12%</Text>
-          </div>
-          <Progress
-            percent={12}
-            size="small"
-            strokeColor="var(--success)"
-            trailColor="rgba(255, 255, 255, 0.05)"
-            showInfo={false}
-          />
-        </div>
-      ),
-    },
+
     {
       title: 'Events',
       key: 'events',

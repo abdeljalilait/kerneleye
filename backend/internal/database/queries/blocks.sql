@@ -28,12 +28,26 @@ INSERT INTO blocks (
     duration_seconds,
     is_auto_blocked,
     agent_version,
-    raw_metrics
+    raw_metrics,
+    enforcement_type
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-    $21, $22, $23, $24, $25, $26, $27
+    $21, $22, $23, $24, $25, $26, $27, $28
 ) RETURNING *;
+
+-- name: GetIPEnforcementHistory :one
+-- Returns aggregate prior enforcement counts for a given IP+user across all
+-- time (including expired/unblocked records). Used by the escalation engine.
+SELECT
+    COUNT(*)::int                                                          AS total_prior,
+    COUNT(*) FILTER (WHERE enforcement_type = 'ratelimit')::int            AS ratelimit_count,
+    COUNT(*) FILTER (WHERE enforcement_type = 'block')::int                AS block_count,
+    COUNT(*) FILTER (WHERE enforcement_type = 'permanent')::int            AS permanent_count,
+    MAX(threat_score)::int                                                 AS max_prior_score
+FROM blocks
+WHERE user_id    = $1
+  AND ip_address = $2;
 
 -- name: ListBlocks :many
 SELECT 
@@ -163,9 +177,31 @@ LIMIT $2;
 UPDATE blocks SET
     expires_at = $2,
     blocked_at = COALESCE($3, blocked_at),
-    duration_seconds = COALESCE($4, duration_seconds),
+    duration_seconds = $4,
+    enforcement_type = $5,
     updated_at = NOW()
 WHERE id = $1;
+
+-- name: UpdateBlockContext :exec
+-- Backfill target_port / service_name / protocol on an existing block that was
+-- created without context (e.g. startup-sync from XDP/ipset).
+-- Only overwrites columns that are still NULL so we never clobber real data.
+UPDATE blocks SET
+    target_port   = CASE WHEN target_port IS NULL THEN $2 ELSE target_port END,
+    service_name  = CASE WHEN service_name IS NULL THEN $3 ELSE service_name END,
+    protocol      = CASE WHEN protocol IS NULL THEN $4 ELSE protocol END,
+    updated_at    = NOW()
+WHERE id = $1;
+
+-- name: GetLatestBlockByIP :one
+-- Returns the most recent block record for a given IP and user regardless of
+-- active status – used as a context fallback during startup sync.
+SELECT * FROM blocks
+WHERE user_id = $1
+  AND ip_address = $2
+ORDER BY blocked_at DESC
+LIMIT 1;
+
 
 -- name: CleanupExpiredBlocks :exec
 UPDATE blocks SET

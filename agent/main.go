@@ -58,6 +58,11 @@ func main() {
 		listBlockedAndExit()
 	}
 
+	// -clear-data: wipe all local SQLite stores and exit
+	if cfg.ClearData {
+		clearDataAndExit()
+	}
+
 	// Print banner immediately to show version on startup
 	printBanner(cfg)
 
@@ -212,6 +217,19 @@ func main() {
 		if err != nil {
 			Logger.Warnf("⚠️  Block command client setup failed: %v (backend blocking will not be available)", err)
 		} else {
+			// Wire rate-limit callback so RATE_LIMIT commands route to the kernel
+			// ipset rate-limit set rather than the hard blocklist.
+			blockCmdClient.SetOnRateLimit(func(ip string, duration time.Duration, reason string) error {
+				parsedIP := net.ParseIP(ip)
+				if parsedIP == nil {
+					return fmt.Errorf("invalid IP: %s", ip)
+				}
+				if err := remediator.RateLimit(parsedIP, duration); err != nil {
+					return fmt.Errorf("rate-limit failed: %w", err)
+				}
+				return nil
+			})
+
 			// Start receiving block commands from backend
 			if err := blockCmdClient.Start(blockCtx); err != nil {
 				Logger.Warnf("⚠️  Failed to start block command client: %v", err)
@@ -338,6 +356,44 @@ func printVersion() {
 	fmt.Printf("  Build Date: %s\n", BuildDate)
 	fmt.Printf("  Built By:   %s@%s\n", BuildUser, BuildHost)
 	fmt.Printf("  Go Version: %s\n", GoVersion)
+}
+
+// clearDataAndExit deletes all local data stores used by the agent, prints a
+// summary of what was removed, then exits. Safe to run while the agent is stopped.
+func clearDataAndExit() {
+	stores := []struct {
+		label string
+		path  string
+	}{
+		{"history DB (default)", defaultHistoryDBPath},
+		{"history DB (fallback)", fallbackHistoryDBPath},
+		{"pending DB (default)", defaultDBPath},
+		{"pending DB (fallback)", fallbackDBPath},
+	}
+
+	removed := 0
+	for _, s := range stores {
+		if _, err := os.Stat(s.path); os.IsNotExist(err) {
+			continue
+		}
+		if err := os.Remove(s.path); err != nil {
+			fmt.Fprintf(os.Stderr, "❌  Failed to remove %s (%s): %v\n", s.label, s.path, err)
+		} else {
+			fmt.Printf("🗑️   Removed %s: %s\n", s.label, s.path)
+			removed++
+		}
+		// Also remove WAL and SHM sidecar files if present
+		for _, suf := range []string{"-wal", "-shm"} {
+			_ = os.Remove(s.path + suf)
+		}
+	}
+
+	if removed == 0 {
+		fmt.Println("No local data stores found.")
+	} else {
+		fmt.Printf("✅  Cleared %d data store(s).\n", removed)
+	}
+	os.Exit(0)
 }
 
 // listBlockedAndExit reads the kernel_eye ipsets and (if available) the XDP BPF
