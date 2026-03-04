@@ -53,6 +53,11 @@ func main() {
 	}
 	defer SyncLogger()
 
+	// -list-blocked: print current ipset state and exit (no backend connection needed)
+	if cfg.ListBlocked {
+		listBlockedAndExit()
+	}
+
 	// Print banner immediately to show version on startup
 	printBanner(cfg)
 
@@ -219,6 +224,11 @@ func main() {
 					Logger.Warnf("⚠️  Failed to sync block list: %v", err)
 				}
 
+				// Report any IPs already in ipset/XDP (from previous run) to the backend
+				// so the dashboard reflects actual kernel-level state immediately.
+				go aggregator.SyncIPSetToBackend(remediator.GetIPSetRemediator())
+				go aggregator.SyncXDPToBackend(remediator.GetXDPRemediator())
+
 				// Start periodic reconcile every 1 minute.
 				// The goroutine exits when blockCtx is cancelled (at shutdown start).
 				go func() {
@@ -328,4 +338,63 @@ func printVersion() {
 	fmt.Printf("  Build Date: %s\n", BuildDate)
 	fmt.Printf("  Built By:   %s@%s\n", BuildUser, BuildHost)
 	fmt.Printf("  Go Version: %s\n", GoVersion)
+}
+
+// listBlockedAndExit reads the kernel_eye ipsets and (if available) the XDP BPF
+// maps directly, prints a summary, then exits. No backend connection needed.
+func listBlockedAndExit() {
+	// --- ipset ---
+	ipsetRem := remediation.NewIPSetRemediator()
+	ipsetEntries, ipsetErr := ipsetRem.ListCurrentlyBlocked()
+	if ipsetErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not read ipset: %v\n", ipsetErr)
+	}
+
+	// --- XDP BPF maps (pinned at /sys/fs/bpf/kerneleye) ---
+	xdpRem := remediation.NewXDPRemediator("")
+	xdpEntries, xdpErr := xdpRem.ListCurrentlyBlocked()
+	if xdpErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not read XDP maps (not loaded?): %v\n", xdpErr)
+	}
+
+	total := len(ipsetEntries) + len(xdpEntries)
+	if total == 0 {
+		fmt.Println("No IPs currently blocked (ipset empty, XDP maps empty or not loaded).")
+		os.Exit(0)
+	}
+
+	fmt.Printf("KernelEye blocked IPs (%d total)\n", total)
+	fmt.Println("══════════════════════════════════════")
+
+	// ipset section
+	var blocked, ratelimited []string
+	for _, e := range ipsetEntries {
+		if e.BlockType == remediation.BlockTypeRateLimit {
+			ratelimited = append(ratelimited, e.IP.String())
+		} else {
+			blocked = append(blocked, e.IP.String())
+		}
+	}
+	if len(blocked) > 0 {
+		fmt.Printf("\n🚫 ipset blocked (%d) — kernel_eye_block / kernel_eye_block_v6:\n", len(blocked))
+		for _, ip := range blocked {
+			fmt.Printf("   %s\n", ip)
+		}
+	}
+	if len(ratelimited) > 0 {
+		fmt.Printf("\n⏱  ipset rate-limited (%d) — kernel_eye_ratelimit / kernel_eye_ratelimit_v6:\n", len(ratelimited))
+		for _, ip := range ratelimited {
+			fmt.Printf("   %s\n", ip)
+		}
+	}
+
+	// XDP section
+	if len(xdpEntries) > 0 {
+		fmt.Printf("\n⚡ XDP blocked (%d) — xdp_blocklist / xdp_blocklist_v6:\n", len(xdpEntries))
+		for _, e := range xdpEntries {
+			fmt.Printf("   %s\n", e.IP.String())
+		}
+	}
+
+	os.Exit(0)
 }

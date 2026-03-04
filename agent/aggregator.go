@@ -813,6 +813,57 @@ func (a *Aggregator) ReportBlockedIP(ip net.IP, action remediation.Action, reaso
 	Logger.Errorf("❌ Failed to report blocked IP %s after 3 attempts: %v", ip, err)
 }
 
+// SyncIPSetToBackend reports any IP currently in the local ipset that the backend
+// doesn't already know about. Called once on startup so IPs that survived a restart
+// (via Restore()) appear in the dashboard without waiting for a new block event.
+func (a *Aggregator) SyncIPSetToBackend(ipsetRem *remediation.IPSetRemediator) {
+	if ipsetRem == nil {
+		return
+	}
+	entries, err := ipsetRem.ListCurrentlyBlocked()
+	if err != nil {
+		Logger.Warnf("⚠️  SyncIPSetToBackend: failed to read ipset: %v", err)
+		return
+	}
+	if len(entries) == 0 {
+		Logger.Info("📋 SyncIPSetToBackend: ipset is empty, nothing to sync")
+		return
+	}
+	Logger.Infof("📋 SyncIPSetToBackend: syncing %d locally-blocked IPs to backend", len(entries))
+	for _, e := range entries {
+		action := remediation.ActionBlock
+		reason := "ipset_block"
+		if e.BlockType == remediation.BlockTypeRateLimit {
+			action = remediation.ActionRateLimit
+			reason = "ipset_ratelimit"
+		}
+		a.ReportBlockedIP(e.IP, action, reason, 0)
+	}
+	Logger.Infof("✅ SyncIPSetToBackend: sync complete")
+}
+
+// SyncXDPToBackend reports IPs currently in the XDP blocklist BPF maps to the
+// backend so the dashboard reflects kernel-level XDP state on startup.
+func (a *Aggregator) SyncXDPToBackend(xdpRem *remediation.XDPRemediator) {
+	if xdpRem == nil {
+		return
+	}
+	entries, err := xdpRem.ListCurrentlyBlocked()
+	if err != nil {
+		Logger.Warnf("⚠️  SyncXDPToBackend: failed to read XDP maps: %v", err)
+		return
+	}
+	if len(entries) == 0 {
+		Logger.Info("📋 SyncXDPToBackend: XDP blocklist is empty, nothing to sync")
+		return
+	}
+	Logger.Infof("📋 SyncXDPToBackend: syncing %d XDP-blocked IPs to backend", len(entries))
+	for _, e := range entries {
+		a.ReportBlockedIP(e.IP, remediation.ActionBlock, "xdp_block", 0)
+	}
+	Logger.Infof("✅ SyncXDPToBackend: sync complete")
+}
+
 // ReportBlockedIPWithContext sends a blocked IP event with port/protocol context
 func (a *Aggregator) ReportBlockedIPWithContext(ip net.IP, action remediation.Action, reason string, duration time.Duration, targetPort uint16, protocol uint8) {
 	var blockAction pb.BlockAction

@@ -93,6 +93,13 @@ func (r BlockReason) String() string {
 	}
 }
 
+// BlockedEntry represents an IP currently present in an ipset
+type BlockedEntry struct {
+	IP        net.IP
+	BlockType BlockType // BlockTypeBlocklist or BlockTypeRateLimit
+	Version   int       // 4 or 6
+}
+
 // BlockType represents the type of block list
 type BlockType uint8
 

@@ -18,6 +18,7 @@ type AgentConfig struct {
 	AutoBlockConfig   remediation.AutoBlockerConfig
 	InterfaceName     string
 	LogFile           string // Path to log file (empty = stdout only)
+	ListBlocked       bool   // Print current ipset blocklist and exit
 }
 
 // DefaultEnvFile is the path to the environment file
@@ -38,6 +39,7 @@ func parseConfig() AgentConfig {
 	enableXDP := flag.Bool("xdp", false, "Enable XDP fast-path blocking (requires root, kernel 5.4+)")
 	interfaceName := flag.String("interface", "", "Network interface for XDP attachment (e.g., eth0)")
 	logFile := flag.String("log", os.Getenv("KERNELEYE_LOG_FILE"), "Log file path (default: stdout)")
+	listBlocked := flag.Bool("list-blocked", false, "Print IPs currently in kernel_eye ipsets and exit")
 	flag.Parse()
 
 	autoBlockConfig := remediation.DefaultAutoBlockerConfig()
@@ -52,6 +54,7 @@ func parseConfig() AgentConfig {
 		AutoBlockConfig:   autoBlockConfig,
 		InterfaceName:     *interfaceName,
 		LogFile:           *logFile,
+		ListBlocked:       *listBlocked,
 	}
 
 	if *serverFlag != "" {

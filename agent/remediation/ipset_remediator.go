@@ -512,6 +512,24 @@ func (r *IPSetRemediator) Restore() error {
 	}
 
 	logger.Infof("✅ Restored blocklist from %s", r.persistPath)
+
+	// Rebuild the in-memory blockedIPs map so IsBlocked() reflects restored state.
+	// Without this, IsBlocked() always returns false after a restart even though
+	// the IPs are present in the kernel ipset.
+	entries, err := r.ListCurrentlyBlocked()
+	if err != nil {
+		logger.Warnf("⚠️  Could not read back restored ipset state: %v", err)
+		return nil
+	}
+	r.mu.Lock()
+	for _, e := range entries {
+		if e.BlockType == BlockTypeBlocklist {
+			// Permanent block (timeout 0) — use sentinel far-future time
+			r.blockedIPs[e.IP.String()] = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+		}
+	}
+	r.mu.Unlock()
+	logger.Infof("🔄 Rebuilt in-memory block map with %d restored entries", len(entries))
 	return nil
 }
 
@@ -603,6 +621,74 @@ func (r *IPSetRemediator) SyncBlocklist(ips []net.IP) error {
 }
 
 // Helper methods
+
+// ListCurrentlyBlocked reads every IP currently present in all kernel_eye ipsets by
+// running `ipset list` and parsing the Members section. Unlike the in-memory
+// blockedIPs map this reflects the true kernel-level state — including entries
+// that survived an agent restart via Restore().
+func (r *IPSetRemediator) ListCurrentlyBlocked() ([]BlockedEntry, error) {
+	type setSpec struct {
+		name      string
+		blockType BlockType
+		version   int
+	}
+	sets := []setSpec{
+		{blockSet, BlockTypeBlocklist, 4},
+		{blockSetV6, BlockTypeBlocklist, 6},
+		{rateLimitSet, BlockTypeRateLimit, 4},
+		{rateLimitSetV6, BlockTypeRateLimit, 6},
+	}
+
+	var entries []BlockedEntry
+	for _, s := range sets {
+		out, err := exec.Command("ipset", "list", s.name).Output()
+		if err != nil {
+			// Set doesn't exist yet — skip silently
+			continue
+		}
+		for _, ipStr := range r.parseMembersSection(string(out)) {
+			ip := net.ParseIP(ipStr)
+			if ip == nil {
+				continue
+			}
+			if s.version == 4 {
+				ip = ip.To4()
+			}
+			if ip == nil {
+				continue
+			}
+			entries = append(entries, BlockedEntry{
+				IP:        ip,
+				BlockType: s.blockType,
+				Version:   s.version,
+			})
+		}
+	}
+	return entries, nil
+}
+
+// parseMembersSection extracts IP strings from `ipset list` output.
+// Returns every entry after the "Members:" header (first field only).
+func (r *IPSetRemediator) parseMembersSection(output string) []string {
+	var ips []string
+	inMembers := false
+	for _, line := range strings.Split(output, "\n") {
+		if line == "Members:" {
+			inMembers = true
+			continue
+		}
+		if !inMembers {
+			continue
+		}
+		// Each member line is: "<ip> [timeout <n>]" — take first field
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		ips = append(ips, fields[0])
+	}
+	return ips
+}
 
 func (r *IPSetRemediator) validateIP(ip net.IP) error {
 	if ip == nil || len(ip) != 4 && len(ip) != 16 {

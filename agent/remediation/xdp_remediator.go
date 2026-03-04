@@ -699,6 +699,89 @@ func (r *XDPRemediator) cleanupMap(m *ebpf.Map, now uint64) int {
 	return cleaned
 }
 
+// ListCurrentlyBlocked returns all non-expired IPs in the XDP blocklist BPF maps.
+// It can be called on a running remediator (uses live maps) or without Setup()
+// (opens pinned maps from /sys/fs/bpf/kerneleye) for the -list-blocked CLI flag.
+func (r *XDPRemediator) ListCurrentlyBlocked() ([]BlockedEntry, error) {
+	v4Map, v6Map, cleanup, err := r.openBlocklistMaps()
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	now := uint64(monotonicNs())
+	var entries []BlockedEntry
+
+	// IPv4 — key is BigEndian uint32, value is blockEntry
+	var k4 uint32
+	var v4val blockEntry
+	iter4 := v4Map.Iterate()
+	for iter4.Next(&k4, &v4val) {
+		if v4val.ExpiresNs != 0 && v4val.ExpiresNs < now {
+			continue // expired
+		}
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, k4)
+		entries = append(entries, BlockedEntry{
+			IP:        net.IP(b),
+			BlockType: BlockTypeBlocklist,
+			Version:   4,
+		})
+	}
+	if err := iter4.Err(); err != nil {
+		return nil, fmt.Errorf("iterating xdp_blocklist: %w", err)
+	}
+
+	// IPv6 — key is [16]byte, value is blockEntry
+	var k6 [16]byte
+	var v6val blockEntry
+	iter6 := v6Map.Iterate()
+	for iter6.Next(&k6, &v6val) {
+		if v6val.ExpiresNs != 0 && v6val.ExpiresNs < now {
+			continue // expired
+		}
+		ip := make(net.IP, 16)
+		copy(ip, k6[:])
+		entries = append(entries, BlockedEntry{
+			IP:        ip,
+			BlockType: BlockTypeBlocklist,
+			Version:   6,
+		})
+	}
+	if err := iter6.Err(); err != nil {
+		return nil, fmt.Errorf("iterating xdp_blocklist_v6: %w", err)
+	}
+
+	return entries, nil
+}
+
+// openBlocklistMaps returns references to xdp_blocklist and xdp_blocklist_v6.
+// If the remediator is attached and live, the existing map handles are returned
+// directly (no-op cleanup). Otherwise, the pinned maps are opened from the BPF
+// filesystem and the caller must call cleanup() to close them.
+func (r *XDPRemediator) openBlocklistMaps() (v4Map, v6Map *ebpf.Map, cleanup func(), err error) {
+	r.mu.RLock()
+	if r.attached && r.objs != nil {
+		v4 := r.objs.XdpBlocklist
+		v6 := r.objs.XdpBlocklistV6
+		r.mu.RUnlock()
+		return v4, v6, func() {}, nil
+	}
+	pinPath := r.pinPath
+	r.mu.RUnlock()
+
+	v4, err2 := ebpf.LoadPinnedMap(filepath.Join(pinPath, "xdp_blocklist"), nil)
+	if err2 != nil {
+		return nil, nil, func() {}, fmt.Errorf("open pinned xdp_blocklist: %w", err2)
+	}
+	v6, err2 := ebpf.LoadPinnedMap(filepath.Join(pinPath, "xdp_blocklist_v6"), nil)
+	if err2 != nil {
+		v4.Close()
+		return nil, nil, func() {}, fmt.Errorf("open pinned xdp_blocklist_v6: %w", err2)
+	}
+	return v4, v6, func() { v4.Close(); v6.Close() }, nil
+}
+
 // cleanupMapV6 removes expired entries from an IPv6 blocklist map
 func (r *XDPRemediator) cleanupMapV6(m *ebpf.Map, now uint64) int {
 	var key [16]byte

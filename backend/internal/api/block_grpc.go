@@ -101,18 +101,7 @@ func (h *BlockHandler) ReportBlock(ctx context.Context, req *kerneleyev1.BlockRe
 		return nil, status.Errorf(codes.Internal, "failed to record block")
 	}
 
-	// 6. Broadcast to user's other agents (cross-server blocking)
-	h.hub.BroadcastToUser(database.FromPgUUID(server.UserID), "new_block", map[string]interface{}{
-		"block_id":  block.ID.String(),
-		"ip":        req.IpAddress,
-		"duration":  req.DurationSeconds,
-		"reason":    req.Reasons,
-		"server_id": server.ID.String(),
-		"service":   req.ServiceName,
-		"score":     req.ThreatScore,
-	})
-
-	// 7. Send WebSocket update to dashboard
+	// 6. Broadcast new block to WebSocket dashboard clients and cross-server agents
 	h.hub.BroadcastToUser(database.FromPgUUID(server.UserID), "new_block", map[string]interface{}{
 		"id":            block.ID.String(),
 		"ip_address":    req.IpAddress,

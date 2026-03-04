@@ -17,13 +17,11 @@ import {
   Descriptions,
   Alert,
   Progress,
-  Spin,
 } from 'antd'
 import {
   Shield,
   Server,
   AlertTriangle,
-  Lock,
   Unlock,
   Globe,
   Clock,
@@ -45,12 +43,14 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { useBlocks, useBlockStats, useUnblockIP, useServers } from '../hooks/useQueries'
+import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
 import { whitelistAPI } from '../api/client'
 import StatCard from '../components/StatCard'
+import LiveBlockFeed from '../components/LiveBlockFeed'
 
 dayjs.extend(relativeTime)
 
-const { Title, Text, Paragraph } = Typography
+const { Title, Text } = Typography
 const { Option } = Select
 
 // Types matching backend response
@@ -101,6 +101,51 @@ interface BlockStats {
   by_threat_level: Record<string, number>
 }
 
+const reasonLabels: Record<string, string> = {
+  service_abuse: 'Service Abuse',
+  port_scan: 'Port Scan',
+  syn_flood: 'SYN Flood',
+  ddos: 'DDoS',
+  brute_force: 'Brute Force',
+  connection_burst: 'Conn. Burst',
+  failed_handshake: 'Failed Handshake',
+  ssh_bruteforce: 'SSH Brute Force',
+  http_flood: 'HTTP Flood',
+  dns_amplification: 'DNS Amplification',
+  ipset_block: 'IPSet Block',
+  ipset_ratelimit: 'IPSet Rate Limit',
+  xdp_block: 'XDP Block',
+}
+
+const reasonLabel = (reason: string) => reasonLabels[reason] || reason.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+const reasonTagColor = (reason: string): string => {
+  switch (reason) {
+    case 'syn_flood':
+    case 'ddos':
+    case 'http_flood':
+      return 'red'
+    case 'port_scan':
+      return 'orange'
+    case 'service_abuse':
+    case 'brute_force':
+    case 'ssh_bruteforce':
+      return 'volcano'
+    case 'connection_burst':
+      return 'gold'
+    case 'failed_handshake':
+      return 'purple'
+    case 'ipset_block':
+      return 'red'
+    case 'xdp_block':
+      return 'red'
+    case 'ipset_ratelimit':
+      return 'gold'
+    default:
+      return 'default'
+  }
+}
+
 const serviceIcons: Record<string, React.ReactNode> = {
   ssh: <Shield size={16} />,
   http: <Wifi size={16} />,
@@ -118,6 +163,8 @@ export default function BlockedIPs() {
   const queryClient = useQueryClient()
   const [selectedBlock, setSelectedBlock] = useState<BlockView | null>(null)
   const [drawerVisible, setDrawerVisible] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [filters, setFilters] = useState({
     server: 'all',
     service: 'all',
@@ -129,8 +176,10 @@ export default function BlockedIPs() {
   // Fetch servers for filter dropdown
   const { data: servers } = useServers()
 
-  // Fetch blocks with filters
+  // Fetch blocks with filters and pagination
   const { data: blocksData, isLoading, error } = useBlocks({
+    page: currentPage,
+    page_size: pageSize,
     server: filters.server,
     status: filters.status,
   })
@@ -155,8 +204,15 @@ export default function BlockedIPs() {
     }
   }
 
+  // Auto-refresh table & stats whenever a new block arrives via WebSocket
+  useWebSocketEvent('new_block', () => {
+    queryClient.invalidateQueries({ queryKey: ['blocks'] })
+    queryClient.invalidateQueries({ queryKey: ['block-stats'] })
+  })
+
   // Type the blocks data
   const blocks = (blocksData as BlockListResponse)?.items || []
+  const totalBlocks = (blocksData as BlockListResponse)?.total || 0
   const stats: BlockStats = (statsData as BlockStats) || {
     total_active: 0,
     total_today: 0,
@@ -231,41 +287,41 @@ export default function BlockedIPs() {
       ),
     },
     {
-      title: 'Service Targeted',
-      key: 'service',
-      width: 140,
+      title: 'Attack Reason',
+      key: 'reason',
+      width: 200,
       render: (_, record: BlockView) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: 'var(--text-secondary)' }}>
-              {serviceIcons[record.service_name] || <Server size={16} />}
-            </span>
-            <Text strong style={{ textTransform: 'uppercase', fontSize: 13 }}>
-              {record.service_name || 'Unknown'}
-            </Text>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {record.reasons && record.reasons.length > 0 ? (
+              record.reasons.map((reason) => (
+                <Tag
+                  key={reason}
+                  color={reasonTagColor(reason)}
+                  style={{ fontSize: 11, margin: 0 }}
+                >
+                  {reasonLabel(reason)}
+                </Tag>
+              ))
+            ) : (
+              <Tag style={{ fontSize: 11, margin: 0 }}>Unknown</Tag>
+            )}
           </div>
-          {(record.target_port && record.target_port > 0) || record.protocol ? (
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {record.target_port > 0 && `Port ${record.target_port}`}
-              {record.target_port > 0 && record.protocol && ' / '}
-              {record.protocol?.toUpperCase()}
-            </Text>
-          ) : (
-            <Text type="secondary" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              Multiple ports
-            </Text>
+          {(record.service_name || (record.target_port && record.target_port > 0) || record.protocol) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>
+                {serviceIcons[record.service_name] || <Server size={12} />}
+              </span>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {record.service_name ? record.service_name.toUpperCase() : ''}
+                {record.service_name && record.target_port > 0 && ' · '}
+                {record.target_port > 0 && `Port ${record.target_port}`}
+                {record.protocol && ` (${record.protocol.toUpperCase()})`}
+              </Text>
+            </div>
           )}
         </div>
       ),
-      filters: [
-        { text: 'SSH', value: 'ssh' },
-        { text: 'HTTP', value: 'http' },
-        { text: 'HTTPS', value: 'https' },
-        { text: 'MySQL', value: 'mysql' },
-        { text: 'PostgreSQL', value: 'postgres' },
-        { text: 'Redis', value: 'redis' },
-      ],
-      onFilter: (value, record) => record.service_name === value,
     },
     {
       title: 'Location',
@@ -427,14 +483,16 @@ export default function BlockedIPs() {
     },
   ]
 
-  // Filter blocks locally based on search
-  const filteredBlocks = blocks.filter(
-    (block) =>
-      !filters.search ||
-      block.ip_address.toLowerCase().includes(filters.search.toLowerCase()) ||
-      block.server_name.toLowerCase().includes(filters.search.toLowerCase()) ||
-      block.country_name?.toLowerCase().includes(filters.search.toLowerCase())
-  )
+  // Filter blocks locally based on search (only for current page items)
+  // Note: For full dataset search, implement search on backend
+  const filteredBlocks = filters.search
+    ? blocks.filter(
+        (block) =>
+          block.ip_address.toLowerCase().includes(filters.search.toLowerCase()) ||
+          block.server_name.toLowerCase().includes(filters.search.toLowerCase()) ||
+          block.country_name?.toLowerCase().includes(filters.search.toLowerCase())
+      )
+    : blocks
 
   if (error) {
     return (
@@ -529,6 +587,9 @@ export default function BlockedIPs() {
         </Col>
       </Row>
 
+      {/* Live Block Feed */}
+      <LiveBlockFeed />
+
       {/* Filters */}
       <Card
         variant="borderless"
@@ -543,7 +604,10 @@ export default function BlockedIPs() {
         <Space wrap>
           <Select
             value={filters.server}
-            onChange={(val) => setFilters({ ...filters, server: val })}
+            onChange={(val) => {
+              setFilters({ ...filters, server: val })
+              setCurrentPage(1) // Reset to page 1 when filter changes
+            }}
             style={{ width: 180 }}
             placeholder="Server"
           >
@@ -572,7 +636,10 @@ export default function BlockedIPs() {
 
           <Select
             value={filters.status}
-            onChange={(val) => setFilters({ ...filters, status: val })}
+            onChange={(val) => {
+              setFilters({ ...filters, status: val })
+              setCurrentPage(1) // Reset to page 1 when filter changes
+            }}
             style={{ width: 150 }}
           >
             <Option value="active">Active Only</Option>
@@ -583,7 +650,10 @@ export default function BlockedIPs() {
           <Input.Search
             placeholder="Search IP, server, country..."
             value={filters.search}
-            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            onChange={(e) => {
+              setFilters({ ...filters, search: e.target.value })
+              setCurrentPage(1) // Reset to page 1 when search changes
+            }}
             style={{ width: 250 }}
             prefix={<Search size={16} />}
             allowClear
@@ -608,9 +678,18 @@ export default function BlockedIPs() {
           loading={isLoading}
           rowKey="id"
           pagination={{
-            pageSize: 20,
+            current: currentPage,
+            pageSize: pageSize,
+            total: totalBlocks,
             showSizeChanger: true,
             showTotal: (total) => `Total ${total} blocked IPs`,
+            onChange: (page, newPageSize) => {
+              setCurrentPage(page)
+              if (newPageSize !== pageSize) {
+                setPageSize(newPageSize)
+                setCurrentPage(1) // Reset to page 1 when page size changes
+              }
+            },
             style: { margin: '16px 24px' }
           }}
           scroll={{ x: 1200 }}
@@ -619,13 +698,17 @@ export default function BlockedIPs() {
             expandedRowRender: (record) => (
               <div style={{ padding: 16, background: 'var(--bg-tertiary)' }}>
                 <Text strong style={{ fontSize: 13 }}>Threat Reasons</Text>
-                <ul style={{ margin: '8px 0 0 0', paddingLeft: 20 }}>
-                  {record.reasons.map((reason, idx) => (
-                    <li key={idx} style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                      {reason}
-                    </li>
-                  ))}
-                </ul>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {record.reasons && record.reasons.length > 0 ? (
+                    record.reasons.map((reason) => (
+                      <Tag key={reason} color={reasonTagColor(reason)} style={{ fontSize: 12, padding: '2px 10px' }}>
+                        {reasonLabel(reason)}
+                      </Tag>
+                    ))
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 13 }}>No specific reason recorded</Text>
+                  )}
+                </div>
               </div>
             ),
           }}
@@ -682,7 +765,9 @@ export default function BlockedIPs() {
               </Descriptions.Item>
               <Descriptions.Item label="Version">IPv{selectedBlock.ip_version}</Descriptions.Item>
               <Descriptions.Item label="ASN">
-                AS{selectedBlock.asn} - {selectedBlock.asn_org}
+                {selectedBlock.asn > 0 ? `AS${selectedBlock.asn}` : ''}
+                {selectedBlock.asn > 0 && selectedBlock.asn_org ? ' - ' : ''}
+                {selectedBlock.asn_org || (selectedBlock.asn === 0 ? 'Unknown' : '')}
               </Descriptions.Item>
               <Descriptions.Item label="Attributes">
                 <Space>
@@ -698,36 +783,49 @@ export default function BlockedIPs() {
                 {selectedBlock.country_name} ({selectedBlock.country_code})
               </Descriptions.Item>
               <Descriptions.Item label="City/Region">
-                {selectedBlock.city}, {selectedBlock.region}
-              </Descriptions.Item>
-              <Descriptions.Item label="Coordinates">
-                {selectedBlock.latitude}, {selectedBlock.longitude}
+                {[selectedBlock.city, selectedBlock.region].filter(Boolean).join(', ') || 'Unknown'}
               </Descriptions.Item>
             </Descriptions>
 
             <Descriptions title="Attack Details" bordered column={1}>
-              <Descriptions.Item label="Target Service">
-                <Space>
-                  {serviceIcons[selectedBlock.service_name] || <Server size={16} />}
-                  <Text strong style={{ textTransform: 'uppercase' }}>
-                    {selectedBlock.service_name || 'Unknown'}
-                  </Text>
-                  {selectedBlock.target_port > 0 && (
-                    <Text type="secondary">Port {selectedBlock.target_port}</Text>
-                  )}
-                </Space>
-              </Descriptions.Item>
+              {(selectedBlock.service_name || selectedBlock.target_port > 0 || selectedBlock.protocol) && (
+                <Descriptions.Item label="Target Service">
+                  <Space>
+                    {serviceIcons[selectedBlock.service_name] || <Server size={16} />}
+                    {selectedBlock.service_name && (
+                      <Text strong style={{ textTransform: 'uppercase' }}>
+                        {selectedBlock.service_name}
+                      </Text>
+                    )}
+                    {selectedBlock.target_port > 0 && (
+                      <Text type="secondary">Port {selectedBlock.target_port}</Text>
+                    )}
+                    {selectedBlock.protocol && (
+                      <Text type="secondary">({selectedBlock.protocol.toUpperCase()})</Text>
+                    )}
+                  </Space>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="Threat Score">
-                <Tag color={selectedBlock.threat_score >= 80 ? 'red' : 'orange'}>
-                  {selectedBlock.threat_score} - {selectedBlock.threat_level}
+                <Tag color={selectedBlock.threat_score >= 80 ? 'red' : selectedBlock.threat_score >= 60 ? 'orange' : 'gold'}>
+                  {selectedBlock.threat_score}
+                </Tag>
+                <Tag color={selectedBlock.threat_level === 'malicious' ? 'red' : selectedBlock.threat_level === 'suspicious' ? 'orange' : 'default'} style={{ marginLeft: 4 }}>
+                  {selectedBlock.threat_level && selectedBlock.threat_level.charAt(0).toUpperCase() + selectedBlock.threat_level.slice(1)}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="Reasons">
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
-                  {selectedBlock.reasons.map((reason, idx) => (
-                    <li key={idx}>{reason}</li>
-                  ))}
-                </ul>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {selectedBlock.reasons && selectedBlock.reasons.length > 0 ? (
+                    selectedBlock.reasons.map((reason) => (
+                      <Tag key={reason} color={reasonTagColor(reason)} style={{ fontSize: 12, padding: '2px 10px' }}>
+                        {reasonLabel(reason)}
+                      </Tag>
+                    ))
+                  ) : (
+                    <Text type="secondary">No specific reason recorded</Text>
+                  )}
+                </div>
               </Descriptions.Item>
             </Descriptions>
 

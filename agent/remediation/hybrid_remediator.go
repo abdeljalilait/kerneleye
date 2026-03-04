@@ -234,6 +234,11 @@ func (h *HybridRemediator) GetIPSetRemediator() *IPSetRemediator {
 	return h.iptables
 }
 
+// GetXDPRemediator returns the underlying XDPRemediator (nil if XDP is disabled or failed setup)
+func (h *HybridRemediator) GetXDPRemediator() *XDPRemediator {
+	return h.xdp
+}
+
 // StartBlockedPacketReader starts reading blocked packet events from XDP ring buffer
 // This should be called after Setup() and will call the OnBlockedPacket callback for each event
 func (h *HybridRemediator) StartBlockedPacketReader() error {
