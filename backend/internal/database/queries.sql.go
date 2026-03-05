@@ -1808,20 +1808,23 @@ func (q *Queries) GetServerStats(ctx context.Context, serverID pgtype.UUID) (Get
 const getSourceIPTimeline = `-- name: GetSourceIPTimeline :many
 SELECT 
     te.source_ip::text as ip,
-    DATE_TRUNC('hour', te.created_at)::timestamp as time_bucket,
-    SUM(te.hit_count)::int as count
+    DATE_TRUNC('hour', te.last_seen)::timestamp as time_bucket,
+    COUNT(*)::int as count
 FROM traffic_events te
 JOIN servers s ON te.server_id = s.id
 WHERE s.user_id = $1
   AND te.source_ip = $2::inet
-  AND te.created_at >= NOW() - INTERVAL '24 hours'
-GROUP BY te.source_ip, DATE_TRUNC('hour', te.created_at)
+  AND te.last_seen >= $3
+  AND te.last_seen <= $4
+GROUP BY te.source_ip, DATE_TRUNC('hour', te.last_seen)
 ORDER BY time_bucket
 `
 
 type GetSourceIPTimelineParams struct {
-	UserID  pgtype.UUID `json:"user_id"`
-	Column2 netip.Addr  `json:"column_2"`
+	UserID     pgtype.UUID        `json:"user_id"`
+	Column2    netip.Addr         `json:"column_2"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
 }
 
 type GetSourceIPTimelineRow struct {
@@ -1831,7 +1834,12 @@ type GetSourceIPTimelineRow struct {
 }
 
 func (q *Queries) GetSourceIPTimeline(ctx context.Context, arg GetSourceIPTimelineParams) ([]GetSourceIPTimelineRow, error) {
-	rows, err := q.db.Query(ctx, getSourceIPTimeline, arg.UserID, arg.Column2)
+	rows, err := q.db.Query(ctx, getSourceIPTimeline,
+		arg.UserID,
+		arg.Column2,
+		arg.LastSeen,
+		arg.LastSeen_2,
+	)
 	if err != nil {
 		return nil, err
 	}

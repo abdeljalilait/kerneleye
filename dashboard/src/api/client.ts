@@ -180,8 +180,10 @@ export const analyticsAPI = {
     api.get(`/analytics/top-source-ips?start_date=${startDate || ''}&end_date=${endDate || ''}&limit=${limit || 20}`),
   getTopASNs: (startDate?: string, endDate?: string, limit?: number) => 
     api.get(`/analytics/top-asns?start_date=${startDate || ''}&end_date=${endDate || ''}&limit=${limit || 10}`),
-  getSourceIPTimeline: (ip: string) => 
-    api.get(`/analytics/ip-timeline?ip=${encodeURIComponent(ip)}`),
+  getSourceIPTimeline: (ip: string, startDate?: string, endDate?: string) => 
+    api.get(
+      `/analytics/ip-timeline?ip=${encodeURIComponent(ip)}&start_date=${startDate || ''}&end_date=${endDate || ''}`
+    ),
 };
 
 // ============ TOKEN REFRESH LOGIC ============

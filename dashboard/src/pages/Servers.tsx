@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Button, Row, Col, Typography, Alert, Spin, Card, Space, Badge } from 'antd'
-import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react'
+import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle, Sparkles, AlertTriangle } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import ServersList from '../components/ServersList'
 import AddServerConfiguratorModal from '../components/AddServerConfiguratorModal'
 import PendingAgentsList from '../components/PendingAgentsList'
 import { useWebSocket } from '../context/WebSocketContext'
-import { useServers, useSubscriptionStatus } from '../hooks/useQueries'
+import { useServers, useSubscriptionStatus, useSystemStatus } from '../hooks/useQueries'
 import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
@@ -14,11 +14,13 @@ const { Title, Text } = Typography
 export default function Servers() {
   const { data: servers, isLoading: loading, error } = useServers()
   const { data: subscription } = useSubscriptionStatus()
+  const { data: systemStatus } = useSystemStatus()
   const { lastMessage } = useWebSocket()
   const [showAddModal, setShowAddModal] = useState(false)
   const navigate = useNavigate()
 
   const noSubscription = subscription && subscription.plan === 'none'
+  const needsAttention = systemStatus && (systemStatus.status === 'warning' || systemStatus.status === 'error')
 
   useEffect(() => {
     if (lastMessage?.type === 'stats_update') {
@@ -75,6 +77,35 @@ export default function Servers() {
           </Space>
         </Col>
       </Row>
+
+      {/* System Status Alert */}
+      {needsAttention && (
+        <Alert
+          message={
+            <Space>
+              <AlertTriangle size={18} color={systemStatus.status === 'error' ? '#ef4444' : '#f59e0b'} />
+              <span style={{ fontWeight: 600 }}>System Status: Attention Required</span>
+            </Space>
+          }
+          description={
+            <Text style={{ color: 'var(--text-secondary)' }}>
+              {systemStatus.message}. Last heartbeat {systemStatus.lastHeartbeatAgo}.
+            </Text>
+          }
+          type={systemStatus.status === 'error' ? 'error' : 'warning'}
+          showIcon={false}
+          style={{ 
+            marginBottom: 24, 
+            background: systemStatus.status === 'error' 
+              ? 'rgba(239, 68, 68, 0.1)' 
+              : 'rgba(245, 158, 11, 0.1)', 
+            border: `1px solid ${systemStatus.status === 'error' 
+              ? 'rgba(239, 68, 68, 0.3)' 
+              : 'rgba(245, 158, 11, 0.3)'}`,
+            borderRadius: 'var(--radius-lg)',
+          }}
+        />
+      )}
 
       {/* Subscription Banner */}
       {noSubscription && (

@@ -34,12 +34,12 @@ import {
 } from '@ant-design/icons';
 import {
   Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   Legend,
-  LineChart,
   PieChart,
   Pie,
   ResponsiveContainer,
@@ -343,7 +343,7 @@ export default function Visualizer() {
     queries: topTimelineIPs.map((ip) => ({
       queryKey: ['analytics', 'ip-timeline', ip, startDate, endDate],
       queryFn: async () => {
-        const { data } = await analyticsAPI.getSourceIPTimeline(ip);
+        const { data } = await analyticsAPI.getSourceIPTimeline(ip, startDate, endDate);
         return Array.isArray(data?.data) ? data.data : [];
       },
       enabled: !!ip,
@@ -709,7 +709,7 @@ export default function Visualizer() {
                         ) : (
                           <div style={{ height: 280 }}>
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart
+                              <AreaChart
                                 data={sourceTimelineData}
                                 margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
                               >
@@ -751,7 +751,7 @@ export default function Visualizer() {
                                 {topTimelineIPs.map((ip, idx) => (
                                   <Area
                                     key={ip}
-                                    type="monotone"
+                                    type="stepAfter"
                                     dataKey={ip}
                                     name={ip}
                                     stroke={COLORS[idx % COLORS.length]}
@@ -762,7 +762,7 @@ export default function Visualizer() {
                                   />
                                 ))}
                                 <Legend formatter={(value: string) => cleanIP(value)} />
-                              </LineChart>
+                              </AreaChart>
                             </ResponsiveContainer>
                           </div>
                         )}

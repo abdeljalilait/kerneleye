@@ -635,12 +635,12 @@ export const useTopASNs = (startDate?: string, endDate?: string, limit?: number)
   });
 };
 
-export const useSourceIPTimeline = (ip?: string) => {
+export const useSourceIPTimeline = (ip?: string, startDate?: string, endDate?: string) => {
   return useQuery({
-    queryKey: ['analytics', 'ip-timeline', ip],
+    queryKey: ['analytics', 'ip-timeline', ip, startDate, endDate],
     queryFn: async () => {
       if (!ip) return [];
-      const { data } = await analyticsAPI.getSourceIPTimeline(ip);
+      const { data } = await analyticsAPI.getSourceIPTimeline(ip, startDate, endDate);
       return data.data;
     },
     enabled: !!ip,

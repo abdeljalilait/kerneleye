@@ -3,10 +3,8 @@ import { Typography, Button, Spin, Alert as AntAlert, Table, Tag, Space, Card, R
 import type { ColumnsType } from 'antd/es/table'
 import { 
   ReloadOutlined, 
-  CheckCircleOutlined, 
-  CloseCircleOutlined, 
   InfoCircleOutlined} from '@ant-design/icons'
-import { Bell, Shield, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import { Bell, Shield, AlertTriangle, CheckCircle, Clock, Server } from 'lucide-react'
 import { Alert } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
 import { useAlerts } from '../hooks/useQueries'
@@ -32,6 +30,16 @@ export default function Alerts() {
 
   const getSeverityConfig = (severity: string) => {
     const configs: Record<string, { color: string; icon: any; bg: string }> = {
+      info: {
+        color: '#3b82f6',
+        icon: InfoCircleOutlined,
+        bg: 'rgba(59, 130, 246, 0.15)',
+      },
+      warning: {
+        color: '#f59e0b',
+        icon: AlertTriangle,
+        bg: 'rgba(245, 158, 11, 0.15)',
+      },
       critical: { 
         color: '#ef4444', 
         icon: AlertTriangle, 
@@ -47,18 +55,16 @@ export default function Alerts() {
         icon: InfoCircleOutlined, 
         bg: 'rgba(245, 158, 11, 0.15)' 
       },
-      low: { 
-        color: '#3b82f6', 
-        icon: InfoCircleOutlined, 
-        bg: 'rgba(59, 130, 246, 0.15)' 
-      },
     }
-    return configs[severity] || configs.low
+    return configs[severity] || configs.info
   }
 
   const getStatusConfig = (status: string) => {
     if (status === 'active') {
       return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', icon: Clock }
+    }
+    if (status === 'acknowledged') {
+      return { color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)', icon: InfoCircleOutlined }
     }
     if (status === 'resolved') {
       return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', icon: CheckCircle }
@@ -128,6 +134,20 @@ export default function Alerts() {
       )
     },
     {
+      title: 'Server',
+      dataIndex: 'server_hostname',
+      key: 'server_hostname',
+      width: 180,
+      render: (hostname) => (
+        <Space size={8}>
+          <Server size={14} color="var(--text-tertiary)" />
+          <Text style={{ color: 'var(--text-secondary)' }}>
+            {hostname || 'Unknown server'}
+          </Text>
+        </Space>
+      )
+    },
+    {
       title: 'Description',
       dataIndex: 'reason',
       key: 'reason',
@@ -167,31 +187,6 @@ export default function Alerts() {
           </Tag>
         )
       }
-    },
-    {
-      title: 'Actions',
-      key: 'action',
-      width: 100,
-      render: (_, record) => (
-        <Space size={4}>
-          {record.status === 'active' && (
-            <Button 
-              size="small" 
-              type="text" 
-              icon={<CheckCircleOutlined />} 
-              style={{ color: '#10b981' }}
-            >
-              Resolve
-            </Button>
-          )}
-          <Button 
-            size="small" 
-            type="text" 
-            icon={<CloseCircleOutlined />} 
-            style={{ color: 'var(--text-tertiary)' }}
-          />
-        </Space>
-      )
     }
   ]
 
@@ -210,10 +205,10 @@ export default function Alerts() {
         <Col>
           <Space direction="vertical" size={4}>
             <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
-              Security Alerts
+              Alerts
             </Title>
             <Text style={{ color: 'var(--text-secondary)' }}>
-              Actionable security incidents and warnings
+              Remediation incidents created when threats trigger an operator-facing action
             </Text>
           </Space>
         </Col>
@@ -319,7 +314,7 @@ export default function Alerts() {
                   </div>
                   <div>
                     <Text style={{ color: 'var(--text-tertiary)', fontSize: 13, display: 'block' }}>
-                      Resolved Today
+                      Resolved Incidents
                     </Text>
                     <Title level={2} style={{ margin: '4px 0', color: '#10b981' }}>
                       {resolvedCount}
@@ -372,7 +367,7 @@ export default function Alerts() {
           <Space>
             <AlertTriangle size={18} color="#f59e0b" />
             <Text strong style={{ color: 'var(--text-primary)' }}>
-              All Alerts
+              Remediation Alerts
             </Text>
             <Badge 
               count={alerts?.length || 0} 
@@ -399,11 +394,11 @@ export default function Alerts() {
                   <Shield size={64} color="var(--text-muted)" opacity={0.3} />
                 </div>
                 <Text style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>
-                  No active alerts
+                  No remediation alerts
                 </Text>
                 <br />
                 <Text style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                  Your systems are running smoothly
+                  Threats will still appear on the Threats page even when no alert has been created
                 </Text>
               </div>
             ) 

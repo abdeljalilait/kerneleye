@@ -46,7 +46,7 @@ export default function Threats() {
               Threat Detection
             </Title>
             <Text style={{ color: 'var(--text-secondary)' }}>
-              Real-time threat monitoring and analysis
+              All suspicious and malicious traffic scored from observed network activity
             </Text>
           </Space>
         </Col>

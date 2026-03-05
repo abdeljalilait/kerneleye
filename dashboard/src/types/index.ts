@@ -41,16 +41,23 @@ export interface Threat {
   is_blocked?: boolean;
 }
 
+export type AlertSeverity = 'info' | 'warning' | 'medium' | 'high' | 'critical';
+export type AlertStatus = 'active' | 'acknowledged' | 'resolved';
+
 export interface Alert {
   id: string;
   server_id: string;
   source_ip: string;
   threat_score: number;
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  severity: AlertSeverity;
   reason: string;
-  status: 'active' | 'resolved' | 'ignored';
+  status: AlertStatus;
   auto_blocked: boolean;
+  blocked_until?: string | null;
   created_at: string;
+  acknowledged_at?: string | null;
+  resolved_at?: string | null;
+  server_hostname?: string;
 }
 
 export interface StatsOverview {

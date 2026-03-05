@@ -1,9 +1,9 @@
-import { Table, Tag, Typography, Button, Popconfirm, Space, Card, Avatar, Badge } from 'antd'
+import { Table, Tag, Typography, Button, Popconfirm, Space, Card, Avatar, Badge, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Server } from '../types'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useDeleteServer } from '../hooks/useQueries'
-import { Trash2, Server as ServerIcon, Activity, ChevronRight } from 'lucide-react'
+import { Trash2, Server as ServerIcon, Activity, ChevronRight, Globe, Clock, Package } from 'lucide-react'
 
 const { Text } = Typography
 
@@ -41,7 +41,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     {
       title: 'Server',
       key: 'server',
-      width: '40%',
+      width: '30%',
       minWidth: 200,
       responsive: ['xs', 'sm', 'md', 'lg', 'xl'],
       render: (_, record) => {
@@ -100,10 +100,44 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     },
 
     {
+      title: 'Location',
+      key: 'location',
+      width: '15%',
+      minWidth: 120,
+      render: (_, record) => {
+        const location = record.country_name || record.country_code
+        const city = record.city
+        
+        if (!location && !city) {
+          return (
+            <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+              -
+            </Text>
+          )
+        }
+        
+        return (
+          <Tooltip title={city ? `${city}, ${location}` : location}>
+            <Space size={4}>
+              <Globe size={14} color="#8b5cf6" />
+              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                {city || location}
+              </Text>
+              {record.country_code && (
+                <span style={{ fontSize: 11, marginLeft: 2 }}>
+                  {record.country_code.toUpperCase()}
+                </span>
+              )}
+            </Space>
+          </Tooltip>
+        )
+      },
+    },
+    {
       title: 'Events',
       key: 'events',
-      width: '20%',
-      minWidth: 100,
+      width: '12%',
+      minWidth: 90,
       render: () => (
         <Space size={4}>
           <Activity size={14} color="#6366f1" />
@@ -113,6 +147,62 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
           <Text style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>/hr</Text>
         </Space>
       ),
+    },
+    {
+      title: 'Agent',
+      key: 'agent',
+      width: '12%',
+      minWidth: 100,
+      render: (_, record) => (
+        <Tooltip title={`Agent Version: ${record.agent_version}`}>
+          <Space size={4}>
+            <Package size={14} color="#10b981" />
+            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+              v{record.agent_version?.replace(/^v/, '') || '-'}
+            </Text>
+          </Space>
+        </Tooltip>
+      ),
+    },
+    {
+      title: 'Last Seen',
+      key: 'last_seen',
+      width: '15%',
+      minWidth: 120,
+      render: (_, record) => {
+        const getRelativeTime = (date: string) => {
+          const now = new Date()
+          const then = new Date(date)
+          const diffMs = now.getTime() - then.getTime()
+          const diffSecs = Math.floor(diffMs / 1000)
+          const diffMins = Math.floor(diffSecs / 60)
+          const diffHours = Math.floor(diffMins / 60)
+          const diffDays = Math.floor(diffHours / 24)
+          
+          if (diffSecs < 60) return 'Just now'
+          if (diffMins < 60) return `${diffMins}m ago`
+          if (diffHours < 24) return `${diffHours}h ago`
+          if (diffDays < 7) return `${diffDays}d ago`
+          return then.toLocaleDateString()
+        }
+        
+        const isRecent = record.last_seen && 
+          (new Date().getTime() - new Date(record.last_seen).getTime()) < 5 * 60 * 1000
+        
+        return (
+          <Tooltip title={record.last_seen ? new Date(record.last_seen).toLocaleString() : '-'}>
+            <Space size={4}>
+              <Clock size={14} color={isRecent ? '#10b981' : 'var(--text-tertiary)'} />
+              <Text style={{ 
+                color: isRecent ? '#10b981' : 'var(--text-secondary)', 
+                fontSize: 13 
+              }}>
+                {record.last_seen ? getRelativeTime(record.last_seen) : '-'}
+              </Text>
+            </Space>
+          </Tooltip>
+        )
+      },
     },
     {
       title: 'Actions',

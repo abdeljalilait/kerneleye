@@ -332,10 +332,30 @@ func HandleGetSourceIPTimeline(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id").(string)
 		ip := c.Query("ip")
+		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
 
 		if ip == "" {
 			return fiber.NewError(fiber.StatusBadRequest, "IP address is required")
 		}
+
+		// Default to last 24 hours if range is not provided.
+		if startDate == "" {
+			startDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+		}
+		if endDate == "" {
+			endDate = time.Now().Format("2006-01-02")
+		}
+
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid start_date format")
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid end_date format")
+		}
+		end = end.Add(24 * time.Hour)
 
 		// Parse IP address
 		parsedIP, err := netip.ParseAddr(ip)
@@ -344,8 +364,10 @@ func HandleGetSourceIPTimeline(queries *database.Queries) fiber.Handler {
 		}
 
 		timeline, err := queries.GetSourceIPTimeline(c.Context(), database.GetSourceIPTimelineParams{
-			UserID:  database.ToPgUUID(userID),
-			Column2: parsedIP,
+			UserID:     database.ToPgUUID(userID),
+			Column2:    parsedIP,
+			LastSeen:   database.ToPgTimestamptz(start),
+			LastSeen_2: database.ToPgTimestamptz(end),
 		})
 		if err != nil {
 			log.Printf("[API] GetSourceIPTimeline error: %v", err)

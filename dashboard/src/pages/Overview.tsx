@@ -134,18 +134,18 @@ export default function Overview() {
   const hasActiveTrial = subscription && subscription.is_trialing
 
   const rawStats: Partial<StatsOverview> = statsData || {}
+  const threats = threatsData || []
   const stats: StatsOverview = {
     total_servers: rawStats.total_servers ?? 0,
     active_servers: rawStats.active_servers ?? 0,
     total_events: rawStats.total_events ?? 0,
     total_alerts: rawStats.total_alerts ?? 0,
-    active_threats: rawStats.active_threats ?? 0,
+    active_threats: rawStats.active_threats ?? threats.length,
     blocked_ips: rawStats.blocked_ips ?? 0,
     events_last_24h: rawStats.events_last_24h ?? 0,
-    alerts_last_24h: rawStats.alerts_last_24h ?? 0,
+    alerts_last_24h: rawStats.alerts_last_24h ?? rawStats.total_alerts ?? 0,
   }
   const servers = serversData || []
-  const threats = threatsData || []
 
   useEffect(() => {
     if (lastMessage?.type === 'stats_update' || lastMessage?.type === 'new_alert') {
@@ -248,7 +248,7 @@ export default function Overview() {
           <StatCard
             title="Active Threats"
             value={stats.active_threats.toString()}
-            subtext="Require attention"
+            subtext="Suspicious or malicious IPs"
             icon={AlertTriangle}
             trend={stats.active_threats > 0 ? 'up' : 'neutral'}
             color={stats.active_threats > 0 ? 'error' : 'success'}
