@@ -312,13 +312,22 @@ func eventCommName(event Event) string {
 }
 
 func (a *Aggregator) isControlPlaneTraffic(event Event, remoteIP net.IP) bool {
-	if event.Direction != DirOutbound {
-		return false
-	}
 	if len(a.controlPlaneIPs) == 0 {
 		return false
 	}
-	return a.controlPlaneIPs[remoteIP.String()]
+	if !a.controlPlaneIPs[remoteIP.String()] {
+		return false
+	}
+
+	// Outbound connections to the control plane should never be scored.
+	if event.Direction == DirOutbound {
+		return true
+	}
+
+	// Some kernel hooks (for example tcp_receive_reset) surface responses from
+	// outbound connects as inbound events. Ignore only the matching control-plane
+	// remote port to avoid hiding unrelated inbound activity from the same IP.
+	return a.controlPlanePort != 0 && event.Rport == a.controlPlanePort
 }
 
 func (a *Aggregator) isAgentSelfTraffic(event Event) bool {
@@ -332,6 +341,17 @@ func (a *Aggregator) isAgentSelfTraffic(event Event) bool {
 	return comm == "kerneleye-agent" || comm == "kerneleye"
 }
 
+func (a *Aggregator) isHostSelfIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	ipStr := ip.String()
+	if a.cachedPublicIP != "" && ipStr == a.cachedPublicIP {
+		return true
+	}
+	return a.serverIPs[ipStr]
+}
+
 // ProcessEvent processes a single eBPF event (thread-safe via SafeStats)
 func (a *Aggregator) ProcessEvent(event Event) {
 	if a.isAgentSelfTraffic(event) {
@@ -340,6 +360,9 @@ func (a *Aggregator) ProcessEvent(event Event) {
 
 	ipObj := bytesToIP(event.Saddr[:], event.Family)
 	if a.isControlPlaneTraffic(event, ipObj) {
+		return
+	}
+	if a.isHostSelfIP(ipObj) {
 		return
 	}
 	if isPrivateIP(ipObj) {

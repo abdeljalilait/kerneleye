@@ -224,3 +224,70 @@ func TestProcessEventIgnoresControlPlaneIPTraffic(t *testing.T) {
 		t.Fatalf("stats entries = %d, want 1 for inbound traffic", got)
 	}
 }
+
+func TestProcessEventIgnoresControlPlaneInboundOnControlPort(t *testing.T) {
+	agg := &Aggregator{
+		stats:            NewSafeStats(),
+		cachedPublicIP:   "203.0.113.10",
+		bootTime:         time.Now().Add(-time.Hour),
+		controlPlaneIPs:  map[string]bool{"46.224.59.11": true},
+		controlPlaneHost: "grpc.example.net",
+		controlPlanePort: 80,
+	}
+
+	// Reset-like inbound event from control-plane IP on control-plane port.
+	agg.ProcessEvent(Event{
+		Saddr:     ipv4ToBytes("46.224.59.11"),
+		Lport:     51612,
+		Rport:     80,
+		Protocol:  6,
+		Family:    2,
+		Direction: DirInbound,
+		Flags:     0x08,
+		Tgid:      1234,
+	})
+
+	if got := agg.stats.Len(); got != 0 {
+		t.Fatalf("stats entries = %d, want 0 for control-plane inbound control-port traffic", got)
+	}
+
+	// Same control-plane IP on a non-control port should still be processed.
+	agg.ProcessEvent(Event{
+		Saddr:     ipv4ToBytes("46.224.59.11"),
+		Lport:     22,
+		Rport:     58086,
+		Protocol:  6,
+		Family:    2,
+		Direction: DirInbound,
+		Tgid:      5678,
+	})
+
+	if got := agg.stats.Len(); got != 1 {
+		t.Fatalf("stats entries = %d, want 1 for non-control-port inbound traffic", got)
+	}
+}
+
+func TestProcessEventIgnoresHostSelfIPTraffic(t *testing.T) {
+	agg := &Aggregator{
+		stats:          NewSafeStats(),
+		cachedPublicIP: "46.224.59.11",
+		serverIPs: map[string]bool{
+			"46.224.59.11": true,
+		},
+		bootTime: time.Now().Add(-time.Hour),
+	}
+
+	agg.ProcessEvent(Event{
+		Saddr:     ipv4ToBytes("46.224.59.11"),
+		Lport:     51612,
+		Rport:     9091,
+		Protocol:  6,
+		Family:    2,
+		Direction: DirOutbound,
+		Tgid:      1234,
+	})
+
+	if got := agg.stats.Len(); got != 0 {
+		t.Fatalf("stats entries = %d, want 0 for host self-IP traffic", got)
+	}
+}
