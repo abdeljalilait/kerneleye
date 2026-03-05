@@ -995,9 +995,10 @@ func HandleGenerateAPIKey(queries *database.Queries) fiber.Handler {
 		log.Printf("[API] GET /servers/generate-api-key - User plan: %s, status: %s, max_servers: %d",
 			user.Plan, user.SubscriptionStatus.String, user.MaxServers)
 
-		// Check if user has an active subscription or trial
-		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		hasActiveSub := user.SubscriptionStatus.String == "active" || isTrialing
+		// Check if user has an active subscription, trial, or cancel-at-period-end access
+		now := time.Now()
+		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(now)
+		hasActiveSub := hasSubscriptionEntitlement(user, now)
 
 		if !hasActiveSub {
 			log.Printf("[API] GET /servers/generate-api-key - ERROR: User %s has no active subscription (status: %s, trialing: %v)",

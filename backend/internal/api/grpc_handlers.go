@@ -852,9 +852,19 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 
 	// Broadcast to connected clients
 	h.hub.Broadcast(server.UserID.String(), "new_block", map[string]any{
+		"id":              block.ID.String(),
+		"block_id":        block.ID.String(),
 		"server_id":       server.ID.String(),
+		"server_name":     server.Hostname,
 		"ip_address":      req.IpAddress,
 		"reason":          req.Reason,
+		"reasons":         []string{req.Reason},
+		"threat_score":    int32(100),
+		"threat_level":    "malicious",
+		"country_code":    countryCodeISO,
+		"country_name":    country,
+		"city":            city,
+		"blocked_at":      time.Now(),
 		"duration":        req.DurationSeconds,
 		"is_auto_blocked": isAutoBlocked,
 	})

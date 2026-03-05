@@ -15,13 +15,18 @@ const MAX_EVENTS = 100
 // Shape of the `data` field inside a `new_block` WS message
 interface NewBlockData {
   id?: string
+  block_id?: string
   ip_address: string
+  server_id?: string
   server_name?: string
   threat_score?: number
   threat_level?: string
   reasons?: string[]
+  reason?: string
+  threat_type?: string
   country_code?: string
   country_name?: string
+  country?: string
   city?: string
   is_datacenter?: boolean
   blocked_at?: string
@@ -69,6 +74,8 @@ const reasonColor = (r: string) => {
   }
 }
 
+const normalizeReason = (reason: string) => reason.toLowerCase().trim()
+
 const scoreColor = (score: number) => {
   if (score >= 80) return '#ef4444'
   if (score >= 60) return '#f59e0b'
@@ -86,12 +93,26 @@ export default function LiveBlockFeed() {
   const seenIds = useRef(new Set<string>())
 
   const handleNewBlock = useCallback((data: NewBlockData) => {
-    const key = data.id || `${data.ip_address}-${Date.now()}`
+    const reasons = data.reasons && data.reasons.length > 0
+      ? data.reasons
+      : data.reason
+        ? [data.reason]
+        : data.threat_type
+          ? [data.threat_type]
+          : []
+    const key = data.id || data.block_id || `${data.ip_address}-${Date.now()}`
     // deduplicate (backend currently sends the event twice)
     if (seenIds.current.has(key)) return
     seenIds.current.add(key)
 
-    const event: LiveBlockEvent = { ...data, _key: key, _ts: Date.now() }
+    const event: LiveBlockEvent = {
+      ...data,
+      id: data.id || data.block_id,
+      reasons,
+      country_name: data.country_name || data.country,
+      _key: key,
+      _ts: Date.now(),
+    }
     setEvents(prev => [event, ...prev].slice(0, MAX_EVENTS))
     setFlashKey(key)
     setTimeout(() => setFlashKey(null), 1200)
@@ -237,10 +258,10 @@ export default function LiveBlockFeed() {
                   {(evt.reasons && evt.reasons.length > 0 ? evt.reasons : ['unknown']).map(r => (
                     <Tag
                       key={r}
-                      color={reasonColor(r)}
+                      color={reasonColor(normalizeReason(r))}
                       style={{ fontSize: 11, padding: '0 5px', margin: 0 }}
                     >
-                      {reasonLabel(r)}
+                      {reasonLabel(normalizeReason(r))}
                     </Tag>
                   ))}
                 </div>

@@ -38,21 +38,21 @@ func NewThreatScorer() *ThreatScorer {
 		FailedHandshakeWeight: 15.0,
 		ServiceAbuseWeight:    8.0,
 
-		NormalSYNRate:         0.1,
+		NormalSYNRate:         0.05,
 		SuspiciousSYNRate:     1.0,
-		PortScanThreshold:     5,
+		PortScanThreshold:     3,
 		FailedHandshakeRate:   0.5,
-		ServiceAbuseThreshold: 10,
+		ServiceAbuseThreshold: 5,
 
-		SuspiciousThreshold: 30,
-		MaliciousThreshold:  60,
-		AutoBlockThreshold:  60,
+		SuspiciousThreshold: 20,
+		MaliciousThreshold:  40,
+		AutoBlockThreshold:  40,
 
 		MinWindowDuration: 10 * time.Second,
 
-		// Score decays ~15% per hour (0.85^6 ≈ 0.38 after 6 hours)
+		// Score decays ~5% per hour (0.95^6 ≈ 0.74 after 6 hours)
 		// This allows blocked IPs to "cool down" over time without losing all history
-		ScoreDecayRate: 0.85,
+		ScoreDecayRate: 0.95,
 	}
 
 	if ts.AutoBlockThreshold < ts.MaliciousThreshold {
@@ -125,7 +125,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 		// Apply time-decay to previous score based on time since last observation
 		// This allows scores to naturally decrease over time if no new traffic
 		decayedPreviousScore := ts.applyTimeDecay(float64(metrics.PreviousScore), metrics.LastSeen)
-		
+
 		// Asymmetric scoring: increase fast, decay slow
 		// Attack detection must rise fast and decay slowly
 		if adjustedScore > decayedPreviousScore {
@@ -222,7 +222,7 @@ func (ts *ThreatScorer) calculatePortScore(metrics IPMetrics, connectionRate flo
 	// Use both window-based and cumulative unique ports for slow scan detection
 	uniquePorts := metrics.UniquePorts
 	cumulativePorts := metrics.CumulativeUniquePorts
-	
+
 	if uniquePorts < ts.PortScanThreshold && cumulativePorts < ts.PortScanThreshold*2 {
 		return 0
 	}
@@ -258,7 +258,7 @@ func (ts *ThreatScorer) calculatePortScore(metrics IPMetrics, connectionRate flo
 	} else if portsPerSec > dynamicThreshold {
 		score = 5.0 + math.Sqrt(excess)
 	}
-	
+
 	// Slow scan detection using cumulative ports over extended time
 	// Catches: 1 port every 10 seconds = 60 ports over 10 minutes
 	if cumulativePorts >= ts.PortScanThreshold*3 && metrics.CumulativeWindowHours > 0.5 {
@@ -339,7 +339,7 @@ func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics, windowDura
 	}
 	hitsPerSec := float64(metrics.MaxPortHits) / effectiveWindow
 
-	// Threshold: 10 hits/sec = suspicious, 50 hits/sec = malicious
+	// Rate-based severity: high instantaneous rate indicates flood/burst attacks
 	var severity float64
 	switch {
 	case hitsPerSec >= 50.0:
@@ -352,6 +352,24 @@ func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics, windowDura
 		severity = 3.0
 	}
 
+	// Volume-based severity: high absolute connection count indicates sustained
+	// brute force (e.g. SSH credential stuffing that completes each TCP handshake,
+	// keeping the rate low but the total hit count very high).
+	var volumeSeverity float64
+	switch {
+	case metrics.MaxPortHits >= 1000:
+		volumeSeverity = 10.0
+	case metrics.MaxPortHits >= 500:
+		volumeSeverity = 8.0
+	case metrics.MaxPortHits >= 200:
+		volumeSeverity = 6.0
+	case metrics.MaxPortHits >= 100:
+		volumeSeverity = 4.0
+	}
+	if volumeSeverity > severity {
+		severity = volumeSeverity
+	}
+
 	return severity
 }
 
@@ -359,12 +377,12 @@ func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, tota
 	// Check both rate AND absolute volume
 	// High rate with low volume = less concerning
 	// Moderate rate with high volume = sustained attack
-	
+
 	// Short burst detection (high rate, short window)
 	if duration < 10.0 && rate > 20.0 {
 		return 5.0
 	}
-	
+
 	// Volume-based detection - sustained high volume is suspicious
 	// 500+ connections in any window is notable
 	volumeScore := 0.0
@@ -537,20 +555,20 @@ func (ts *ThreatScorer) applyTimeDecay(score float64, lastSeen time.Time) float6
 	if score <= 0 {
 		return 0
 	}
-	
+
 	hoursSince := time.Since(lastSeen).Hours()
 	if hoursSince <= 0 {
 		return score // No decay for current/future times
 	}
-	
+
 	// Exponential decay: score * (decayRate ^ hours)
 	decayFactor := math.Pow(ts.ScoreDecayRate, hoursSince)
 	decayedScore := score * decayFactor
-	
+
 	// Minimum threshold - scores below 5 effectively become 0
 	if decayedScore < 5 {
 		return 0
 	}
-	
+
 	return decayedScore
 }

@@ -46,6 +46,11 @@ const (
 	EnforcementRateLimit EnforcementType = "ratelimit"
 	EnforcementBlock     EnforcementType = "block"
 	EnforcementPermanent EnforcementType = "permanent"
+
+	// Minimum score that should enter the escalation pipeline.
+	// determineEnforcement() contains explicit 30-49 handling (rate-limit path),
+	// so querying at BlockThreshold=60 made that branch unreachable.
+	minEscalationScore = 30
 )
 
 // EnforcementDecision is the output of the escalation engine.
@@ -97,8 +102,19 @@ func (bm *BlockManager) Start(ctx context.Context) {
 	bm.wg.Add(1)
 	go bm.runLoop(ctx)
 
-	log.Printf("[BlockManager] Started (threshold: %d, duration: %v)",
-		bm.config.BlockThreshold, bm.config.BaseBlockDuration)
+	log.Printf("[BlockManager] Started (threshold: %d, candidate_score: %d, duration: %v)",
+		bm.config.BlockThreshold, bm.candidateScoreThreshold(), bm.config.BaseBlockDuration)
+}
+
+func (bm *BlockManager) candidateScoreThreshold() int32 {
+	threshold := bm.config.BlockThreshold
+	if threshold <= 0 {
+		return minEscalationScore
+	}
+	if threshold > minEscalationScore {
+		return minEscalationScore
+	}
+	return int32(threshold)
 }
 
 func (bm *BlockManager) loadActiveBlocks(ctx context.Context) {
@@ -197,10 +213,11 @@ func (bm *BlockManager) cleanupExpiredBlocks() {
 
 func (bm *BlockManager) evaluateAndBlock(ctx context.Context) {
 	windowStart := time.Now().Add(-5 * time.Minute)
+	candidateThreshold := bm.candidateScoreThreshold()
 
 	blockable, err := bm.queries.GetBlockableIPs(ctx, database.GetBlockableIPsParams{
 		LastSeen:    database.ToPgTimestamptz(windowStart),
-		ThreatScore: int32(bm.config.BlockThreshold),
+		ThreatScore: candidateThreshold,
 	})
 	if err != nil {
 		log.Printf("[BlockManager] Failed to get blockable IPs: %v", err)
@@ -458,14 +475,21 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 
 	if bm.hub != nil && row.UserID.Valid {
 		bm.hub.BroadcastToUser(database.FromPgUUID(row.UserID), "new_block", map[string]interface{}{
+			"id":               block.ID.String(),
 			"block_id":         block.ID.String(),
 			"ip_address":       ipStr,
 			"server_id":        row.ServerID.String(),
+			"server_name":      row.ServerName,
 			"threat_score":     row.ThreatScore,
 			"threat_level":     decision.ThreatLevel,
 			"threat_type":      row.ThreatType,
+			"reasons":          reasons,
+			"country_code":     toString(row.CountryCode),
+			"country_name":     toString(row.Country),
+			"city":             toString(row.City),
 			"enforcement_type": string(decision.Type),
 			"duration":         decision.Duration.Seconds(),
+			"blocked_at":       block.BlockedAt.Time,
 			"expires_at":       expiresAt,
 			"block_type":       agentBlockType,
 			"escalation":       decision.Escalation,

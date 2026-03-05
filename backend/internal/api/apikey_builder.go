@@ -155,11 +155,8 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
 		}
 
-		// Check subscription status - accepts active, trialing, or valid trial end date
-		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		hasActiveSub := user.SubscriptionStatus.String == "active" ||
-			user.SubscriptionStatus.String == "trialing" ||
-			isTrialing
+		// Check subscription status - includes cancel-at-period-end access
+		hasActiveSub := hasSubscriptionEntitlement(user, time.Now())
 
 		if !hasActiveSub {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
@@ -374,11 +371,8 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
 		}
 
-		// Check subscription status - accepts active, trialing, or valid trial end date
-		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		hasActiveSub := user.SubscriptionStatus.String == "active" ||
-			user.SubscriptionStatus.String == "trialing" ||
-			isTrialing
+		// Check subscription status - includes cancel-at-period-end access
+		hasActiveSub := hasSubscriptionEntitlement(user, time.Now())
 
 		if !hasActiveSub {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{

@@ -146,17 +146,22 @@ func HandleGetSubscriptionStatus(queries *database.Queries) fiber.Handler {
 			serverCount = 0
 		}
 
+		now := time.Now()
+
 		// Check if user is in trial
-		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
+		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(now)
 
 		// Determine effective status
-		status := user.SubscriptionStatus.String
-		if status == "" {
-			status = "inactive"
-		}
+		status := normalizeSubscriptionStatus(
+			user.SubscriptionStatus.String,
+			isTrialing,
+			user.SubscriptionCancelAtPeriodEnd.Bool,
+			user.SubscriptionCurrentPeriodEnd.Time,
+			now,
+		)
 
-		// Check if subscription is currently active (either paid subscription or active trial)
-		isActive := status == "active" || status == "trialing" || isTrialing
+		// Check if subscription is currently active (including cancel-at-period-end access)
+		isActive := hasSubscriptionEntitlement(user, now)
 
 		// If user has no active subscription or trial, return "no_subscription" state
 		if !isActive {
@@ -652,11 +657,14 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 				}
 			}
 
-			// Handle trial status
-			status := sub.Status
-			if sub.IsTrialing {
-				status = "trialing"
-			}
+			// Handle trial status and keep active access until period end when cancellation is scheduled.
+			status := normalizeSubscriptionStatus(
+				sub.Status,
+				sub.IsTrialing,
+				sub.CancelAtPeriodEnd,
+				sub.CurrentPeriodEnd,
+				time.Now(),
+			)
 
 			// Update user's subscription directly
 			if userID != "" {
@@ -870,13 +878,37 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 
 // cancelUserSubscription marks a user's subscription as canceled
 func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID string, sub PolarSubscription) error {
+	user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
+	if err != nil {
+		return fmt.Errorf("failed to fetch current user during cancellation: %w", err)
+	}
+
+	planName := user.Plan
+	if planName == "" {
+		if p, ok := sub.Metadata["plan"]; ok && p != "" {
+			planName = p
+		} else {
+			planName = "starter"
+		}
+	}
+
+	now := time.Now()
+	isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(now)
+	status := normalizeSubscriptionStatus(
+		sub.Status,
+		isTrialing,
+		sub.CancelAtPeriodEnd,
+		sub.CurrentPeriodEnd,
+		now,
+	)
+
 	params := database.UpdateUserSubscriptionParams{
 		ID:                            database.ToPgUUID(userID),
-		Plan:                          "starter", // Downgrade to starter
+		Plan:                          planName,
 		PolarSubscriptionID:           database.ToPgText(sub.ID),
-		SubscriptionStatus:            database.ToPgText("canceled"),
+		SubscriptionStatus:            database.ToPgText(status),
 		SubscriptionCurrentPeriodEnd:  database.ToPgTimestamptz(sub.CurrentPeriodEnd),
-		SubscriptionCancelAtPeriodEnd: database.ToPgBool(true),
+		SubscriptionCancelAtPeriodEnd: database.ToPgBool(sub.CancelAtPeriodEnd),
 	}
 
 	if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
@@ -889,9 +921,22 @@ func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 
 // uncancelUserSubscription reactivates a user's subscription
 func uncancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID string, sub PolarSubscription) error {
+	user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
+	if err != nil {
+		return fmt.Errorf("failed to fetch current user during uncancel: %w", err)
+	}
+
+	planName := sub.Metadata["plan"]
+	if planName == "" {
+		planName = user.Plan
+	}
+	if planName == "" {
+		planName = "starter"
+	}
+
 	params := database.UpdateUserSubscriptionParams{
 		ID:                             database.ToPgUUID(userID),
-		Plan:                           sub.Metadata["plan"],
+		Plan:                           planName,
 		PolarSubscriptionID:            database.ToPgText(sub.ID),
 		SubscriptionStatus:             database.ToPgText(sub.Status),
 		SubscriptionCurrentPeriodStart: database.ToPgTimestamptz(sub.CurrentPeriodStart),
@@ -937,8 +982,7 @@ func HandleStartTrial(queries *database.Queries) fiber.Handler {
 		}
 
 		// Check if user already has an active subscription or trial
-		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
-		if user.SubscriptionStatus.String == "active" || isTrialing {
+		if hasSubscriptionEntitlement(user, time.Now()) {
 			return fiber.NewError(fiber.StatusBadRequest, "You already have an active subscription or trial")
 		}
 

@@ -355,11 +355,14 @@ func (h *WebhookHandler) handleSubscriptionCreatedOrUpdated(ctx context.Context,
 		planName = "starter"
 	}
 
-	// Determine status including trial
-	status := sub.Status
-	if sub.IsTrialing && sub.TrialEndsAt != nil {
-		status = "trialing"
-	}
+	// Determine status including trial and cancel-at-period-end behavior
+	status := normalizeSubscriptionStatus(
+		sub.Status,
+		sub.IsTrialing,
+		sub.CancelAtPeriodEnd,
+		sub.CurrentPeriodEnd,
+		time.Now(),
+	)
 
 	params := database.UpdateUserSubscriptionParams{
 		ID:                             database.ToPgUUID(userID),
@@ -397,13 +400,36 @@ func (h *WebhookHandler) handleSubscriptionCanceled(ctx context.Context, payload
 		return nil
 	}
 
+	user, err := h.queries.GetUserByID(ctx, database.ToPgUUID(userID))
+	if err != nil {
+		return fmt.Errorf("failed to fetch current user during cancellation: %w", err)
+	}
+
+	planName := user.Plan
+	if planName == "" {
+		if p, ok := sub.Metadata["plan"]; ok && p != "" {
+			planName = p
+		} else {
+			planName = "starter"
+		}
+	}
+
+	isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(time.Now())
+	status := normalizeSubscriptionStatus(
+		sub.Status,
+		isTrialing,
+		sub.CancelAtPeriodEnd,
+		sub.CurrentPeriodEnd,
+		time.Now(),
+	)
+
 	params := database.UpdateUserSubscriptionParams{
 		ID:                            database.ToPgUUID(userID),
-		Plan:                          "starter", // Downgrade to starter
+		Plan:                          planName,
 		PolarSubscriptionID:           database.ToPgText(sub.ID),
-		SubscriptionStatus:            database.ToPgText("canceled"),
+		SubscriptionStatus:            database.ToPgText(status),
 		SubscriptionCurrentPeriodEnd:  database.ToPgTimestamptz(sub.CurrentPeriodEnd),
-		SubscriptionCancelAtPeriodEnd: database.ToPgBool(true),
+		SubscriptionCancelAtPeriodEnd: database.ToPgBool(sub.CancelAtPeriodEnd),
 	}
 
 	if err := h.queries.UpdateUserSubscription(ctx, params); err != nil {
@@ -429,6 +455,13 @@ func (h *WebhookHandler) handleSubscriptionUncanceled(ctx context.Context, paylo
 
 	planName := sub.Metadata["plan"]
 	if planName == "" {
+		user, err := h.queries.GetUserByID(ctx, database.ToPgUUID(userID))
+		if err != nil {
+			return fmt.Errorf("failed to fetch current user during uncancel: %w", err)
+		}
+		planName = user.Plan
+	}
+	if planName == "" {
 		planName = "starter"
 	}
 
@@ -448,4 +481,21 @@ func (h *WebhookHandler) handleSubscriptionUncanceled(ctx context.Context, paylo
 
 	log.Printf("[Polar] Uncanceled subscription for user %s", userID)
 	return nil
+}
+
+func normalizeSubscriptionStatus(status string, isTrialing bool, cancelAtPeriodEnd bool, currentPeriodEnd time.Time, now time.Time) string {
+	if isTrialing {
+		return "trialing"
+	}
+
+	normalized := strings.TrimSpace(status)
+	if normalized == "" {
+		normalized = "inactive"
+	}
+
+	if normalized == "canceled" && cancelAtPeriodEnd && currentPeriodEnd.After(now) {
+		return "active"
+	}
+
+	return normalized
 }

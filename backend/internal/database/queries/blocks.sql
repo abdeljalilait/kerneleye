@@ -44,7 +44,7 @@ SELECT
     COUNT(*) FILTER (WHERE enforcement_type = 'ratelimit')::int            AS ratelimit_count,
     COUNT(*) FILTER (WHERE enforcement_type = 'block')::int                AS block_count,
     COUNT(*) FILTER (WHERE enforcement_type = 'permanent')::int            AS permanent_count,
-    MAX(threat_score)::int                                                 AS max_prior_score
+    COALESCE(MAX(threat_score), 0)::int                                    AS max_prior_score
 FROM blocks
 WHERE user_id    = $1
   AND ip_address = $2;

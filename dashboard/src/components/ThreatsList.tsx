@@ -220,6 +220,7 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
     t.country?.toLowerCase().includes(searchText.toLowerCase()) ||
     t.city?.toLowerCase().includes(searchText.toLowerCase())
   );
+  const blockedCount = threats.filter(t => t.is_blocked).length;
 
   const columns: ColumnsType<Threat> = [
     {
@@ -463,7 +464,7 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
               Detected Threats
             </Title>
             <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {threats.length} active threats
+              {threats.length} detected, {blockedCount} blocked
             </Text>
           </div>
         </div>

@@ -185,13 +185,25 @@ func (w *Worker) buildMetrics(row database.GetTrafficAggregationByIPRow) scoring
 		windowEnd = time.Now()
 	}
 
+	// Cap the window to the scoring interval.
+	// traffic_events.first_seen is set once when the row is first created, so for
+	// persistent attackers it can be hours or days in the past. Using that as the
+	// window start would inflate the denominator and make high-volume attacks appear
+	// to have a negligibly low rate.
+	if w.config.TimeWindowMins > 0 {
+		maxWindowSecs := float64(w.config.TimeWindowMins) * 60.0
+		if windowEnd.Sub(windowStart).Seconds() > maxWindowSecs {
+			windowStart = windowEnd.Add(-time.Duration(w.config.TimeWindowMins) * time.Minute)
+		}
+	}
+
 	// Estimate established connections: minimum of SYN and ACK counts
 	// minus failed handshakes. This approximates successful TCP handshakes.
 	// In TCP, a successful handshake requires at least one SYN and one ACK.
 	synCount := int(row.SynCount)
 	ackCount := int(row.AckCount)
 	failedCount := int(row.FailedHandshakes)
-	
+
 	established := min(synCount, ackCount) - failedCount
 	if established < 0 {
 		established = 0
