@@ -168,6 +168,18 @@ func AuthMiddleware(queries *database.Queries) fiber.Handler {
 	}
 }
 
+// RequireDashboardAuth restricts a route to dashboard-authenticated users only.
+// This blocks agent API-key credentials from mutating user-facing resources.
+func RequireDashboardAuth() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authType, _ := c.Locals("auth_type").(string)
+		if authType != "dashboard" {
+			return fiber.NewError(fiber.StatusForbidden, "dashboard authentication required")
+		}
+		return c.Next()
+	}
+}
+
 // ErrorHandler provides consistent error responses
 func ErrorHandler(c *fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError

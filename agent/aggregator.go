@@ -47,6 +47,8 @@ type Aggregator struct {
 	controlPlaneIPs    map[string]bool
 	controlPlaneHost   string
 	controlPlanePort   uint16
+	whitelistMu        sync.RWMutex
+	whitelistedIPs     map[string]bool
 
 	blockCmdClient *BlockCommandClient // Receives block commands from backend
 
@@ -143,6 +145,7 @@ func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, rem remedia
 		controlPlaneIPs:   controlPlaneIPs,
 		controlPlaneHost:  controlPlaneHost,
 		controlPlanePort:  controlPlanePort,
+		whitelistedIPs:    make(map[string]bool),
 		maxReconnectDelay: 5 * time.Minute,
 	}
 	if len(controlPlaneIPs) > 0 {
@@ -303,6 +306,14 @@ func resolveControlPlaneEndpoint(target string) (host string, port uint16, ips m
 	return host, port, ips
 }
 
+func normalizeIPString(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if parsed := net.ParseIP(ip); parsed != nil {
+		return parsed.String()
+	}
+	return ip
+}
+
 func eventCommName(event Event) string {
 	name := event.Comm[:]
 	if idx := bytes.IndexByte(name, 0); idx >= 0 {
@@ -350,6 +361,39 @@ func (a *Aggregator) isHostSelfIP(ip net.IP) bool {
 		return true
 	}
 	return a.serverIPs[ipStr]
+}
+
+func (a *Aggregator) isWhitelistedIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	a.whitelistMu.RLock()
+	defer a.whitelistMu.RUnlock()
+	return a.whitelistedIPs[ip.String()]
+}
+
+func (a *Aggregator) IsWhitelistedIPString(ip string) bool {
+	key := normalizeIPString(ip)
+	if key == "" {
+		return false
+	}
+	a.whitelistMu.RLock()
+	defer a.whitelistMu.RUnlock()
+	return a.whitelistedIPs[key]
+}
+
+func (a *Aggregator) SetWhitelistIP(ip string, whitelisted bool) {
+	key := normalizeIPString(ip)
+	if key == "" {
+		return
+	}
+	a.whitelistMu.Lock()
+	defer a.whitelistMu.Unlock()
+	if whitelisted {
+		a.whitelistedIPs[key] = true
+		return
+	}
+	delete(a.whitelistedIPs, key)
 }
 
 // ProcessEvent processes a single eBPF event (thread-safe via SafeStats)
@@ -425,6 +469,10 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	}
 	processName := stats.ProcessName
 	stats.mu.Unlock()
+
+	if a.isWhitelistedIP(ipObj) {
+		return
+	}
 
 	// Analyze traffic for remediation
 	if a.analyzer != nil && a.remediator != nil {

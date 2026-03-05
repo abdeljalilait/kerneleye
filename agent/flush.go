@@ -122,6 +122,9 @@ func (a *Aggregator) FlushToAPI() {
 	// Process scores with AutoBlocker (if enabled)
 	if a.autoBlocker != nil && a.scorer != nil {
 		for ip, ctx := range scored {
+			if a.IsWhitelistedIPString(ip) {
+				continue
+			}
 			score := ctx.Score
 
 			// Log high-score events for debugging

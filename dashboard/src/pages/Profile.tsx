@@ -13,8 +13,6 @@ import {
   Col,
   Avatar,
   Badge,
-  Tabs,
-  Radio,
   Alert,
   message,
   Spin,
@@ -32,12 +30,17 @@ import {
   Palette,
   Check,
   CreditCard,
+  Settings,
+  Key,
+  LogOut,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useSubscriptionStatus } from '../hooks/useQueries';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -47,6 +50,7 @@ export default function Profile() {
   
   const [profileForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<'general' | 'appearance' | 'notifications'>('general');
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
     threatAlerts: true,
@@ -56,94 +60,126 @@ export default function Profile() {
 
   const handleSaveProfile = async () => {
     setSaving(true);
-    // TODO: Implement profile update API
     setTimeout(() => {
       message.success('Profile updated successfully');
       setSaving(false);
     }, 1000);
   };
 
-
   const getInitials = (email: string) => {
     return email?.split('@')[0]?.slice(0, 2).toUpperCase() || 'U';
   };
 
   const themeOptions = [
-    { value: 'dark', label: 'Dark', icon: Moon },
-    { value: 'light', label: 'Light', icon: Sun },
-    { value: 'system', label: 'System', icon: Monitor },
+    { value: 'dark', label: 'Dark', icon: Moon, color: '#6366f1' },
+    { value: 'light', label: 'Light', icon: Sun, color: '#f59e0b' },
+    { value: 'system', label: 'System', icon: Monitor, color: '#10b981' },
   ];
 
+  const menuItems = [
+    { key: 'general', label: 'General', icon: Settings },
+    { key: 'appearance', label: 'Appearance', icon: Palette },
+    { key: 'notifications', label: 'Notifications', icon: Bell },
+  ];
+
+  const getPlanStatus = () => {
+    if (subLoading) return { text: 'Loading...', color: '#6b7280' };
+    if (subscription?.is_trialing) return { text: 'Trial', color: '#f59e0b' };
+    if (subscription?.status === 'active') return { text: 'Active', color: '#10b981' };
+    return { text: 'No Plan', color: '#6b7280' };
+  };
+
+  const planStatus = getPlanStatus();
+
   return (
-    <div style={{ padding: '24px 48px', maxWidth: 1200, margin: '0 auto' }}>
+    <div>
       {/* Header */}
-      <div style={{ marginBottom: 32 }}>
-        <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
-          Profile & Settings
-        </Title>
-        <Text style={{ color: 'var(--text-secondary)' }}>
-          Manage your account, preferences, and application settings
-        </Text>
-      </div>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
+        <Col>
+          <Space direction="vertical" size={4}>
+            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+              Profile & Settings
+            </Title>
+            <Text style={{ color: 'var(--text-secondary)' }}>
+              Manage your account, preferences, and application settings
+            </Text>
+          </Space>
+        </Col>
+      </Row>
 
       <Row gutter={[24, 24]}>
-        {/* Left Column - Profile Summary */}
-        <Col xs={24} lg={8}>
+        {/* Left Column - Profile Summary & Navigation */}
+        <Col xs={24} lg={7}>
+          {/* Profile Card */}
           <Card
+            variant="borderless"
             style={{
               background: 'var(--bg-card)',
               border: '1px solid var(--border-subtle)',
-              textAlign: 'center',
+              borderRadius: 'var(--radius-lg)',
+              marginBottom: 24,
             }}
-            bodyStyle={{ padding: 32 }}
+            bodyStyle={{ padding: 24 }}
           >
-            <Badge
-              dot
-              color="var(--success)"
-              offset={[-8, 80]}
-              style={{ transform: 'scale(1.5)' }}
-            >
-              <Avatar
-                size={100}
-                style={{
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  fontSize: 36,
-                  fontWeight: 600,
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <Badge
+                dot
+                color={planStatus.color}
+                offset={[-8, 80]}
+                style={{ transform: 'scale(1.5)' }}
+              >
+                <Avatar
+                  size={80}
+                  style={{
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    fontSize: 28,
+                    fontWeight: 600,
+                  }}
+                >
+                  {user?.email ? getInitials(user.email) : 'U'}
+                </Avatar>
+              </Badge>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <Text 
+                strong 
+                style={{ 
+                  fontSize: 16, 
+                  color: 'var(--text-primary)', 
+                  display: 'block',
+                  marginBottom: 4,
                 }}
               >
-                {user?.email ? getInitials(user.email) : 'U'}
-              </Avatar>
-            </Badge>
+                {user?.email?.split('@')[0] || 'User'}
+              </Text>
+              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                {user?.email}
+              </Text>
+            </div>
 
-            <Title level={4} style={{ marginTop: 16, marginBottom: 4, color: 'var(--text-primary)' }}>
-              {user?.email?.split('@')[0] || 'User'}
-            </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>{user?.email}</Text>
-
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
               {subLoading ? (
                 <Spin size="small" />
               ) : (
                 <Badge
                   count={subscription?.plan_display_name || 'No Plan'}
                   style={{
-                    background: subscription?.is_trialing
-                      ? '#f59e0b'
-                      : subscription?.status === 'active'
-                      ? '#10b981'
-                      : '#6b7280',
-                    fontSize: 12,
-                    padding: '4px 12px',
+                    background: planStatus.color,
+                    fontSize: 11,
+                    padding: '2px 10px',
+                    fontWeight: 600,
                   }}
                 />
               )}
             </div>
 
-            <Divider style={{ borderColor: 'var(--border-subtle)', margin: '24px 0' }} />
+            <Divider style={{ borderColor: 'var(--border-subtle)', margin: '20px 0' }} />
 
-            <Space direction="vertical" style={{ width: '100%' }}>
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
               <Button
                 block
+                type="primary"
                 icon={<CreditCard size={16} />}
                 onClick={() => navigate({ to: '/dashboard/subscription' })}
               >
@@ -153,395 +189,461 @@ export default function Profile() {
                 block
                 danger
                 icon={<Trash2 size={16} />}
-                style={{ marginTop: 8 }}
               >
                 Delete Account
               </Button>
             </Space>
           </Card>
 
-          {/* Quick Stats */}
+          {/* Settings Navigation */}
           <Card
+            variant="borderless"
             style={{
               background: 'var(--bg-card)',
               border: '1px solid var(--border-subtle)',
-              marginTop: 24,
+              borderRadius: 'var(--radius-lg)',
             }}
-            title={
-              <Space>
-                <Shield size={16} color="#818cf8" />
-                <Text strong style={{ color: 'var(--text-primary)' }}>
-                  Account Status
-                </Text>
-              </Space>
-            }
+            bodyStyle={{ padding: 8 }}
           >
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Row justify="space-between">
-                <Text style={{ color: 'var(--text-secondary)' }}>Member since</Text>
-                <Text style={{ color: 'var(--text-primary)' }}>{new Date().toLocaleDateString()}</Text>
-              </Row>
-              <Row justify="space-between">
-                <Text style={{ color: 'var(--text-secondary)' }}>Last login</Text>
-                <Text style={{ color: 'var(--text-primary)' }}>Today</Text>
-              </Row>
-              <Row justify="space-between">
-                <Text style={{ color: 'var(--text-secondary)' }}>Two-factor auth</Text>
-                <Badge status="default" text="Disabled" />
-              </Row>
+            <Space direction="vertical" style={{ width: '100%' }} size={4}>
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeSection === item.key;
+                return (
+                  <Button
+                    key={item.key}
+                    type="text"
+                    block
+                    onClick={() => setActiveSection(item.key as any)}
+                    style={{
+                      justifyContent: 'flex-start',
+                      height: 44,
+                      background: isActive ? 'var(--bg-tertiary)' : 'transparent',
+                      color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      fontWeight: isActive ? 600 : 400,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Icon 
+                      size={18} 
+                      style={{ 
+                        marginRight: 12,
+                        color: isActive ? '#6366f1' : 'var(--text-tertiary)',
+                      }} 
+                    />
+                    {item.label}
+                  </Button>
+                );
+              })}
             </Space>
           </Card>
         </Col>
 
-        {/* Right Column - Settings Tabs */}
-        <Col xs={24} lg={16}>
-          <Card
-            style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              minHeight: 600,
-            }}
-            bodyStyle={{ padding: 0 }}
-          >
-            <Tabs
-              defaultActiveKey="profile"
-              style={{ padding: '0 24px' }}
-              items={[
-                {
-                  key: 'profile',
-                  label: (
-                    <Space>
-                      <User size={16} />
-                      Profile
-                    </Space>
-                  ),
-                  children: (
-                    <div style={{ padding: '24px 8px' }}>
-                      <Title level={5} style={{ color: 'var(--text-primary)', marginBottom: 24 }}>
-                        Personal Information
-                      </Title>
-
-                      <Form
-                        form={profileForm}
-                        layout="vertical"
-                        onFinish={handleSaveProfile}
-                        initialValues={{
-                          email: user?.email,
-                          displayName: user?.email?.split('@')[0] || '',
-                        }}
-                      >
-                        <Row gutter={16}>
-                          <Col span={12}>
-                            <Form.Item
-                              label={<Text style={{ color: 'var(--text-secondary)' }}>Display Name</Text>}
-                              name="displayName"
-                            >
-                              <Input
-                                prefix={<User size={16} style={{ color: 'var(--text-tertiary)' }} />}
-                                placeholder="Your name"
-                                size="large"
-                                style={{
-                                  background: 'var(--bg-tertiary)',
-                                  borderColor: 'var(--border-subtle)',
-                                  color: 'var(--text-primary)',
-                                }}
-                              />
-                            </Form.Item>
-                          </Col>
-                          <Col span={12}>
-                            <Form.Item
-                              label={<Text style={{ color: 'var(--text-secondary)' }}>Email</Text>}
-                              name="email"
-                            >
-                              <Input
-                                prefix={<Mail size={16} style={{ color: 'var(--text-tertiary)' }} />}
-                                disabled
-                                size="large"
-                                style={{
-                                  background: 'var(--bg-tertiary)',
-                                  borderColor: 'var(--border-subtle)',
-                                  color: 'var(--text-primary)',
-                                }}
-                              />
-                            </Form.Item>
-                          </Col>
-                        </Row>
-
-                        <Form.Item
-                          label={<Text style={{ color: 'var(--text-secondary)' }}>Bio</Text>}
-                          name="bio"
-                        >
-                          <Input.TextArea
-                            rows={4}
-                            placeholder="Tell us about yourself..."
-                            style={{
-                              background: 'var(--bg-tertiary)',
-                              borderColor: 'var(--border-subtle)',
-                              color: 'var(--text-primary)',
-                              resize: 'none',
-                            }}
-                          />
-                        </Form.Item>
-
-                        <Form.Item>
-                          <Button
-                            type="primary"
-                            htmlType="submit"
-                            icon={<Save size={16} />}
-                            loading={saving}
-                            size="large"
-                          >
-                            Save Changes
-                          </Button>
-                        </Form.Item>
-                      </Form>
-
-
+        {/* Right Column - Settings Content */}
+        <Col xs={24} lg={17}>
+          {/* General Settings */}
+          {activeSection === 'general' && (
+            <>
+              {/* Profile Information Card */}
+              <Card
+                variant="borderless"
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)',
+                  marginBottom: 24,
+                }}
+                title={
+                  <Space>
+                    <div 
+                      style={{
+                        width: 36,
+                        height: 36,
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        borderRadius: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <User size={18} color="#818cf8" />
                     </div>
-                  ),
-                },
-                {
-                  key: 'appearance',
-                  label: (
-                    <Space>
-                      <Palette size={16} />
-                      Appearance
-                    </Space>
-                  ),
-                  children: (
-                    <div style={{ padding: '24px 8px' }}>
-                      <Title level={5} style={{ color: 'var(--text-primary)', marginBottom: 24 }}>
-                        Theme
-                      </Title>
-
-                      <Paragraph style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
-                        Choose your preferred theme. The system theme will automatically match your device's settings.
-                      </Paragraph>
-
-                      <Radio.Group
-                        value={theme}
-                        onChange={(e) => setTheme(e.target.value)}
-                        style={{ width: '100%' }}
+                    <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                      Profile Information
+                    </Text>
+                  </Space>
+                }
+                bodyStyle={{ padding: 24 }}
+              >
+                <Form
+                  form={profileForm}
+                  layout="vertical"
+                  onFinish={handleSaveProfile}
+                  initialValues={{
+                    email: user?.email,
+                    displayName: user?.email?.split('@')[0] || '',
+                  }}
+                >
+                  <Row gutter={16}>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        label={<Text style={{ color: 'var(--text-secondary)' }}>Display Name</Text>}
+                        name="displayName"
                       >
-                        <Row gutter={16}>
-                          {themeOptions.map((option) => {
-                            const Icon = option.icon;
-                            const isSelected = theme === option.value;
-                            return (
-                              <Col span={8} key={option.value}>
-                                <Radio.Button
-                                  value={option.value}
-                                  style={{
-                                    width: '100%',
-                                    height: 'auto',
-                                    padding: '20px',
-                                    borderRadius: 12,
-                                    background: isSelected
-                                      ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.1))'
-                                      : 'var(--bg-tertiary)',
-                                    border: `2px solid ${
-                                      isSelected ? '#6366f1' : 'var(--border-subtle)'
-                                    }`,
-                                  }}
-                                >
-                                  <Space direction="vertical" align="center" style={{ width: '100%' }}>
-                                    <div
-                                      style={{
-                                        width: 48,
-                                        height: 48,
-                                        borderRadius: 12,
-                                        background: isSelected
-                                          ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
-                                          : 'var(--bg-secondary)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                      }}
-                                    >
-                                      <Icon
-                                        size={24}
-                                        color={isSelected ? 'white' : 'var(--text-secondary)'}
-                                      />
-                                    </div>
-                                    <Text
-                                      strong
-                                      style={{
-                                        color: isSelected
-                                          ? 'var(--text-primary)'
-                                          : 'var(--text-secondary)',
-                                      }}
-                                    >
-                                      {option.label}
-                                    </Text>
-                                    {isSelected && (
-                                      <Badge
-                                        count={<Check size={12} />}
-                                        style={{
-                                          background: '#10b981',
-                                          color: 'white',
-                                        }}
-                                      />
-                                    )}
-                                  </Space>
-                                </Radio.Button>
-                              </Col>
-                            );
-                          })}
-                        </Row>
-                      </Radio.Group>
+                        <Input
+                          prefix={<User size={16} style={{ color: 'var(--text-tertiary)' }} />}
+                          placeholder="Your name"
+                          size="large"
+                          style={{
+                            background: 'var(--bg-tertiary)',
+                            borderColor: 'var(--border-subtle)',
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        label={<Text style={{ color: 'var(--text-secondary)' }}>Email</Text>}
+                        name="email"
+                      >
+                        <Input
+                          prefix={<Mail size={16} style={{ color: 'var(--text-tertiary)' }} />}
+                          disabled
+                          size="large"
+                          style={{
+                            background: 'var(--bg-tertiary)',
+                            borderColor: 'var(--border-subtle)',
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
 
-                      <Alert
-                        message={`Current theme: ${resolvedTheme === 'dark' ? 'Dark' : 'Light'} Mode`}
-                        description={
-                          theme === 'system'
-                            ? 'Using your system preference'
-                            : `Manually set to ${theme} mode`
-                        }
-                        type="info"
-                        showIcon
+                  <Form.Item
+                    label={<Text style={{ color: 'var(--text-secondary)' }}>Bio</Text>}
+                    name="bio"
+                  >
+                    <Input.TextArea
+                      rows={3}
+                      placeholder="Tell us about yourself..."
+                      style={{
+                        background: 'var(--bg-tertiary)',
+                        borderColor: 'var(--border-subtle)',
+                        color: 'var(--text-primary)',
+                        resize: 'none',
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item style={{ marginBottom: 0 }}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      icon={<Save size={16} />}
+                      loading={saving}
+                      size="large"
+                    >
+                      Save Changes
+                    </Button>
+                  </Form.Item>
+                </Form>
+              </Card>
+
+              {/* Security Card */}
+              <Card
+                variant="borderless"
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)',
+                }}
+                title={
+                  <Space>
+                    <div 
+                      style={{
+                        width: 36,
+                        height: 36,
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        borderRadius: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Shield size={18} color="#10b981" />
+                    </div>
+                    <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                      Security
+                    </Text>
+                  </Space>
+                }
+                bodyStyle={{ padding: 24 }}
+              >
+                <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                  <Row justify="space-between" align="middle">
+                    <Space direction="vertical" size={4}>
+                      <Text strong style={{ color: 'var(--text-primary)' }}>
+                        Two-Factor Authentication
+                      </Text>
+                      <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                        Add an extra layer of security to your account
+                      </Text>
+                    </Space>
+                    <Badge status="default" text="Disabled" style={{ color: 'var(--text-secondary)' }} />
+                  </Row>
+                  <Divider style={{ borderColor: 'var(--border-subtle)', margin: '8px 0' }} />
+                  <Row justify="space-between" align="middle">
+                    <Space direction="vertical" size={4}>
+                      <Text strong style={{ color: 'var(--text-primary)' }}>
+                        Change Password
+                      </Text>
+                      <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                        Update your password regularly for better security
+                      </Text>
+                    </Space>
+                    <Button type="primary" ghost icon={<Key size={16} />}>
+                      Update
+                    </Button>
+                  </Row>
+                </Space>
+              </Card>
+            </>
+          )}
+
+          {/* Appearance Settings */}
+          {activeSection === 'appearance' && (
+            <Card
+              variant="borderless"
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-lg)',
+              }}
+              title={
+                <Space>
+                  <div 
+                    style={{
+                      width: 36,
+                      height: 36,
+                      background: 'rgba(139, 92, 246, 0.15)',
+                      borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Palette size={18} color="#8b5cf6" />
+                  </div>
+                  <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                    Appearance
+                  </Text>
+                </Space>
+              }
+              bodyStyle={{ padding: 24 }}
+            >
+              <Text style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: 20 }}>
+                Choose your preferred theme. The system theme will automatically match your device's settings.
+              </Text>
+
+              <Row gutter={[16, 16]}>
+                {themeOptions.map((option) => {
+                  const Icon = option.icon;
+                  const isSelected = theme === option.value;
+                  return (
+                    <Col xs={24} sm={8} key={option.value}>
+                      <Card
+                        variant="borderless"
+                        onClick={() => setTheme(option.value as any)}
                         style={{
-                          marginTop: 24,
-                          background: 'rgba(99, 102, 241, 0.1)',
-                          border: '1px solid rgba(99, 102, 241, 0.3)',
+                          background: isSelected 
+                            ? `${option.color}15`
+                            : 'var(--bg-tertiary)',
+                          border: `2px solid ${isSelected ? option.color : 'var(--border-subtle)'}`,
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
                         }}
-                      />
-                    </div>
-                  ),
-                },
-                {
-                  key: 'notifications',
-                  label: (
-                    <Space>
-                      <Bell size={16} />
-                      Notifications
-                    </Space>
-                  ),
-                  children: (
-                    <div style={{ padding: '24px 8px' }}>
-                      <Title level={5} style={{ color: 'var(--text-primary)', marginBottom: 24 }}>
-                        Email Notifications
-                      </Title>
-
-                      <Space direction="vertical" style={{ width: '100%' }} size={24}>
-                        <Card
-                          variant="borderless"
-                          style={{
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                          bodyStyle={{ padding: 16 }}
-                        >
-                          <Row justify="space-between" align="middle">
-                            <Space direction="vertical" size={4}>
-                              <Text strong style={{ color: 'var(--text-primary)' }}>
-                                Security Alerts
-                              </Text>
-                              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                                Get notified when threats are detected
-                              </Text>
-                            </Space>
-                            <Switch
-                              checked={notifications.threatAlerts}
-                              onChange={(checked) =>
-                                setNotifications({ ...notifications, threatAlerts: checked })
-                              }
-                            />
-                          </Row>
-                        </Card>
-
-                        <Card
-                          variant="borderless"
-                          style={{
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                          bodyStyle={{ padding: 16 }}
-                        >
-                          <Row justify="space-between" align="middle">
-                            <Space direction="vertical" size={4}>
-                              <Text strong style={{ color: 'var(--text-primary)' }}>
-                                Email Alerts
-                              </Text>
-                              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                                Receive alerts via email
-                              </Text>
-                            </Space>
-                            <Switch
-                              checked={notifications.emailAlerts}
-                              onChange={(checked) =>
-                                setNotifications({ ...notifications, emailAlerts: checked })
-                              }
-                            />
-                          </Row>
-                        </Card>
-
-                        <Card
-                          variant="borderless"
-                          style={{
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                          bodyStyle={{ padding: 16 }}
-                        >
-                          <Row justify="space-between" align="middle">
-                            <Space direction="vertical" size={4}>
-                              <Text strong style={{ color: 'var(--text-primary)' }}>
-                                Weekly Report
-                              </Text>
-                              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                                Get a summary of your security status every week
-                              </Text>
-                            </Space>
-                            <Switch
-                              checked={notifications.weeklyReport}
-                              onChange={(checked) =>
-                                setNotifications({ ...notifications, weeklyReport: checked })
-                              }
-                            />
-                          </Row>
-                        </Card>
-
-                        <Card
-                          variant="borderless"
-                          style={{
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                          bodyStyle={{ padding: 16 }}
-                        >
-                          <Row justify="space-between" align="middle">
-                            <Space direction="vertical" size={4}>
-                              <Text strong style={{ color: 'var(--text-primary)' }}>
-                                Product Updates
-                              </Text>
-                              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                                News about new features and improvements
-                              </Text>
-                            </Space>
-                            <Switch
-                              checked={notifications.productUpdates}
-                              onChange={(checked) =>
-                                setNotifications({ ...notifications, productUpdates: checked })
-                              }
-                            />
-                          </Row>
-                        </Card>
-                      </Space>
-
-                      <Button
-                        type="primary"
-                        icon={<Save size={16} />}
-                        style={{ marginTop: 24 }}
-                        onClick={() => message.success('Notification preferences saved')}
+                        bodyStyle={{ padding: 20, textAlign: 'center' }}
                       >
-                        Save Preferences
-                      </Button>
-                    </div>
-                  ),
-                },
-              ]}
-            />
-          </Card>
+                        <div
+                          style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 12,
+                            background: isSelected ? option.color : 'var(--bg-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 12px',
+                          }}
+                        >
+                          <Icon size={24} color={isSelected ? 'white' : 'var(--text-secondary)'} />
+                        </div>
+                        <Text
+                          strong
+                          style={{
+                            color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            display: 'block',
+                          }}
+                        >
+                          {option.label}
+                        </Text>
+                        {isSelected && (
+                          <CheckCircle2 
+                            size={16} 
+                            color="#10b981" 
+                            style={{ marginTop: 8 }} 
+                          />
+                        )}
+                      </Card>
+                    </Col>
+                  );
+                })}
+              </Row>
+
+              <Alert
+                message={`Current theme: ${resolvedTheme === 'dark' ? 'Dark' : 'Light'} Mode`}
+                description={
+                  theme === 'system'
+                    ? 'Using your system preference'
+                    : `Manually set to ${theme} mode`
+                }
+                type="info"
+                showIcon
+                icon={<CheckCircle2 size={16} />}
+                style={{
+                  marginTop: 24,
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  borderRadius: 'var(--radius-lg)',
+                }}
+              />
+            </Card>
+          )}
+
+          {/* Notifications Settings */}
+          {activeSection === 'notifications' && (
+            <Card
+              variant="borderless"
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-lg)',
+              }}
+              title={
+                <Space>
+                  <div 
+                    style={{
+                      width: 36,
+                      height: 36,
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Bell size={18} color="#f59e0b" />
+                  </div>
+                  <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                    Notifications
+                  </Text>
+                </Space>
+              }
+              bodyStyle={{ padding: 24 }}
+            >
+              <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                {[
+                  {
+                    key: 'threatAlerts',
+                    title: 'Security Alerts',
+                    description: 'Get notified when threats are detected on your servers',
+                    icon: AlertCircle,
+                    color: '#ef4444',
+                  },
+                  {
+                    key: 'emailAlerts',
+                    title: 'Email Alerts',
+                    description: 'Receive critical alerts via email',
+                    icon: Mail,
+                    color: '#6366f1',
+                  },
+                  {
+                    key: 'weeklyReport',
+                    title: 'Weekly Report',
+                    description: 'Get a summary of your security status every week',
+                    icon: Shield,
+                    color: '#10b981',
+                  },
+                  {
+                    key: 'productUpdates',
+                    title: 'Product Updates',
+                    description: 'News about new features and improvements',
+                    icon: CheckCircle2,
+                    color: '#8b5cf6',
+                  },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Card
+                      key={item.key}
+                      variant="borderless"
+                      style={{
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 12,
+                      }}
+                      bodyStyle={{ padding: 16 }}
+                    >
+                      <Row justify="space-between" align="middle">
+                        <Space size={12}>
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 10,
+                              background: `${item.color}15`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Icon size={20} color={item.color} />
+                          </div>
+                          <Space direction="vertical" size={2}>
+                            <Text strong style={{ color: 'var(--text-primary)' }}>
+                              {item.title}
+                            </Text>
+                            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                              {item.description}
+                            </Text>
+                          </Space>
+                        </Space>
+                        <Switch
+                          checked={notifications[item.key as keyof typeof notifications]}
+                          onChange={(checked) =>
+                            setNotifications({ ...notifications, [item.key]: checked })
+                          }
+                        />
+                      </Row>
+                    </Card>
+                  );
+                })}
+              </Space>
+
+              <Button
+                type="primary"
+                icon={<Save size={16} />}
+                size="large"
+                style={{ marginTop: 24 }}
+                onClick={() => message.success('Notification preferences saved')}
+              >
+                Save Preferences
+              </Button>
+            </Card>
+          )}
         </Col>
       </Row>
     </div>

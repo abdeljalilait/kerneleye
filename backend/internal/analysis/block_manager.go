@@ -242,7 +242,11 @@ func (bm *BlockManager) evaluateAndBlock(ctx context.Context) {
 			UserID:    row.UserID,
 			IpAddress: row.SourceIp,
 		})
-		if err == nil && isWhitelisted {
+		if err != nil {
+			log.Printf("[BlockManager] Failed whitelist check for %s: %v (skipping for safety)", ipStr, err)
+			continue
+		}
+		if isWhitelisted {
 			skippedWhitelist++
 			log.Printf("[BlockManager] Skipping whitelisted IP: %s", ipStr)
 			continue

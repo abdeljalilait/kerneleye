@@ -197,6 +197,13 @@ func main() {
 		blockCmdClient, err := NewBlockCommandClient(aggregator.GetGRPCConn(), cfg.APIKey, aggregator.ServerID(),
 			// OnBlock callback - use remediator directly
 			func(ip string, duration time.Duration, reason string) error {
+				if reason == "whitelist_removed" {
+					aggregator.SetWhitelistIP(ip, false)
+					return nil
+				}
+				if aggregator.IsWhitelistedIPString(ip) {
+					return nil
+				}
 				parsedIP := net.ParseIP(ip)
 				if parsedIP == nil {
 					return fmt.Errorf("invalid IP: %s", ip)
@@ -213,6 +220,12 @@ func main() {
 			},
 			// OnUnblock callback
 			func(ip string, blockType remediation.BlockType, reason string) error {
+				switch reason {
+				case "whitelisted":
+					aggregator.SetWhitelistIP(ip, true)
+				case "whitelist_removed":
+					aggregator.SetWhitelistIP(ip, false)
+				}
 				parsedIP := net.ParseIP(ip)
 				if parsedIP == nil {
 					return fmt.Errorf("invalid IP: %s", ip)
@@ -226,6 +239,13 @@ func main() {
 			// Wire rate-limit callback so RATE_LIMIT commands route to the kernel
 			// ipset rate-limit set rather than the hard blocklist.
 			blockCmdClient.SetOnRateLimit(func(ip string, duration time.Duration, reason string) error {
+				if reason == "whitelist_removed" {
+					aggregator.SetWhitelistIP(ip, false)
+					return nil
+				}
+				if aggregator.IsWhitelistedIPString(ip) {
+					return nil
+				}
 				parsedIP := net.ParseIP(ip)
 				if parsedIP == nil {
 					return fmt.Errorf("invalid IP: %s", ip)

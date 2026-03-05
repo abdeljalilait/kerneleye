@@ -267,8 +267,8 @@ func main() {
 
 	// Whitelist endpoints
 	protected.Get("/whitelist", api.HandleListWhitelist(queries))
-	protected.Post("/whitelist", api.HandleAddToWhitelist(queries, hub))
-	protected.Delete("/whitelist/:ip", api.HandleRemoveFromWhitelist(queries, hub))
+	protected.Post("/whitelist", api.RequireDashboardAuth(), api.HandleAddToWhitelist(queries, hub))
+	protected.Delete("/whitelist/:ip", api.RequireDashboardAuth(), api.HandleRemoveFromWhitelist(queries, hub))
 	protected.Get("/whitelist/check", api.HandleCheckWhitelist(queries))
 
 	// Subscription endpoints (Polar)

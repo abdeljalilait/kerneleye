@@ -188,6 +188,32 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 
 	log.Printf("[BlockHandler] Agent %s connected for block commands", clientID)
 
+	// Push current whitelist snapshot so agents can enforce local bypass without
+	// REST polling. We send UNBLOCK for both blocklist and ratelimit types.
+	if whitelisted, err := h.queries.GetWhitelistedIPs(stream.Context(), server.UserID); err != nil {
+		log.Printf("[BlockHandler] Failed to load whitelist for agent %s: %v", clientID, err)
+	} else {
+		for _, ip := range whitelisted {
+			for _, bt := range []kerneleyev1.BlockListEntry_BlockType{
+				kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST,
+				kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT,
+			} {
+				if err := stream.Send(&kerneleyev1.BlockCommand{
+					Action:    kerneleyev1.BlockCommand_UNBLOCK,
+					IpAddress: ip.String(),
+					Reason:    "whitelisted",
+					BlockType: bt,
+				}); err != nil {
+					log.Printf("[BlockHandler] Failed to send whitelist snapshot command: %v", err)
+					return err
+				}
+			}
+		}
+		if len(whitelisted) > 0 {
+			log.Printf("[BlockHandler] Sent whitelist snapshot (%d IPs) to agent %s", len(whitelisted), clientID)
+		}
+	}
+
 	// Stream commands to agent
 	for {
 		select {

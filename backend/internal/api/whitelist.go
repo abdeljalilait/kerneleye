@@ -47,16 +47,6 @@ func HandleAddToWhitelist(queries *database.Queries, hub *Hub) fiber.Handler {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid IP address"})
 		}
 
-		// Verify user owns a server that was attacked by this IP
-		// Only allow whitelisting if the user's server was targeted
-		validServer, err := queries.IsIPAttackingUserServer(c.Context(), database.IsIPAttackingUserServerParams{
-			UserID:   userID,
-			SourceIp: ip,
-		})
-		if err != nil || !validServer {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "you can only whitelist IPs that have attacked your servers"})
-		}
-
 		ipVersion := int32(4)
 		if ip.Is6() {
 			ipVersion = 6
@@ -72,22 +62,32 @@ func HandleAddToWhitelist(queries *database.Queries, hub *Hub) fiber.Handler {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to add to whitelist"})
 		}
 
-		// If hub is available, send unblock command to all agents for this user
+		// If hub is available, send unblock commands to all user agents so the
+		// whitelist takes effect immediately for both blocklist and ratelimit.
 		if hub != nil {
-			// Get all active blocks for this IP and send unblock commands
-			activeBlock, err := queries.GetActiveBlockByIP(c.Context(), database.GetActiveBlockByIPParams{
-				UserID:    userID,
-				IpAddress: ip,
-			})
-			if err == nil && activeBlock.ID.String() != "" {
-				// Send unblock command to agent
-				agentID := activeBlock.ServerID.String()
-				hub.SendCommandToAgent(agentID, map[string]interface{}{
-					"action": "unblock",
-					"ip":     req.IPAddress,
-					"reason": "whitelisted",
-				})
-				log.Printf("[Whitelist] Sent unblock command for %s to agent %s", req.IPAddress, agentID)
+			servers, err := queries.ListServersByUser(c.Context(), userID)
+			if err != nil {
+				log.Printf("[Whitelist] Could not list user servers for unblock fanout user=%s ip=%s: %v", userIDStr, ip.String(), err)
+			} else {
+				for _, server := range servers {
+					agentID := server.ID.String()
+					if agentID == "" {
+						continue
+					}
+					hub.SendCommandToAgent(agentID, map[string]interface{}{
+						"action":     "unblock",
+						"ip":         req.IPAddress,
+						"reason":     "whitelisted",
+						"block_type": "blocklist",
+					})
+					hub.SendCommandToAgent(agentID, map[string]interface{}{
+						"action":     "unblock",
+						"ip":         req.IPAddress,
+						"reason":     "whitelisted",
+						"block_type": "ratelimit",
+					})
+				}
+				log.Printf("[Whitelist] Sent unblock fanout for %s to %d agents", req.IPAddress, len(servers))
 			}
 		}
 
@@ -128,6 +128,36 @@ func HandleRemoveFromWhitelist(queries *database.Queries, hub *Hub) fiber.Handle
 		})
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to remove from whitelist"})
+		}
+
+		// Notify all user agents so local whitelist caches are updated immediately.
+		// Use UNBLOCK action with reason=whitelist_removed as control signal to
+		// clear local whitelist bypass state.
+		if hub != nil {
+			servers, listErr := queries.ListServersByUser(c.Context(), userID)
+			if listErr != nil {
+				log.Printf("[Whitelist] Could not list user servers for whitelist removal fanout user=%s ip=%s: %v", userIDStr, ip.String(), listErr)
+			} else {
+				for _, server := range servers {
+					agentID := server.ID.String()
+					if agentID == "" {
+						continue
+					}
+					hub.SendCommandToAgent(agentID, map[string]interface{}{
+						"action":     "unblock",
+						"ip":         ipStr,
+						"reason":     "whitelist_removed",
+						"block_type": "blocklist",
+					})
+					hub.SendCommandToAgent(agentID, map[string]interface{}{
+						"action":     "unblock",
+						"ip":         ipStr,
+						"reason":     "whitelist_removed",
+						"block_type": "ratelimit",
+					})
+				}
+				log.Printf("[Whitelist] Sent whitelist removal fanout for %s to %d agents", ipStr, len(servers))
+			}
 		}
 
 		return c.JSON(fiber.Map{"message": "removed from whitelist"})

@@ -291,3 +291,41 @@ func TestProcessEventIgnoresHostSelfIPTraffic(t *testing.T) {
 		t.Fatalf("stats entries = %d, want 0 for host self-IP traffic", got)
 	}
 }
+
+func TestProcessEventWhitelistedIPSkipsLocalRemediation(t *testing.T) {
+	cfg := remediation.DefaultAnalyzerConfig()
+	cfg.PortScanThreshold = 0 // Any observed port would trigger rate-limit without whitelist.
+	cfg.PortScanWindow = 30 * time.Second
+
+	rem := &recordingRemediator{}
+	agg := &Aggregator{
+		stats:          NewSafeStats(),
+		cachedPublicIP: "203.0.113.10",
+		bootTime:       time.Now().Add(-time.Hour),
+		analyzer:       remediation.NewAnalyzer(cfg),
+		remediator:     rem,
+		whitelistedIPs: map[string]bool{"46.224.59.11": true},
+	}
+
+	agg.ProcessEvent(Event{
+		Saddr:     ipv4ToBytes("46.224.59.11"),
+		Lport:     22,
+		Rport:     58086,
+		Protocol:  6,
+		Family:    2,
+		Direction: DirInbound,
+		Flags:     0,
+		Timestamp: uint64((10 * time.Second).Nanoseconds()),
+	})
+
+	if rem.blockCalls != 0 {
+		t.Fatalf("block decisions = %d, want 0 for whitelisted IP", rem.blockCalls)
+	}
+	if rem.rateLimitCalls != 0 {
+		t.Fatalf("rate-limit decisions = %d, want 0 for whitelisted IP", rem.rateLimitCalls)
+	}
+
+	if got := agg.stats.Len(); got != 1 {
+		t.Fatalf("stats entries = %d, want 1 (whitelist should bypass remediation, not traffic accounting)", got)
+	}
+}
