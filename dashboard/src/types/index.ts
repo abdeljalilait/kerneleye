@@ -72,7 +72,7 @@ export interface StatsOverview {
 }
 
 // Traffic Event from server traffic endpoint
-export interface TrafficEvent {
+interface TrafficEvent {
   id: string;
   source_ip: string;
   destination_port: number;
@@ -155,7 +155,7 @@ export interface PortTraffic {
 }
 
 // Protocol Traffic (aggregated by protocol only)
-export interface ProtocolTraffic {
+interface ProtocolTraffic {
   protocol: string;
   unique_ips: number;
   unique_ports: number;

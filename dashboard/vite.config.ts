@@ -11,7 +11,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-antd': ['antd', '@ant-design/pro-components'],
+          'vendor-antd': ['antd', '@ant-design/icons'],
           'vendor-charts': ['recharts'],
           'vendor-router': ['@tanstack/react-router', '@tanstack/react-query'],
         },

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import {
   Alert,
@@ -42,6 +42,7 @@ import {
   Legend,
   PieChart,
   Pie,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
   XAxis,
@@ -99,7 +100,6 @@ interface CountryData {
   fill?: string;
 }
 
-type TimelineDataPoint = { time: string; count: number };
 type TimelineChartPoint = Record<string, string | number>;
 
 const COLORS = ['#1677ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa541c'];
@@ -155,52 +155,6 @@ function getDateRange(timeRange: string) {
   };
 }
 
-function extractTimelineBucket(raw: unknown): string | null {
-  if (typeof raw === 'string') {
-    return raw;
-  }
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-
-  const obj = raw as Record<string, unknown>;
-  const possibleString =
-    obj.time ??
-    obj.Time ??
-    obj.time_bucket ??
-    obj.TimeBucket;
-
-  return typeof possibleString === 'string' ? possibleString : null;
-}
-
-function normalizeTimelineData(rows: unknown[] | undefined): TimelineDataPoint[] {
-  if (!Array.isArray(rows)) {
-    return [];
-  }
-
-  return rows
-    .map((row) => {
-      if (!row || typeof row !== 'object') {
-        return null;
-      }
-
-      const rowObj = row as Record<string, unknown>;
-      const rawBucket = rowObj.time_bucket ?? rowObj.timeBucket ?? rowObj.time;
-      const bucket = extractTimelineBucket(rawBucket);
-      if (!bucket) {
-        return null;
-      }
-
-      const count = Number(rowObj.count ?? rowObj.Count ?? 0);
-      return {
-        time: bucket,
-        count: Number.isFinite(count) ? count : 0,
-      };
-    })
-    .filter((value): value is TimelineDataPoint => value !== null)
-    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-}
-
 function formatTimelineLabel(time: string, timeRange: string): string {
   const parsed = new Date(time);
   if (Number.isNaN(parsed.getTime())) {
@@ -224,6 +178,7 @@ export default function Visualizer() {
   const [timeRange, setTimeRange] = useState('24h');
   const [visibility, setVisibility] = useState<'none' | 'summary' | 'expanded'>('expanded');
   const [activePieIndex, setActivePieIndex] = useState(0);
+  const [timelineSortBy, setTimelineSortBy] = useState<'hits' | 'score'>('hits');
 
   const { startDate, endDate } = useMemo(() => getDateRange(timeRange), [timeRange]);
 
@@ -335,36 +290,34 @@ export default function Visualizer() {
 
   const sourceIPs = sourceIPsData;
   const sourceAS = sourceASData;
-  const topTimelineIPs = sourceIPs.slice(0, visibleTimelineCount).map((ip) => cleanIP(ip.ip));
   const sourceIPTableData = visibility === 'expanded' ? sourceIPs : sourceIPs.slice(0, 10);
   const sourceASTableData = visibility === 'expanded' ? sourceAS : sourceAS.slice(0, 10);
 
-  const sourceTimelineQueries = useQueries({
-    queries: topTimelineIPs.map((ip) => ({
-      queryKey: ['analytics', 'ip-timeline', ip, startDate, endDate],
-      queryFn: async () => {
-        const { data } = await analyticsAPI.getSourceIPTimeline(ip, startDate, endDate);
-        return Array.isArray(data?.data) ? data.data : [];
-      },
-      enabled: !!ip,
-      staleTime: 60_000,
-    })),
+  const { data: topIPsTimelineRaw, isLoading: timelineLoading } = useQuery({
+    queryKey: ['analytics', 'top-ips-timeline', timelineSortBy, visibleTimelineCount, startDate, endDate],
+    queryFn: async () => {
+      const { data } = await analyticsAPI.getTopIPsTimeline(timelineSortBy, visibleTimelineCount, startDate, endDate);
+      return data;
+    },
+    enabled: visibleTimelineCount > 0,
+    staleTime: 60_000,
   });
 
-  const timelineVersion = sourceTimelineQueries.map((query) => query.dataUpdatedAt).join('|');
+  const topTimelineIPs: string[] = useMemo(() => {
+    if (!topIPsTimelineRaw?.top_ips) return [];
+    return (topIPsTimelineRaw.top_ips as string[]).slice(0, visibleTimelineCount);
+  }, [topIPsTimelineRaw, visibleTimelineCount]);
+
   const sourceTimelineData = useMemo((): TimelineChartPoint[] => {
+    const rawRows: { ip: string; time_bucket: string; count: number }[] =
+      Array.isArray(topIPsTimelineRaw?.data) ? topIPsTimelineRaw.data : [];
     const byBucket = new Map<string, TimelineChartPoint>();
-
-    topTimelineIPs.forEach((ip, idx) => {
-      const rows = normalizeTimelineData(sourceTimelineQueries[idx]?.data as unknown[] | undefined);
-      rows.forEach((row) => {
-        const existing = byBucket.get(row.time) ?? { time: row.time };
-        existing[ip] = row.count;
-        byBucket.set(row.time, existing);
-      });
+    rawRows.forEach((row) => {
+      const existing = byBucket.get(row.time_bucket) ?? { time: row.time_bucket };
+      existing[row.ip] = (Number(existing[row.ip] ?? 0)) + row.count;
+      byBucket.set(row.time_bucket, existing);
     });
-
-    const filled = Array.from(byBucket.values())
+    return Array.from(byBucket.values())
       .sort((a, b) => new Date(String(a.time)).getTime() - new Date(String(b.time)).getTime())
       .map((row) => {
         const complete: TimelineChartPoint = { time: String(row.time) };
@@ -373,11 +326,30 @@ export default function Visualizer() {
         });
         return complete;
       });
+  }, [topIPsTimelineRaw, topTimelineIPs]);
 
-    return filled;
-  }, [topTimelineIPs, timelineVersion]);
+  const sourceBlockTimesQueries = useQueries({
+    queries: topTimelineIPs.map((ip) => ({
+      queryKey: ['analytics', 'ip-block-times', ip, startDate, endDate],
+      queryFn: async () => {
+        const { data } = await analyticsAPI.getSourceIPBlockTimes(ip, startDate, endDate);
+        return Array.isArray(data?.data) ? (data.data as string[]) : [];
+      },
+      enabled: !!ip,
+      staleTime: 60_000,
+    })),
+  });
 
-  const timelineLoading = sourceTimelineQueries.some((query) => query.isLoading);
+  const blockMarkers = useMemo(() => {
+    const markers: { time: string; ip: string; color: string }[] = [];
+    topTimelineIPs.forEach((ip, idx) => {
+      const times = sourceBlockTimesQueries[idx]?.data ?? [];
+      times.forEach((t) => {
+        markers.push({ time: t, ip, color: COLORS[idx % COLORS.length] });
+      });
+    });
+    return markers;
+  }, [topTimelineIPs, sourceBlockTimesQueries.map((q) => q.dataUpdatedAt).join('|')]);
 
   const sourceIPColumns: ColumnsType<SourceIP> = [
     {
@@ -691,6 +663,17 @@ export default function Visualizer() {
                             <span>Attack Timeline</span>
                           </Space>
                         }
+                        extra={
+                          <Segmented
+                            size="small"
+                            value={timelineSortBy}
+                            onChange={(v) => setTimelineSortBy(v as 'hits' | 'score')}
+                            options={[
+                              { label: 'Top Hits', value: 'hits' },
+                              { label: 'Top Score', value: 'score' },
+                            ]}
+                          />
+                        }
                       >
                         {topTimelineIPs.length === 0 ? (
                           <Empty
@@ -748,6 +731,20 @@ export default function Visualizer() {
                                 />
                                 <YAxis allowDecimals={false} stroke="#d9d9d9" fontSize={11} />
                                 <RechartsTooltip content={<CustomTooltip />} />
+                                {blockMarkers.map((marker, i) => (
+                                  <ReferenceLine
+                                    key={`block-${i}`}
+                                    x={marker.time}
+                                    stroke={marker.color}
+                                    strokeWidth={2}
+                                    strokeDasharray="4 2"
+                                    label={{
+                                      value: '🔒',
+                                      position: 'top',
+                                      fontSize: 11,
+                                    }}
+                                  />
+                                ))}
                                 {topTimelineIPs.map((ip, idx) => (
                                   <Area
                                     key={ip}

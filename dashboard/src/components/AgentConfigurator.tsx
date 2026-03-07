@@ -601,5 +601,3 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     </div>
   );
 }
-
-export default AgentConfigurator;

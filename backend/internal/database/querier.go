@@ -111,12 +111,17 @@ type Querier interface {
 	// Gets the data retention days for a server's user
 	GetServerDataRetentionDays(ctx context.Context, id pgtype.UUID) (int32, error)
 	GetServerStats(ctx context.Context, serverID pgtype.UUID) (GetServerStatsRow, error)
+	GetSourceIPBlockTimes(ctx context.Context, arg GetSourceIPBlockTimesParams) ([]pgtype.Timestamptz, error)
 	GetSourceIPTimeline(ctx context.Context, arg GetSourceIPTimelineParams) ([]GetSourceIPTimelineRow, error)
 	GetStatsAlertCounts(ctx context.Context, userID pgtype.UUID) (GetStatsAlertCountsRow, error)
 	GetStatsEventCounts(ctx context.Context, userID pgtype.UUID) (GetStatsEventCountsRow, error)
 	GetStatsServerCounts(ctx context.Context, userID pgtype.UUID) (GetStatsServerCountsRow, error)
 	GetThreatTrends(ctx context.Context, arg GetThreatTrendsParams) ([]GetThreatTrendsRow, error)
 	GetTopASNs(ctx context.Context, arg GetTopASNsParams) ([]GetTopASNsRow, error)
+	// Returns time-bucketed hit counts for the top N IPs ranked by total hits
+	GetTopIPsTimelineByHits(ctx context.Context, arg GetTopIPsTimelineByHitsParams) ([]GetTopIPsTimelineByHitsRow, error)
+	// Returns time-bucketed hit counts for the top N IPs ranked by max threat score
+	GetTopIPsTimelineByScore(ctx context.Context, arg GetTopIPsTimelineByScoreParams) ([]GetTopIPsTimelineByScoreRow, error)
 	GetTopSourceCountries(ctx context.Context, arg GetTopSourceCountriesParams) ([]GetTopSourceCountriesRow, error)
 	GetTopSourceIPs(ctx context.Context, arg GetTopSourceIPsParams) ([]GetTopSourceIPsRow, error)
 	// ============================================
@@ -180,6 +185,7 @@ type Querier interface {
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
 	UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error
 	UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error)
+	UpsertTrafficTimeline(ctx context.Context, arg UpsertTrafficTimelineParams) error
 }
 
 var _ Querier = (*Queries)(nil)

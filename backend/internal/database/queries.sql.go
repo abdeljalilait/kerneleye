@@ -1805,26 +1805,68 @@ func (q *Queries) GetServerStats(ctx context.Context, serverID pgtype.UUID) (Get
 	return i, err
 }
 
+const getSourceIPBlockTimes = `-- name: GetSourceIPBlockTimes :many
+SELECT
+    b.blocked_at
+FROM blocks b
+WHERE b.user_id = $1
+  AND b.ip_address = $2::inet
+  AND b.blocked_at >= $3
+  AND b.blocked_at <= $4
+ORDER BY b.blocked_at
+`
+
+type GetSourceIPBlockTimesParams struct {
+	UserID      pgtype.UUID        `json:"user_id"`
+	Column2     netip.Addr         `json:"column_2"`
+	BlockedAt   pgtype.Timestamptz `json:"blocked_at"`
+	BlockedAt_2 pgtype.Timestamptz `json:"blocked_at_2"`
+}
+
+func (q *Queries) GetSourceIPBlockTimes(ctx context.Context, arg GetSourceIPBlockTimesParams) ([]pgtype.Timestamptz, error) {
+	rows, err := q.db.Query(ctx, getSourceIPBlockTimes,
+		arg.UserID,
+		arg.Column2,
+		arg.BlockedAt,
+		arg.BlockedAt_2,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Timestamptz{}
+	for rows.Next() {
+		var blocked_at pgtype.Timestamptz
+		if err := rows.Scan(&blocked_at); err != nil {
+			return nil, err
+		}
+		items = append(items, blocked_at)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSourceIPTimeline = `-- name: GetSourceIPTimeline :many
-SELECT 
-    te.source_ip::text as ip,
-    DATE_TRUNC('hour', te.last_seen)::timestamp as time_bucket,
-    COUNT(*)::int as count
-FROM traffic_events te
-JOIN servers s ON te.server_id = s.id
+SELECT
+    host(tl.source_ip) as ip,
+    tl.bucket::timestamp as time_bucket,
+    tl.hit_count::int as count
+FROM traffic_timeline tl
+JOIN servers s ON tl.server_id = s.id
 WHERE s.user_id = $1
-  AND te.source_ip = $2::inet
-  AND te.last_seen >= $3
-  AND te.last_seen <= $4
-GROUP BY te.source_ip, DATE_TRUNC('hour', te.last_seen)
-ORDER BY time_bucket
+  AND tl.source_ip = $2::inet
+  AND tl.bucket >= $3
+  AND tl.bucket <= $4
+ORDER BY tl.bucket
 `
 
 type GetSourceIPTimelineParams struct {
-	UserID     pgtype.UUID        `json:"user_id"`
-	Column2    netip.Addr         `json:"column_2"`
-	LastSeen   pgtype.Timestamptz `json:"last_seen"`
-	LastSeen_2 pgtype.Timestamptz `json:"last_seen_2"`
+	UserID   pgtype.UUID        `json:"user_id"`
+	Column2  netip.Addr         `json:"column_2"`
+	Bucket   pgtype.Timestamptz `json:"bucket"`
+	Bucket_2 pgtype.Timestamptz `json:"bucket_2"`
 }
 
 type GetSourceIPTimelineRow struct {
@@ -1837,8 +1879,8 @@ func (q *Queries) GetSourceIPTimeline(ctx context.Context, arg GetSourceIPTimeli
 	rows, err := q.db.Query(ctx, getSourceIPTimeline,
 		arg.UserID,
 		arg.Column2,
-		arg.LastSeen,
-		arg.LastSeen_2,
+		arg.Bucket,
+		arg.Bucket_2,
 	)
 	if err != nil {
 		return nil, err
@@ -2033,6 +2075,136 @@ func (q *Queries) GetTopASNs(ctx context.Context, arg GetTopASNsParams) ([]GetTo
 			&i.Count,
 			&i.UniqueIps,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopIPsTimelineByHits = `-- name: GetTopIPsTimelineByHits :many
+WITH top_ips AS (
+    SELECT tl.source_ip
+    FROM traffic_timeline tl
+    JOIN servers s ON tl.server_id = s.id
+    WHERE s.user_id = $1
+      AND tl.bucket >= $2
+      AND tl.bucket <= $3
+    GROUP BY tl.source_ip
+    ORDER BY SUM(tl.hit_count) DESC
+    LIMIT $4
+)
+SELECT
+    host(tl.source_ip) as ip,
+    tl.bucket::timestamp as time_bucket,
+    SUM(tl.hit_count)::int as count
+FROM traffic_timeline tl
+JOIN servers s ON tl.server_id = s.id
+WHERE s.user_id = $1
+  AND tl.source_ip IN (SELECT source_ip FROM top_ips)
+  AND tl.bucket >= $2
+  AND tl.bucket <= $3
+GROUP BY tl.source_ip, tl.bucket
+ORDER BY tl.bucket, host(tl.source_ip)
+`
+
+type GetTopIPsTimelineByHitsParams struct {
+	UserID   pgtype.UUID        `json:"user_id"`
+	Bucket   pgtype.Timestamptz `json:"bucket"`
+	Bucket_2 pgtype.Timestamptz `json:"bucket_2"`
+	Limit    int32              `json:"limit"`
+}
+
+type GetTopIPsTimelineByHitsRow struct {
+	Ip         string           `json:"ip"`
+	TimeBucket pgtype.Timestamp `json:"time_bucket"`
+	Count      int32            `json:"count"`
+}
+
+// Returns time-bucketed hit counts for the top N IPs ranked by total hits
+func (q *Queries) GetTopIPsTimelineByHits(ctx context.Context, arg GetTopIPsTimelineByHitsParams) ([]GetTopIPsTimelineByHitsRow, error) {
+	rows, err := q.db.Query(ctx, getTopIPsTimelineByHits,
+		arg.UserID,
+		arg.Bucket,
+		arg.Bucket_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopIPsTimelineByHitsRow{}
+	for rows.Next() {
+		var i GetTopIPsTimelineByHitsRow
+		if err := rows.Scan(&i.Ip, &i.TimeBucket, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopIPsTimelineByScore = `-- name: GetTopIPsTimelineByScore :many
+WITH top_ips AS (
+    SELECT te.source_ip
+    FROM traffic_events te
+    JOIN servers s ON te.server_id = s.id
+    WHERE s.user_id = $1
+      AND te.last_seen >= $2
+      AND te.last_seen <= $3
+    GROUP BY te.source_ip
+    ORDER BY MAX(te.threat_score) DESC
+    LIMIT $4
+)
+SELECT
+    host(tl.source_ip) as ip,
+    tl.bucket::timestamp as time_bucket,
+    SUM(tl.hit_count)::int as count
+FROM traffic_timeline tl
+JOIN servers s ON tl.server_id = s.id
+WHERE s.user_id = $1
+  AND tl.source_ip IN (SELECT source_ip FROM top_ips)
+  AND tl.bucket >= $2
+  AND tl.bucket <= $3
+GROUP BY tl.source_ip, tl.bucket
+ORDER BY tl.bucket, host(tl.source_ip)
+`
+
+type GetTopIPsTimelineByScoreParams struct {
+	UserID   pgtype.UUID        `json:"user_id"`
+	Bucket   pgtype.Timestamptz `json:"bucket"`
+	Bucket_2 pgtype.Timestamptz `json:"bucket_2"`
+	Limit    int32              `json:"limit"`
+}
+
+type GetTopIPsTimelineByScoreRow struct {
+	Ip         string           `json:"ip"`
+	TimeBucket pgtype.Timestamp `json:"time_bucket"`
+	Count      int32            `json:"count"`
+}
+
+// Returns time-bucketed hit counts for the top N IPs ranked by max threat score
+func (q *Queries) GetTopIPsTimelineByScore(ctx context.Context, arg GetTopIPsTimelineByScoreParams) ([]GetTopIPsTimelineByScoreRow, error) {
+	rows, err := q.db.Query(ctx, getTopIPsTimelineByScore,
+		arg.UserID,
+		arg.Bucket,
+		arg.Bucket_2,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopIPsTimelineByScoreRow{}
+	for rows.Next() {
+		var i GetTopIPsTimelineByScoreRow
+		if err := rows.Scan(&i.Ip, &i.TimeBucket, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -3814,4 +3986,52 @@ func (q *Queries) UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEvent
 		&i.ServiceName,
 	)
 	return i, err
+}
+
+const upsertTrafficTimeline = `-- name: UpsertTrafficTimeline :exec
+INSERT INTO traffic_timeline (
+    server_id, source_ip, bucket,
+    hit_count, syn_count, ack_count, failed_handshakes,
+    bytes_in, bytes_out, threat_score
+) VALUES (
+    $1, $2, DATE_TRUNC('hour', $3::timestamptz),
+    $4, $5, $6, $7, $8, $9, $10
+)
+ON CONFLICT (server_id, source_ip, bucket) DO UPDATE SET
+    hit_count         = traffic_timeline.hit_count         + EXCLUDED.hit_count,
+    syn_count         = traffic_timeline.syn_count         + EXCLUDED.syn_count,
+    ack_count         = traffic_timeline.ack_count         + EXCLUDED.ack_count,
+    failed_handshakes = traffic_timeline.failed_handshakes + EXCLUDED.failed_handshakes,
+    bytes_in          = traffic_timeline.bytes_in          + EXCLUDED.bytes_in,
+    bytes_out         = traffic_timeline.bytes_out         + EXCLUDED.bytes_out,
+    threat_score      = GREATEST(traffic_timeline.threat_score, EXCLUDED.threat_score)
+`
+
+type UpsertTrafficTimelineParams struct {
+	ServerID         pgtype.UUID        `json:"server_id"`
+	SourceIp         netip.Addr         `json:"source_ip"`
+	Column3          pgtype.Timestamptz `json:"column_3"`
+	HitCount         int32              `json:"hit_count"`
+	SynCount         int32              `json:"syn_count"`
+	AckCount         int32              `json:"ack_count"`
+	FailedHandshakes int32              `json:"failed_handshakes"`
+	BytesIn          int64              `json:"bytes_in"`
+	BytesOut         int64              `json:"bytes_out"`
+	ThreatScore      int32              `json:"threat_score"`
+}
+
+func (q *Queries) UpsertTrafficTimeline(ctx context.Context, arg UpsertTrafficTimelineParams) error {
+	_, err := q.db.Exec(ctx, upsertTrafficTimeline,
+		arg.ServerID,
+		arg.SourceIp,
+		arg.Column3,
+		arg.HitCount,
+		arg.SynCount,
+		arg.AckCount,
+		arg.FailedHandshakes,
+		arg.BytesIn,
+		arg.BytesOut,
+		arg.ThreatScore,
+	)
+	return err
 }

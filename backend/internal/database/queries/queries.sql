@@ -88,6 +88,24 @@ SET last_seen = NOW(),
     status = 'active'
 WHERE api_key = $3;
 
+-- name: UpsertTrafficTimeline :exec
+INSERT INTO traffic_timeline (
+    server_id, source_ip, bucket,
+    hit_count, syn_count, ack_count, failed_handshakes,
+    bytes_in, bytes_out, threat_score
+) VALUES (
+    $1, $2, DATE_TRUNC('hour', $3::timestamptz),
+    $4, $5, $6, $7, $8, $9, $10
+)
+ON CONFLICT (server_id, source_ip, bucket) DO UPDATE SET
+    hit_count         = traffic_timeline.hit_count         + EXCLUDED.hit_count,
+    syn_count         = traffic_timeline.syn_count         + EXCLUDED.syn_count,
+    ack_count         = traffic_timeline.ack_count         + EXCLUDED.ack_count,
+    failed_handshakes = traffic_timeline.failed_handshakes + EXCLUDED.failed_handshakes,
+    bytes_in          = traffic_timeline.bytes_in          + EXCLUDED.bytes_in,
+    bytes_out         = traffic_timeline.bytes_out         + EXCLUDED.bytes_out,
+    threat_score      = GREATEST(traffic_timeline.threat_score, EXCLUDED.threat_score);
+
 -- name: UpsertTrafficEvent :one
 INSERT INTO traffic_events (
     server_id, source_ip, destination_ip, destination_port, protocol, direction,
@@ -582,18 +600,79 @@ ORDER BY count DESC
 LIMIT $4;
 
 -- name: GetSourceIPTimeline :many
-SELECT 
-    te.source_ip::text as ip,
-    DATE_TRUNC('hour', te.last_seen)::timestamp as time_bucket,
-    COUNT(*)::int as count
-FROM traffic_events te
-JOIN servers s ON te.server_id = s.id
+SELECT
+    host(tl.source_ip) as ip,
+    tl.bucket::timestamp as time_bucket,
+    tl.hit_count::int as count
+FROM traffic_timeline tl
+JOIN servers s ON tl.server_id = s.id
 WHERE s.user_id = $1
-  AND te.source_ip = $2::inet
-  AND te.last_seen >= $3
-  AND te.last_seen <= $4
-GROUP BY te.source_ip, DATE_TRUNC('hour', te.last_seen)
-ORDER BY time_bucket;
+  AND tl.source_ip = $2::inet
+  AND tl.bucket >= $3
+  AND tl.bucket <= $4
+ORDER BY tl.bucket;
+
+-- name: GetSourceIPBlockTimes :many
+SELECT
+    b.blocked_at
+FROM blocks b
+WHERE b.user_id = $1
+  AND b.ip_address = $2::inet
+  AND b.blocked_at >= $3
+  AND b.blocked_at <= $4
+ORDER BY b.blocked_at;
+
+-- name: GetTopIPsTimelineByHits :many
+-- Returns time-bucketed hit counts for the top N IPs ranked by total hits
+WITH top_ips AS (
+    SELECT tl.source_ip
+    FROM traffic_timeline tl
+    JOIN servers s ON tl.server_id = s.id
+    WHERE s.user_id = $1
+      AND tl.bucket >= $2
+      AND tl.bucket <= $3
+    GROUP BY tl.source_ip
+    ORDER BY SUM(tl.hit_count) DESC
+    LIMIT $4
+)
+SELECT
+    host(tl.source_ip) as ip,
+    tl.bucket::timestamp as time_bucket,
+    SUM(tl.hit_count)::int as count
+FROM traffic_timeline tl
+JOIN servers s ON tl.server_id = s.id
+WHERE s.user_id = $1
+  AND tl.source_ip IN (SELECT source_ip FROM top_ips)
+  AND tl.bucket >= $2
+  AND tl.bucket <= $3
+GROUP BY tl.source_ip, tl.bucket
+ORDER BY tl.bucket, host(tl.source_ip);
+
+-- name: GetTopIPsTimelineByScore :many
+-- Returns time-bucketed hit counts for the top N IPs ranked by max threat score
+WITH top_ips AS (
+    SELECT te.source_ip
+    FROM traffic_events te
+    JOIN servers s ON te.server_id = s.id
+    WHERE s.user_id = $1
+      AND te.last_seen >= $2
+      AND te.last_seen <= $3
+    GROUP BY te.source_ip
+    ORDER BY MAX(te.threat_score) DESC
+    LIMIT $4
+)
+SELECT
+    host(tl.source_ip) as ip,
+    tl.bucket::timestamp as time_bucket,
+    SUM(tl.hit_count)::int as count
+FROM traffic_timeline tl
+JOIN servers s ON tl.server_id = s.id
+WHERE s.user_id = $1
+  AND tl.source_ip IN (SELECT source_ip FROM top_ips)
+  AND tl.bucket >= $2
+  AND tl.bucket <= $3
+GROUP BY tl.source_ip, tl.bucket
+ORDER BY tl.bucket, host(tl.source_ip);
 
 -- name: GetTopASNs :many
 SELECT 

@@ -208,6 +208,19 @@ type TrafficEventsArchive struct {
 	PortBytesOut         []byte             `json:"port_bytes_out"`
 }
 
+type TrafficTimeline struct {
+	ServerID         pgtype.UUID        `json:"server_id"`
+	SourceIp         netip.Addr         `json:"source_ip"`
+	Bucket           pgtype.Timestamptz `json:"bucket"`
+	HitCount         int32              `json:"hit_count"`
+	SynCount         int32              `json:"syn_count"`
+	AckCount         int32              `json:"ack_count"`
+	FailedHandshakes int32              `json:"failed_handshakes"`
+	BytesIn          int64              `json:"bytes_in"`
+	BytesOut         int64              `json:"bytes_out"`
+	ThreatScore      int32              `json:"threat_score"`
+}
+
 // KernelEye customer accounts
 type User struct {
 	ID                             pgtype.UUID        `json:"id"`

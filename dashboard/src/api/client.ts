@@ -156,10 +156,6 @@ export const subscriptionAPI = {
   createCustomerPortal: () => api.post('/subscription/portal', {}),
 };
 
-export const versionAPI = {
-  get: () => publicApi.get('/version'),
-};
-
 export const analyticsAPI = {
   // Reports
   getDailyAttacks: (startDate?: string, endDate?: string) => 
@@ -183,6 +179,14 @@ export const analyticsAPI = {
   getSourceIPTimeline: (ip: string, startDate?: string, endDate?: string) => 
     api.get(
       `/analytics/ip-timeline?ip=${encodeURIComponent(ip)}&start_date=${startDate || ''}&end_date=${endDate || ''}`
+    ),
+  getSourceIPBlockTimes: (ip: string, startDate?: string, endDate?: string) =>
+    api.get(
+      `/analytics/ip-block-times?ip=${encodeURIComponent(ip)}&start_date=${startDate || ''}&end_date=${endDate || ''}`
+    ),
+  getTopIPsTimeline: (sortBy: 'hits' | 'score', limit: number, startDate?: string, endDate?: string) =>
+    api.get(
+      `/analytics/top-ips-timeline?sort_by=${sortBy}&limit=${limit}&start_date=${startDate || ''}&end_date=${endDate || ''}`
     ),
 };
 

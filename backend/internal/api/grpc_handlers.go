@@ -317,6 +317,20 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 
 		if err == nil {
 			eventsProcessed++
+
+			// Record into the time-series timeline table for accurate charts
+			_ = h.queries.UpsertTrafficTimeline(ctx, database.UpsertTrafficTimelineParams{
+				ServerID:         server.ID,
+				SourceIp:         sourceIP,
+				Column3:          database.ToPgTimestamptz(event.LastSeen.AsTime()),
+				HitCount:         1,
+				SynCount:         int32(event.SynCount),
+				AckCount:         int32(event.AckCount),
+				FailedHandshakes: int32(event.FailedHandshakes),
+				BytesIn:          int64(event.BytesIn),
+				BytesOut:         int64(event.BytesOut),
+				ThreatScore:      int32(score.Score),
+			})
 			// Include server info in broadcast for multi-server visibility
 			serverIP := ""
 			if server.IpAddress != nil {

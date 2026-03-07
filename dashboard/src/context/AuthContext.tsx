@@ -247,37 +247,3 @@ export function useAuth() {
   return context;
 }
 
-// Protected route wrapper component
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      navigate({ to: '/login' });
-    }
-  }, [isAuthenticated, isLoading, navigate]);
-
-  if (isLoading) {
-    return (
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        background: 'var(--bg-primary)'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="loading-spinner" style={{ marginBottom: 16 }} />
-          <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  return <>{children}</>;
-}

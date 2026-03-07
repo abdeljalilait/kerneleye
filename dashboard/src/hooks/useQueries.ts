@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { serversAPI, threatsAPI, alertsAPI, statsAPI, authAPI, subscriptionAPI, analyticsAPI, agentConfigAPI, blocksAPI, whitelistAPI } from '../api/client';
-import type { Server, Threat, Alert, StatsOverview, TrafficEvent, PaginatedResponse, PortTraffic, ProtocolTraffic, PortSourceIP } from '../types';
+import type { Server, Threat, Alert, StatsOverview, PaginatedResponse, PortTraffic, PortSourceIP } from '../types';
 
 export const useServers = () => {
   return useQuery({
@@ -141,34 +141,12 @@ export const useServerStats = (id: string | undefined) => {
   });
 };
 
-export const useServerTraffic = (id: string | undefined, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
-  return useQuery({
-    queryKey: ['server', id, 'traffic', params],
-    queryFn: async () => {
-      const { data } = await serversAPI.getTraffic(id!, params);
-      return data as PaginatedResponse<TrafficEvent>;
-    },
-    enabled: !!id,
-  });
-};
-
 export const useServerPortTraffic = (id: string | undefined, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
   return useQuery({
     queryKey: ['server', id, 'port-traffic', params],
     queryFn: async () => {
       const { data } = await serversAPI.getPortTraffic(id!, params);
       return data as PaginatedResponse<PortTraffic>;
-    },
-    enabled: !!id,
-  });
-};
-
-export const useServerProtocolTraffic = (id: string | undefined, params?: { page?: number; page_size?: number; search?: string; threat_level?: string; sort_by?: string; from?: string; to?: string }) => {
-  return useQuery({
-    queryKey: ['server', id, 'protocol-traffic', params],
-    queryFn: async () => {
-      const { data } = await serversAPI.getProtocolTraffic(id!, params);
-      return data as PaginatedResponse<ProtocolTraffic>;
     },
     enabled: !!id,
   });
@@ -188,17 +166,7 @@ export const useServerPortSources = (id: string | undefined, port: number | unde
 // ============ MUTATIONS ============
 
 // Auth mutations & queries
-export const useProfile = () => {
-  return useQuery({
-    queryKey: ['profile'],
-    queryFn: async () => {
-      const { data } = await authAPI.getMe();
-      return data as { id: string; email: string; plan: string };
-    },
-  });
-};
-
-export interface OAuthProvider {
+interface OAuthProvider {
   id: string;
   name: string;
   icon: string;
@@ -212,24 +180,6 @@ export const useOAuthProviders = () => {
       return data.providers as OAuthProvider[];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - providers don't change often
-  });
-};
-
-export const useLogin = () => {
-  return useMutation({
-    mutationFn: async ({ email, password }: { email: string; password: string }) => {
-      const { data } = await authAPI.login(email, password);
-      return data as { token: string };
-    },
-  });
-};
-
-export const useRegister = () => {
-  return useMutation({
-    mutationFn: async ({ email, password }: { email: string; password: string }) => {
-      const { data } = await authAPI.register(email, password);
-      return data as { token: string };
-    },
   });
 };
 
@@ -273,32 +223,7 @@ export const useAgentFeatures = () => {
   });
 };
 
-export const useServerConfig = (id: string | undefined) => {
-  return useQuery({
-    queryKey: ['server', id, 'config'],
-    queryFn: async () => {
-      const { data } = await serversAPI.getConfig(id!);
-      return data as {
-        mode: string;
-        features: Record<string, boolean>;
-        threshold: number;
-        duration: string;
-      };
-    },
-    enabled: !!id,
-  });
-};
-
 // Server mutations
-export const useGenerateApiKey = () => {
-  return useMutation({
-    mutationFn: async () => {
-      const { data } = await serversAPI.generateApiKey();
-      return data as { api_key: string };
-    },
-  });
-};
-
 export const useCreateServerWithConfig = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -310,32 +235,6 @@ export const useCreateServerWithConfig = () => {
         commands: Record<string, string>;
         environment: Record<string, string>;
       };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['servers'] });
-    },
-  });
-};
-
-export const useUpdateServerConfig = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, config }: { id: string; config: any }) => {
-      const { data } = await serversAPI.updateConfig(id, config);
-      return data;
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['server', variables.id, 'config'] });
-    },
-  });
-};
-
-export const useCreateServer = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (_hostname: string) => {
-      const { data } = await serversAPI.generateApiKey();
-      return data as { api_key: string; install_command: string };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['servers'] });
@@ -374,7 +273,7 @@ export const useDeleteServer = () => {
 
 // ============ SUBSCRIPTION HOOKS ============
 
-export interface Plan {
+interface Plan {
   id: string;
   name: string;
   display_name: string;
@@ -389,7 +288,7 @@ export interface Plan {
   polar_price_id?: string;
 }
 
-export interface SubscriptionStatus {
+interface SubscriptionStatus {
   plan: string;
   plan_display_name: string;
   status: string;
@@ -425,7 +324,7 @@ export const useSubscriptionStatus = () => {
   });
 };
 
-export interface CheckoutResponse {
+interface CheckoutResponse {
   checkout_url: string;
   session_id?: string;
   customer_email: string;
@@ -455,7 +354,7 @@ export const useCreateCustomerPortal = () => {
 // SYSTEM STATUS HOOK
 // ============================================
 
-export interface SystemStatus {
+interface SystemStatus {
   status: 'healthy' | 'warning' | 'error';
   message: string;
   lastHeartbeat: string | null;
@@ -601,17 +500,6 @@ export const useHourlyAttackDistribution = (startDate?: string, endDate?: string
   });
 };
 
-export const useThreatTrends = (startDate?: string, endDate?: string) => {
-  return useQuery({
-    queryKey: ['analytics', 'threat-trends', startDate, endDate],
-    queryFn: async () => {
-      const { data } = await analyticsAPI.getThreatTrends(startDate, endDate);
-      return data.data;
-    },
-    enabled: !!startDate && !!endDate,
-  });
-};
-
 // Visualizer hooks
 export const useTopSourceIPs = (startDate?: string, endDate?: string, limit?: number) => {
   return useQuery({
@@ -632,17 +520,5 @@ export const useTopASNs = (startDate?: string, endDate?: string, limit?: number)
       return data.data;
     },
     enabled: !!startDate && !!endDate,
-  });
-};
-
-export const useSourceIPTimeline = (ip?: string, startDate?: string, endDate?: string) => {
-  return useQuery({
-    queryKey: ['analytics', 'ip-timeline', ip, startDate, endDate],
-    queryFn: async () => {
-      if (!ip) return [];
-      const { data } = await analyticsAPI.getSourceIPTimeline(ip, startDate, endDate);
-      return data.data;
-    },
-    enabled: !!ip,
   });
 };

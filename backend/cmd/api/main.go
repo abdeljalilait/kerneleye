@@ -259,6 +259,8 @@ func main() {
 	protected.Get("/analytics/top-source-ips", api.HandleGetTopSourceIPs(queries))
 	protected.Get("/analytics/top-asns", api.HandleGetTopASNs(queries))
 	protected.Get("/analytics/ip-timeline", api.HandleGetSourceIPTimeline(queries))
+	protected.Get("/analytics/ip-block-times", api.HandleGetSourceIPBlockTimes(queries))
+	protected.Get("/analytics/top-ips-timeline", api.HandleGetTopIPsTimeline(queries))
 
 	// Blocks endpoints
 	protected.Get("/blocks", api.HandleListBlocks(queries))

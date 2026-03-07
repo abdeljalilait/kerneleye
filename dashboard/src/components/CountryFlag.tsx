@@ -348,5 +348,3 @@ export const CountryFlag: React.FC<CountryFlagProps> = ({
     </span>
   )
 }
-
-export default CountryFlag

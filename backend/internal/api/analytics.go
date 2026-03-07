@@ -364,10 +364,10 @@ func HandleGetSourceIPTimeline(queries *database.Queries) fiber.Handler {
 		}
 
 		timeline, err := queries.GetSourceIPTimeline(c.Context(), database.GetSourceIPTimelineParams{
-			UserID:     database.ToPgUUID(userID),
-			Column2:    parsedIP,
-			LastSeen:   database.ToPgTimestamptz(start),
-			LastSeen_2: database.ToPgTimestamptz(end),
+			UserID:   database.ToPgUUID(userID),
+			Column2:  parsedIP,
+			Bucket:   database.ToPgTimestamptz(start),
+			Bucket_2: database.ToPgTimestamptz(end),
 		})
 		if err != nil {
 			log.Printf("[API] GetSourceIPTimeline error: %v", err)
@@ -381,7 +381,156 @@ func HandleGetSourceIPTimeline(queries *database.Queries) fiber.Handler {
 	}
 }
 
-// HandleGetThreatTrends returns threat level trends over time
+// HandleGetSourceIPBlockTimes returns the timestamps when a specific IP was blocked
+func HandleGetSourceIPBlockTimes(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id").(string)
+		ip := c.Query("ip")
+		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
+
+		if ip == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "IP address is required")
+		}
+
+		if startDate == "" {
+			startDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+		}
+		if endDate == "" {
+			endDate = time.Now().Format("2006-01-02")
+		}
+
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid start_date format")
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid end_date format")
+		}
+		end = end.Add(24 * time.Hour)
+
+		parsedIP, err := netip.ParseAddr(ip)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid IP address format")
+		}
+
+		times, err := queries.GetSourceIPBlockTimes(c.Context(), database.GetSourceIPBlockTimesParams{
+			UserID:      database.ToPgUUID(userID),
+			Column2:     parsedIP,
+			BlockedAt:   database.ToPgTimestamptz(start),
+			BlockedAt_2: database.ToPgTimestamptz(end),
+		})
+		if err != nil {
+			log.Printf("[API] GetSourceIPBlockTimes error: %v", err)
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to get IP block times")
+		}
+
+		// Convert to plain ISO strings for the frontend
+		result := make([]string, 0, len(times))
+		for _, t := range times {
+			if t.Valid {
+				result = append(result, t.Time.UTC().Format(time.RFC3339))
+			}
+		}
+
+		return c.JSON(fiber.Map{
+			"ip":   ip,
+			"data": result,
+		})
+	}
+}
+
+// HandleGetTopIPsTimeline returns timeline data for the top N IPs ranked by hits or score
+func HandleGetTopIPsTimeline(queries *database.Queries) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id").(string)
+		sortBy := c.Query("sort_by", "hits") // "hits" | "score"
+		startDate := c.Query("start_date")
+		endDate := c.Query("end_date")
+		limit := int32(5)
+		if l := c.QueryInt("limit"); l > 0 {
+			limit = int32(l)
+		}
+
+		if startDate == "" {
+			startDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+		}
+		if endDate == "" {
+			endDate = time.Now().Format("2006-01-02")
+		}
+
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid start_date format")
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid end_date format")
+		}
+		end = end.Add(24 * time.Hour)
+
+		type timelineRow struct {
+			Ip         string `json:"ip"`
+			TimeBucket string `json:"time_bucket"`
+			Count      int32  `json:"count"`
+		}
+
+		var rows []timelineRow
+		topIPs := map[string]bool{}
+
+		if sortBy == "score" {
+			result, err := queries.GetTopIPsTimelineByScore(c.Context(), database.GetTopIPsTimelineByScoreParams{
+				UserID:   database.ToPgUUID(userID),
+				Bucket:   database.ToPgTimestamptz(start),
+				Bucket_2: database.ToPgTimestamptz(end),
+				Limit:    limit,
+			})
+			if err != nil {
+				log.Printf("[API] GetTopIPsTimelineByScore error: %v", err)
+				return fiber.NewError(fiber.StatusInternalServerError, "Failed to get timeline")
+			}
+			for _, r := range result {
+				bucket := ""
+				if r.TimeBucket.Valid {
+					bucket = r.TimeBucket.Time.UTC().Format(time.RFC3339)
+				}
+				rows = append(rows, timelineRow{Ip: r.Ip, TimeBucket: bucket, Count: r.Count})
+				topIPs[r.Ip] = true
+			}
+		} else {
+			result, err := queries.GetTopIPsTimelineByHits(c.Context(), database.GetTopIPsTimelineByHitsParams{
+				UserID:   database.ToPgUUID(userID),
+				Bucket:   database.ToPgTimestamptz(start),
+				Bucket_2: database.ToPgTimestamptz(end),
+				Limit:    limit,
+			})
+			if err != nil {
+				log.Printf("[API] GetTopIPsTimelineByHits error: %v", err)
+				return fiber.NewError(fiber.StatusInternalServerError, "Failed to get timeline")
+			}
+			for _, r := range result {
+				bucket := ""
+				if r.TimeBucket.Valid {
+					bucket = r.TimeBucket.Time.UTC().Format(time.RFC3339)
+				}
+				rows = append(rows, timelineRow{Ip: r.Ip, TimeBucket: bucket, Count: r.Count})
+				topIPs[r.Ip] = true
+			}
+		}
+
+		ips := make([]string, 0, len(topIPs))
+		for ip := range topIPs {
+			ips = append(ips, ip)
+		}
+
+		return c.JSON(fiber.Map{
+			"data":    rows,
+			"top_ips": ips,
+		})
+	}
+}
+
 func HandleGetThreatTrends(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id").(string)
