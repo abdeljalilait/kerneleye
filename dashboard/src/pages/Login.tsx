@@ -28,7 +28,7 @@ export default function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--bg-primary)',
+        background: 'var(--kerneleye-colorBgLayout)',
         padding: 24,
         position: 'relative',
         overflow: 'hidden',
@@ -57,19 +57,19 @@ export default function Login() {
             />
           </div>
           <div>
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 15 }}>Security Intelligence Dashboard</Text>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 15 }}>Security Intelligence Dashboard</Text>
           </div>
         </div>
 
         <Card
           variant="borderless"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)', backdropFilter: 'blur(10px)', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)' }}
+          style={{ background: 'var(--kerneleye-colorBgContainer)', border: '1px solid var(--kerneleye-colorBorderSecondary)', borderRadius: '20px', backdropFilter: 'blur(10px)', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)' }}
           bodyStyle={{ padding: 40 }}
         >
           <Space direction="vertical" size={24} style={{ width: '100%' }}>
             <div style={{ textAlign: 'center' }}>
-              <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>Welcome back</Title>
-              <Text style={{ color: 'var(--text-tertiary)' }}>Sign in with your account to continue</Text>
+              <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>Welcome back</Title>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>Sign in with your account to continue</Text>
             </div>
 
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -80,16 +80,16 @@ export default function Login() {
                   size="large"
                   onClick={() => handleOAuthLogin(provider.id)}
                   icon={getProviderIcon(provider.icon)}
-                  style={{ height: 48, background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontWeight: 500 }}
+                  style={{ height: 48, background: 'var(--kerneleye-colorFillAlter)', border: '1px solid var(--kerneleye-colorBorderSecondary)', color: 'var(--kerneleye-colorText)', fontWeight: 500 }}
                 >
                   Continue with {provider.name}
                 </Button>
               )) : (
                 <>
-                  <Button block size="large" icon={<Github size={20} />} onClick={() => handleOAuthLogin('github')} style={{ height: 48, background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                  <Button block size="large" icon={<Github size={20} />} onClick={() => handleOAuthLogin('github')} style={{ height: 48, background: 'var(--kerneleye-colorFillAlter)', border: '1px solid var(--kerneleye-colorBorderSecondary)', color: 'var(--kerneleye-colorText)', fontWeight: 500 }}>
                     Continue with GitHub
                   </Button>
-                  <Button block size="large" icon={<Chrome size={20} />} onClick={() => handleOAuthLogin('google')} style={{ height: 48, background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                  <Button block size="large" icon={<Chrome size={20} />} onClick={() => handleOAuthLogin('google')} style={{ height: 48, background: 'var(--kerneleye-colorFillAlter)', border: '1px solid var(--kerneleye-colorBorderSecondary)', color: 'var(--kerneleye-colorText)', fontWeight: 500 }}>
                     Continue with Google
                   </Button>
                 </>
@@ -106,7 +106,7 @@ export default function Login() {
         </Card>
 
         <div style={{ textAlign: 'center', marginTop: 32 }}>
-          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>© 2026 KernelEye. All rights reserved.</Text>
+          <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>© 2026 KernelEye. All rights reserved.</Text>
         </div>
       </div>
     </div>

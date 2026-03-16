@@ -28,9 +28,9 @@ export default function Header({ menuItems }: HeaderProps) {
   return (
     <div
       style={{
-        background: 'var(--glass-bg)',
+        background: 'var(--kerneleye-colorBgElevated)',
         backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid var(--glass-border)',
+        borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
         position: 'sticky',
         top: 0,
         zIndex: 99,
@@ -45,7 +45,7 @@ export default function Header({ menuItems }: HeaderProps) {
       <div>
         <Text style={{ 
           fontSize: 12, 
-          color: 'var(--text-tertiary)', 
+          color: 'var(--kerneleye-colorTextTertiary)', 
           textTransform: 'uppercase',
           letterSpacing: '0.1em',
         }}>
@@ -53,7 +53,7 @@ export default function Header({ menuItems }: HeaderProps) {
         </Text>
         <Text strong style={{ 
           fontSize: 20, 
-          color: 'var(--text-primary)', 
+          color: 'var(--kerneleye-colorText)', 
           display: 'block',
           marginTop: 2,
         }}>
@@ -64,18 +64,18 @@ export default function Header({ menuItems }: HeaderProps) {
       {/* Right Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {/* Notification Bell */}
-        <Badge count={activeAlerts} size="small" style={{ background: activeAlerts > 0 ? '#ef4444' : 'var(--bg-tertiary)' }}>
+        <Badge count={activeAlerts} size="small" style={{ background: activeAlerts > 0 ? '#ef4444' : 'var(--kerneleye-colorFillAlter)' }}>
           <Button
             type="text"
             icon={<Bell size={20} />}
             onClick={() => navigate({ to: '/dashboard/alerts' })}
             style={{
-              color: 'var(--text-secondary)',
+              color: 'var(--kerneleye-colorTextSecondary)',
               width: 44,
               height: 44,
               borderRadius: 12,
               background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--border-subtle)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
             }}
           />
         </Badge>
@@ -93,10 +93,16 @@ export default function Header({ menuItems }: HeaderProps) {
           }}
         >
           <span 
-            className="status-indicator status-online animate-pulse" 
-            style={{ width: 8, height: 8 }}
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              display: 'inline-block',
+              background: 'var(--kerneleye-colorSuccess)',
+              boxShadow: '0 0 8px var(--kerneleye-colorSuccess)',
+            }}
           />
-          <Text style={{ color: 'var(--success)', fontSize: 13, fontWeight: 500 }}>
+          <Text style={{ color: 'var(--kerneleye-colorSuccess)', fontSize: 13, fontWeight: 500 }}>
             System Active
           </Text>
         </div>

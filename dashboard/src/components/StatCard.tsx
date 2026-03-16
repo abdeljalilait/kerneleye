@@ -57,16 +57,16 @@ export default function StatCard({
   const scheme = colorSchemes[color]
   
   let trendIcon = <MinusOutlined />
-  let trendColor = 'var(--text-tertiary)'
+  let trendColor = 'var(--kerneleye-colorTextTertiary)'
   let trendBg = 'rgba(255, 255, 255, 0.05)'
 
   if (trend === 'up') {
     trendIcon = <ArrowUpOutlined />
-    trendColor = color === 'success' ? 'var(--success)' : color === 'error' ? 'var(--error)' : '#10b981'
+    trendColor = color === 'success' ? 'var(--kerneleye-colorSuccess)' : color === 'error' ? 'var(--kerneleye-colorError)' : '#10b981'
     trendBg = color === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)'
   } else if (trend === 'down') {
     trendIcon = <ArrowDownOutlined />
-    trendColor = color === 'success' ? 'var(--error)' : color === 'error' ? 'var(--success)' : '#ef4444'
+    trendColor = color === 'success' ? 'var(--kerneleye-colorError)' : color === 'error' ? 'var(--kerneleye-colorSuccess)' : '#ef4444'
     trendBg = 'rgba(239, 68, 68, 0.1)'
   }
 
@@ -74,9 +74,9 @@ export default function StatCard({
     <Card
       variant="borderless"
       style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-lg)',
+        background: 'var(--kerneleye-colorBgContainer)',
+        border: '1px solid var(--kerneleye-colorBorderSecondary)',
+        borderRadius: 'var(--kerneleye-borderRadiusLG)',
         backdropFilter: 'blur(10px)',
         overflow: 'hidden',
         position: 'relative',
@@ -104,7 +104,7 @@ export default function StatCard({
           <Text 
             style={{ 
               fontSize: 12, 
-              color: 'var(--text-tertiary)', 
+              color: 'var(--kerneleye-colorTextTertiary)', 
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               fontWeight: 600,
@@ -119,7 +119,7 @@ export default function StatCard({
               style={{ 
                 fontSize: 32, 
                 fontWeight: 700, 
-                color: 'var(--text-primary)',
+                color: 'var(--kerneleye-colorText)',
                 lineHeight: 1,
                 letterSpacing: '-0.02em',
               }}
@@ -149,7 +149,7 @@ export default function StatCard({
           <Text 
             style={{ 
               fontSize: 13, 
-              color: 'var(--text-secondary)', 
+              color: 'var(--kerneleye-colorTextSecondary)', 
               marginTop: 8,
               display: 'block',
             }}
@@ -180,7 +180,7 @@ export default function StatCard({
         style={{
           marginTop: 20,
           paddingTop: 16,
-          borderTop: '1px solid var(--border-subtle)',
+          borderTop: '1px solid var(--kerneleye-colorBorderSecondary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -196,11 +196,11 @@ export default function StatCard({
               boxShadow: `0 0 8px ${scheme.iconColor}`,
             }}
           />
-          <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+          <Text style={{ fontSize: 12, color: 'var(--kerneleye-colorTextTertiary)' }}>
             Live monitoring
           </Text>
         </div>
-        <Text style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextQuaternary)' }}>
           Updated just now
         </Text>
       </div>

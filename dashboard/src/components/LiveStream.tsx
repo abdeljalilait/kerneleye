@@ -97,9 +97,9 @@ export default function LiveStream() {
     <Card
       variant="borderless"
       style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-lg)',
+        background: 'var(--kerneleye-colorBgContainer)',
+        border: '1px solid var(--kerneleye-colorBorderSecondary)',
+        borderRadius: 'var(--kerneleye-borderRadiusLG)',
         backdropFilter: 'blur(10px)',
         height: '100%',
       }}
@@ -121,16 +121,15 @@ export default function LiveStream() {
               <Radio size={18} color="#10b981" />
             </div>
             <div>
-              <Text strong style={{ color: 'var(--text-primary)', fontSize: 16, display: 'block' }}>
+              <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 16, display: 'block' }}>
                 Live Stream
               </Text>
               <Space size={8}>
                 <Badge 
                   status="processing" 
                   color="#10b981"
-                  style={{ animation: 'pulse 2s infinite' }}
                 />
-                <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)' }}>
                   Real-time traffic
                 </Text>
               </Space>
@@ -139,9 +138,9 @@ export default function LiveStream() {
           
           <Tag 
             style={{
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-tertiary)',
+              background: 'var(--kerneleye-colorFillAlter)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              color: 'var(--kerneleye-colorTextTertiary)',
               fontSize: 11,
             }}
           >
@@ -154,15 +153,15 @@ export default function LiveStream() {
       <div 
         style={{
           padding: '12px 16px',
-          background: 'var(--bg-tertiary)',
-          borderBottom: '1px solid var(--border-subtle)',
+          background: 'var(--kerneleye-colorFillAlter)',
+          borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
         }}
       >
-        <Terminal size={14} color="var(--text-tertiary)" />
-        <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+        <Terminal size={14} color="var(--kerneleye-colorTextTertiary)" />
+        <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', fontFamily: 'monospace' }}>
           tcpdump -i eth0 -n
         </Text>
         <div style={{ flex: 1 }} />
@@ -191,13 +190,13 @@ export default function LiveStream() {
             flexDirection: 'column',
             alignItems: 'center', 
             justifyContent: 'center',
-            color: 'var(--text-tertiary)',
+            color: 'var(--kerneleye-colorTextTertiary)',
           }}>
             <div style={{ marginBottom: 12 }}>
-              <Activity size={32} color="var(--text-muted)" opacity={0.3} />
+              <Activity size={32} color="var(--kerneleye-colorTextQuaternary)" opacity={0.3} />
             </div>
-            <Text style={{ color: 'var(--text-tertiary)' }}>Waiting for traffic...</Text>
-            <Text style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>Waiting for traffic...</Text>
+            <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 11, marginTop: 4 }}>
               Events will appear here in real-time
             </Text>
           </div>
@@ -213,7 +212,6 @@ export default function LiveStream() {
                   alignItems: 'center', 
                   gap: 10,
                   opacity: 1 - (logs.length - index - 1) * 0.008,
-                  animation: 'fadeIn 0.2s ease',
                 }}
               >
                 <span style={{ color: '#475569', minWidth: 60, fontSize: 11 }}>

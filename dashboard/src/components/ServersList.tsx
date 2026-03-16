@@ -63,7 +63,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
               <Text 
                 strong 
                 style={{ 
-                  color: 'var(--text-primary)', 
+                  color: 'var(--kerneleye-colorText)', 
                   fontSize: 14, 
                   display: 'block',
                   maxWidth: 180,
@@ -76,7 +76,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
                 {record.hostname || record.name}
               </Text>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                <Text code style={{ fontSize: 11, color: 'var(--text-tertiary)', background: 'var(--bg-tertiary)' }}>
+                <Text code style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', background: 'var(--kerneleye-colorFillAlter)' }}>
                   {record.ip_address || '-'}
                 </Text>
                 <Tag 
@@ -110,7 +110,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
         
         if (!location && !city) {
           return (
-            <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13 }}>
               -
             </Text>
           )
@@ -120,7 +120,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
           <Tooltip title={city ? `${city}, ${location}` : location}>
             <Space size={4}>
               <Globe size={14} color="#8b5cf6" />
-              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
                 {city || location}
               </Text>
               {record.country_code && (
@@ -141,10 +141,10 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
       render: () => (
         <Space size={4}>
           <Activity size={14} color="#6366f1" />
-          <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+          <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
             {Math.floor(Math.random() * 1000).toLocaleString()}
           </Text>
-          <Text style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>/hr</Text>
+          <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11 }}>/hr</Text>
         </Space>
       ),
     },
@@ -157,7 +157,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
         <Tooltip title={`Agent Version: ${record.agent_version}`}>
           <Space size={4}>
             <Package size={14} color="#10b981" />
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
               v{record.agent_version?.replace(/^v/, '') || '-'}
             </Text>
           </Space>
@@ -192,9 +192,9 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
         return (
           <Tooltip title={record.last_seen ? new Date(record.last_seen).toLocaleString() : '-'}>
             <Space size={4}>
-              <Clock size={14} color={isRecent ? '#10b981' : 'var(--text-tertiary)'} />
+              <Clock size={14} color={isRecent ? '#10b981' : 'var(--kerneleye-colorTextTertiary)'} />
               <Text style={{ 
-                color: isRecent ? '#10b981' : 'var(--text-secondary)', 
+                color: isRecent ? '#10b981' : 'var(--kerneleye-colorTextSecondary)', 
                 fontSize: 13 
               }}>
                 {record.last_seen ? getRelativeTime(record.last_seen) : '-'}
@@ -220,7 +220,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
             <Button 
               size="small" 
               type="text"
-              style={{ color: 'var(--text-secondary)' }}
+              style={{ color: 'var(--kerneleye-colorTextSecondary)' }}
             >
               Details
               <ChevronRight size={14} style={{ marginLeft: 4 }} />
@@ -262,11 +262,11 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
         emptyText: (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
             <div style={{ marginBottom: 16 }}>
-              <ServerIcon size={48} color="var(--text-muted)" opacity={0.3} />
+              <ServerIcon size={48} color="var(--kerneleye-colorTextQuaternary)" opacity={0.3} />
             </div>
-            <Text style={{ color: 'var(--text-tertiary)' }}>No servers connected</Text>
+            <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>No servers connected</Text>
             <br />
-            <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>
               Install an agent to start monitoring
             </Text>
           </div>
@@ -286,9 +286,9 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
     <Card
       variant="borderless"
       style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-lg)',
+        background: 'var(--kerneleye-colorBgContainer)',
+        border: '1px solid var(--kerneleye-colorBorderSecondary)',
+        borderRadius: 'var(--kerneleye-borderRadiusLG)',
         backdropFilter: 'blur(10px)',
         height: '100%',
       }}
@@ -309,10 +309,10 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
             <ServerIcon size={18} color="#818cf8" />
           </div>
           <div>
-            <Typography.Title level={5} style={{ margin: 0, color: 'var(--text-primary)', fontSize: 16 }}>
+            <Typography.Title level={5} style={{ margin: 0, color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
               Monitored Servers
             </Typography.Title>
-            <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            <Text style={{ fontSize: 12, color: 'var(--kerneleye-colorTextTertiary)' }}>
               {servers.filter(s => s.status === 'active').length} of {servers.length} online
             </Text>
           </div>
@@ -320,7 +320,7 @@ export default function ServersList({ servers, showCard = true }: ServersListPro
       }
       extra={
         <Link to="/dashboard/servers">
-          <Button type="text" size="small" style={{ color: 'var(--primary-400)' }}>
+          <Button type="text" size="small" style={{ color: 'var(--kerneleye-colorPrimaryHover)' }}>
             View All
           </Button>
         </Link>

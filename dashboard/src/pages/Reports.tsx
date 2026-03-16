@@ -180,10 +180,10 @@ export default function Reports() {
       <div style={{ marginBottom: 32 }}>
         <Row justify="space-between" align="middle">
           <Col>
-            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
               Security Reports
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Daily security metrics and threat analysis
             </Text>
           </Col>
@@ -199,28 +199,28 @@ export default function Reports() {
       {/* Filters */}
       <Card
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
           marginBottom: 24,
         }}
         bodyStyle={{ padding: 16 }}
       >
         <Row gutter={16} align="middle">
           <Col>
-            <Text style={{ color: 'var(--text-secondary)' }}>Date Range:</Text>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Date Range:</Text>
           </Col>
           <Col>
             <RangePicker
               value={[dateRange[0], dateRange[1]]}
               onChange={handleDateChange}
               style={{
-                background: 'var(--bg-tertiary)',
-                borderColor: 'var(--border-subtle)',
+                background: 'var(--kerneleye-colorFillAlter)',
+                borderColor: 'var(--kerneleye-colorBorderSecondary)',
               }}
             />
           </Col>
           <Col>
-            <Text style={{ color: 'var(--text-secondary)' }}>Server:</Text>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Server:</Text>
           </Col>
           <Col>
             <Select
@@ -239,7 +239,7 @@ export default function Reports() {
       {isLoading ? (
         <div style={{ textAlign: 'center', padding: 64 }}>
           <Spin size="large" />
-          <Text style={{ display: 'block', marginTop: 16, color: 'var(--text-secondary)' }}>
+          <Text style={{ display: 'block', marginTop: 16, color: 'var(--kerneleye-colorTextSecondary)' }}>
             Loading reports...
           </Text>
         </div>
@@ -251,9 +251,9 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 bodyStyle={{ padding: 20 }}
               >
@@ -261,14 +261,14 @@ export default function Reports() {
                   title={
                     <Space>
                       <Shield size={16} color="#818cf8" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Prevented Attacks</Text>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Prevented Attacks</Text>
                     </Space>
                   }
                   value={totalPrevented.toLocaleString()}
                   valueStyle={{ color: '#10b981', fontSize: 28, fontWeight: 700 }}
                   prefix={<TrendingUp size={20} style={{ marginRight: 8 }} />}
                 />
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                   {totalMonitored > 0 ? ((totalPrevented / totalMonitored) * 100).toFixed(1) : 0}% of threats prevented
                 </Text>
               </Card>
@@ -278,9 +278,9 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 bodyStyle={{ padding: 20 }}
               >
@@ -288,13 +288,13 @@ export default function Reports() {
                   title={
                     <Space>
                       <AlertTriangle size={16} color="#f59e0b" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Monitored Threats</Text>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Monitored Threats</Text>
                     </Space>
                   }
                   value={totalMonitored.toLocaleString()}
-                  valueStyle={{ color: 'var(--text-primary)', fontSize: 28, fontWeight: 700 }}
+                  valueStyle={{ color: 'var(--kerneleye-colorText)', fontSize: 28, fontWeight: 700 }}
                 />
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                   ~{avgAttacksPerDay.toLocaleString()} per day
                 </Text>
               </Card>
@@ -304,9 +304,9 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 bodyStyle={{ padding: 20 }}
               >
@@ -314,13 +314,13 @@ export default function Reports() {
                   title={
                     <Space>
                       <Ban size={16} color="#ef4444" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Unique Sources</Text>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Unique Sources</Text>
                     </Space>
                   }
                   value={totalUniqueIPs.toLocaleString()}
                   valueStyle={{ color: '#ef4444', fontSize: 28, fontWeight: 700 }}
                 />
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                   From {topCountries?.length || 0} countries
                 </Text>
               </Card>
@@ -330,9 +330,9 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 bodyStyle={{ padding: 20 }}
               >
@@ -340,13 +340,13 @@ export default function Reports() {
                   title={
                     <Space>
                       <Globe size={16} color="#06b6d4" />
-                      <Text style={{ color: 'var(--text-secondary)' }}>Top Country</Text>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Top Country</Text>
                     </Space>
                   }
                   value={topCountries?.[0]?.country || 'N/A'}
                   valueStyle={{ color: '#06b6d4', fontSize: 24, fontWeight: 700 }}
                 />
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                   {topCountries?.[0]?.percentage || 0}% of attacks
                 </Text>
               </Card>
@@ -359,46 +359,46 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 title={
                   <Space>
                     <Activity size={18} color="#818cf8" />
-                    <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                    <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
                       Distribution of Malicious Intents
                     </Text>
                   </Space>
                 }
               >
-                <Text style={{ color: 'var(--text-secondary)', marginBottom: 24, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', marginBottom: 24, display: 'block' }}>
                   Breakdown of attack typology associated with IPs blocked by security engines
                 </Text>
                 
                 <div style={{ height: 350 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dailyData} barCategoryGap="20%">
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--kerneleye-colorBorderSecondary)" />
                       <XAxis 
                         dataKey="date" 
-                        stroke="var(--text-tertiary)"
+                        stroke="var(--kerneleye-colorTextTertiary)"
                         fontSize={12}
                         tickLine={false}
                       />
                       <YAxis 
-                        stroke="var(--text-tertiary)"
+                        stroke="var(--kerneleye-colorTextTertiary)"
                         fontSize={12}
                         tickLine={false}
                         tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}
                       />
                       <RechartsTooltip
                         contentStyle={{
-                          background: 'var(--bg-secondary)',
-                          border: '1px solid var(--border-subtle)',
+                          background: 'var(--kerneleye-colorBgContainer)',
+                          border: '1px solid var(--kerneleye-colorBorderSecondary)',
                           borderRadius: 8,
                         }}
-                        labelStyle={{ color: 'var(--text-primary)' }}
+                        labelStyle={{ color: 'var(--kerneleye-colorText)' }}
                       />
                       <Legend />
                       <Bar dataKey="sshAttacks" name="SSH Attacks" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
@@ -417,7 +417,7 @@ export default function Reports() {
                       align="middle"
                       style={{
                         padding: '12px 0',
-                        borderBottom: index < threatTypeData.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                        borderBottom: index < threatTypeData.length - 1 ? '1px solid var(--kerneleye-colorBorderSecondary)' : 'none',
                       }}
                     >
                       <Space>
@@ -429,13 +429,13 @@ export default function Reports() {
                             background: threat.color,
                           }}
                         />
-                        <Text style={{ color: 'var(--text-primary)' }}>{threat.name}</Text>
+                        <Text style={{ color: 'var(--kerneleye-colorText)' }}>{threat.name}</Text>
                       </Space>
                       <Space size={32}>
-                        <Text style={{ color: 'var(--text-secondary)', width: 80, textAlign: 'right' }}>
+                        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', width: 80, textAlign: 'right' }}>
                           {threat.value >= 1000 ? `${(threat.value / 1000).toFixed(1)}k` : threat.value}
                         </Text>
-                        <Text style={{ color: 'var(--text-tertiary)', width: 60, textAlign: 'right' }}>
+                        <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', width: 60, textAlign: 'right' }}>
                           {totalMonitored > 0 ? ((threat.value / totalMonitored) * 100).toFixed(1) : 0}%
                         </Text>
                       </Space>
@@ -450,15 +450,15 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                   marginBottom: 24,
                 }}
                 title={
                   <Space>
                     <Shield size={18} color="#818cf8" />
-                    <Text strong style={{ color: 'var(--text-primary)' }}>
+                    <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                       Attack Distribution
                     </Text>
                   </Space>
@@ -482,8 +482,8 @@ export default function Reports() {
                       </Pie>
                       <RechartsTooltip
                         contentStyle={{
-                          background: 'var(--bg-secondary)',
-                          border: '1px solid var(--border-subtle)',
+                          background: 'var(--kerneleye-colorBgContainer)',
+                          border: '1px solid var(--kerneleye-colorBorderSecondary)',
                           borderRadius: 8,
                         }}
                       />
@@ -496,14 +496,14 @@ export default function Reports() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 title={
                   <Space>
                     <Globe size={18} color="#818cf8" />
-                    <Text strong style={{ color: 'var(--text-primary)' }}>
+                    <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                       Top Attack Sources
                     </Text>
                   </Space>
@@ -513,16 +513,16 @@ export default function Reports() {
                   {topCountries?.map((country: any, index: number) => (
                     <Row key={country.country} justify="space-between" align="middle">
                       <Space>
-                        <Text style={{ color: 'var(--text-tertiary)', width: 20 }}>
+                        <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', width: 20 }}>
                           {index + 1}.
                         </Text>
-                        <Text style={{ color: 'var(--text-primary)' }}>{country.country}</Text>
+                        <Text style={{ color: 'var(--kerneleye-colorText)' }}>{country.country}</Text>
                       </Space>
                       <Space size={16}>
-                        <Text style={{ color: 'var(--text-secondary)' }}>
+                        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                           {country.attack_count >= 1000 ? `${(country.attack_count / 1000).toFixed(1)}k` : country.attack_count}
                         </Text>
-                        <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                        <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                           {country.percentage}%
                         </Text>
                       </Space>
@@ -537,15 +537,15 @@ export default function Reports() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
               marginBottom: 24,
             }}
             title={
               <Space>
                 <Clock size={18} color="#818cf8" />
-                <Text strong style={{ color: 'var(--text-primary)' }}>
+                <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                   Hourly Activity Pattern
                 </Text>
               </Space>
@@ -560,23 +560,23 @@ export default function Reports() {
                       <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--kerneleye-colorBorderSecondary)" />
                   <XAxis 
                     dataKey="hour" 
-                    stroke="var(--text-tertiary)"
+                    stroke="var(--kerneleye-colorTextTertiary)"
                     fontSize={12}
                     tickLine={false}
                     interval={2}
                   />
                   <YAxis 
-                    stroke="var(--text-tertiary)"
+                    stroke="var(--kerneleye-colorTextTertiary)"
                     fontSize={12}
                     tickLine={false}
                   />
                   <RechartsTooltip
                     contentStyle={{
-                      background: 'var(--bg-secondary)',
-                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--kerneleye-colorBgContainer)',
+                      border: '1px solid var(--kerneleye-colorBorderSecondary)',
                       borderRadius: 8,
                     }}
                   />
@@ -606,14 +606,14 @@ export default function Reports() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             title={
               <Space>
                 <Calendar size={18} color="#818cf8" />
-                <Text strong style={{ color: 'var(--text-primary)' }}>
+                <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                   Daily Breakdown
                 </Text>
               </Space>

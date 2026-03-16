@@ -25,13 +25,13 @@ function SystemStatusCard() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 24 }}
           >
-            <Text style={{ color: 'var(--text-secondary)' }}>Loading system status...</Text>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Loading system status...</Text>
           </Card>
         </Col>
       </Row>
@@ -70,7 +70,7 @@ function SystemStatusCard() {
           style={{
             background: config.bgColor,
             border: `1px solid ${config.color}30`,
-            borderRadius: 'var(--radius-lg)',
+            borderRadius: 'var(--kerneleye-borderRadiusLG)',
           }}
           bodyStyle={{ padding: 24 }}
         >
@@ -92,10 +92,10 @@ function SystemStatusCard() {
                   <StatusIcon size={24} color="white" />
                 </div>
                 <div>
-                  <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                  <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                     {config.title}
                   </Title>
-                  <Text style={{ color: 'var(--text-secondary)' }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                     {systemStatus.message}. Last heartbeat {systemStatus.lastHeartbeatAgo}.
                   </Text>
                 </div>
@@ -103,7 +103,7 @@ function SystemStatusCard() {
             </Col>
             <Col>
               <Space size={12}>
-                <Text style={{ color: 'var(--text-tertiary)' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>
                   Active agents:
                 </Text>
                 <Badge 
@@ -172,7 +172,7 @@ export default function Overview() {
           <Col>
             <Space direction="vertical" size={4}>
               <Space size={12} align="center">
-                <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                   Dashboard
                 </Title>
                 <Badge 
@@ -186,7 +186,7 @@ export default function Overview() {
                   }}
                 />
               </Space>
-              <Text style={{ color: 'var(--text-secondary)', fontSize: 15 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 15 }}>
                 Real-time security monitoring and threat detection overview
               </Text>
             </Space>
@@ -196,8 +196,8 @@ export default function Overview() {
               <Card 
                 variant="borderless" 
                 style={{ 
-                  background: 'var(--bg-tertiary)', 
-                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--kerneleye-colorFillAlter)', 
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
                   borderRadius: 12,
                 }}
                 bodyStyle={{ padding: '12px 20px' }}
@@ -217,10 +217,10 @@ export default function Overview() {
                     <Zap size={16} color="#818cf8" />
                   </div>
                   <div>
-                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block' }}>
+                    <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', display: 'block' }}>
                       Events/sec
                     </Text>
-                    <Text strong style={{ fontSize: 16, color: 'var(--text-primary)' }}>
+                    <Text strong style={{ fontSize: 16, color: 'var(--kerneleye-colorText)' }}>
                       {(stats.events_last_24h / 86400).toFixed(1)}
                     </Text>
                   </div>
@@ -272,9 +272,9 @@ export default function Overview() {
                 ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))' 
                 : hasActiveTrial 
                   ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05))'
-                  : 'var(--bg-card)',
-              border: `1px solid ${noSubscription || hasActiveTrial ? 'transparent' : 'var(--border-subtle)'}`,
-              borderRadius: 'var(--radius-lg)',
+                  : 'var(--kerneleye-colorBgContainer)',
+              border: `1px solid ${noSubscription || hasActiveTrial ? 'transparent' : 'var(--kerneleye-colorBorderSecondary)'}`,
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
               cursor: noSubscription ? 'pointer' : 'default',
               height: '100%',
             }}
@@ -302,7 +302,7 @@ export default function Overview() {
                  <Crown size={24} color="#10b981" />}
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Current Plan
                 </Text>
                 <Title level={3} style={{ margin: 0, color: noSubscription ? '#818cf8' : hasActiveTrial ? '#f59e0b' : '#10b981', fontSize: 20 }}>

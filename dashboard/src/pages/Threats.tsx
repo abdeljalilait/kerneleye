@@ -42,10 +42,10 @@ export default function Threats() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
               Threat Detection
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               All suspicious and malicious traffic scored from observed network activity
             </Text>
           </Space>
@@ -55,9 +55,9 @@ export default function Threats() {
             icon={<ReloadOutlined />}
             onClick={() => queryClient.invalidateQueries({ queryKey: ['threats'] })}
             style={{
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-secondary)',
+              background: 'var(--kerneleye-colorFillAlter)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              color: 'var(--kerneleye-colorTextSecondary)',
             }}
           >
             Refresh
@@ -71,9 +71,9 @@ export default function Threats() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -92,13 +92,13 @@ export default function Threats() {
                 <ShieldIcon size={24} color="#ef4444" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Critical
                 </Text>
                 <Title level={3} style={{ margin: '4px 0', color: '#ef4444' }}>
                   {criticalCount}
                 </Title>
-                <Text style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextQuaternary)' }}>
                   Score ≥ 70
                 </Text>
               </div>
@@ -109,9 +109,9 @@ export default function Threats() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -130,13 +130,13 @@ export default function Threats() {
                 <AlertTriangle size={24} color="#f59e0b" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   High Risk
                 </Text>
                 <Title level={3} style={{ margin: '4px 0', color: '#f59e0b' }}>
                   {highCount}
                 </Title>
-                <Text style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextQuaternary)' }}>
                   Score 40-69
                 </Text>
               </div>
@@ -147,9 +147,9 @@ export default function Threats() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -168,13 +168,13 @@ export default function Threats() {
                 <Target size={24} color="#fbbf24" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Suspicious
                 </Text>
                 <Title level={3} style={{ margin: '4px 0', color: '#fbbf24' }}>
                   {mediumCount}
                 </Title>
-                <Text style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextQuaternary)' }}>
                   Score 20-39
                 </Text>
               </div>
@@ -185,9 +185,9 @@ export default function Threats() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -206,13 +206,13 @@ export default function Threats() {
                 <CheckCircle size={24} color="#10b981" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Low Risk
                 </Text>
                 <Title level={3} style={{ margin: '4px 0', color: '#10b981' }}>
                   {lowCount}
                 </Title>
-                <Text style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextQuaternary)' }}>
                   Score &lt; 20
                 </Text>
               </div>

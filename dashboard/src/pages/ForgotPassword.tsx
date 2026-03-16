@@ -32,7 +32,7 @@ export default function ForgotPassword() {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center', 
-        background: 'var(--bg-primary)',
+        background: 'var(--kerneleye-colorBgLayout)',
         padding: 24,
       }}
     >
@@ -53,7 +53,7 @@ export default function ForgotPassword() {
           >
             <Shield size={40} color="white" />
           </div>
-          <Title level={2} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+          <Title level={2} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
             KernelEye
           </Title>
         </div>
@@ -62,18 +62,18 @@ export default function ForgotPassword() {
         <Card 
           variant="borderless" 
           style={{ 
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-xl)',
+            background: 'var(--kerneleye-colorBgContainer)',
+            border: '1px solid var(--kerneleye-colorBorderSecondary)',
+            borderRadius: '20px',
           }}
           bodyStyle={{ padding: 40 }}
         >
           <Space direction="vertical" size={24} style={{ width: '100%' }}>
             <div>
-              <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+              <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
                 Forgot Password?
               </Title>
-              <Text style={{ color: 'var(--text-tertiary)' }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>
                 Enter your email address and we'll send you a link to reset your password.
               </Text>
             </div>
@@ -101,7 +101,7 @@ export default function ForgotPassword() {
                 )}
 
                 <Form.Item
-                  label={<Text style={{ color: 'var(--text-secondary)' }}>Email</Text>}
+                  label={<Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Email</Text>}
                   name="email"
                   rules={[
                     { required: true, message: 'Please input your email!' },
@@ -113,8 +113,8 @@ export default function ForgotPassword() {
                     size="large"
                     prefix={<Mail size={18} style={{ marginRight: 8, opacity: 0.5 }} />}
                     style={{
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--kerneleye-colorFillAlter)',
+                      border: '1px solid var(--kerneleye-colorBorderSecondary)',
                       height: 48,
                     }}
                   />

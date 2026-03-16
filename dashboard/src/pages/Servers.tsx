@@ -46,10 +46,10 @@ export default function Servers() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
               Servers
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Manage and monitor your security agents
             </Text>
           </Space>
@@ -60,9 +60,9 @@ export default function Servers() {
               onClick={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
               icon={<RefreshCcw size={16} />}
               style={{
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-secondary)',
+                background: 'var(--kerneleye-colorFillAlter)',
+                border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                color: 'var(--kerneleye-colorTextSecondary)',
               }}
             >
               Refresh
@@ -88,7 +88,7 @@ export default function Servers() {
             </Space>
           }
           description={
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               {systemStatus.message}. Last heartbeat {systemStatus.lastHeartbeatAgo}.
             </Text>
           }
@@ -102,7 +102,7 @@ export default function Servers() {
             border: `1px solid ${systemStatus.status === 'error' 
               ? 'rgba(239, 68, 68, 0.3)' 
               : 'rgba(245, 158, 11, 0.3)'}`,
-            borderRadius: 'var(--radius-lg)',
+            borderRadius: 'var(--kerneleye-borderRadiusLG)',
           }}
         />
       )}
@@ -141,9 +141,9 @@ export default function Servers() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -162,7 +162,7 @@ export default function Servers() {
                 <CheckCircle2 size={24} color="#10b981" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Online
                 </Text>
                 <Title level={3} style={{ margin: 0, color: '#10b981' }}>
@@ -176,9 +176,9 @@ export default function Servers() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -197,7 +197,7 @@ export default function Servers() {
                 <Clock size={24} color="#f59e0b" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Pending
                 </Text>
                 <Title level={3} style={{ margin: 0, color: '#f59e0b' }}>
@@ -211,9 +211,9 @@ export default function Servers() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -232,7 +232,7 @@ export default function Servers() {
                 <XCircle size={24} color="#ef4444" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Offline
                 </Text>
                 <Title level={3} style={{ margin: 0, color: '#ef4444' }}>
@@ -267,22 +267,22 @@ export default function Servers() {
       <Card
         variant="borderless"
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: 'var(--kerneleye-borderRadiusLG)',
         }}
         bodyStyle={{ padding: 0 }}
         title={
           <Space>
             <ServerIcon size={18} color="#818cf8" />
-            <Text strong style={{ color: 'var(--text-primary)' }}>
+            <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
               All Servers
             </Text>
             <Badge 
               count={servers?.length || 0} 
               style={{ 
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)',
+                background: 'var(--kerneleye-colorFillAlter)',
+                color: 'var(--kerneleye-colorTextSecondary)',
               }}
             />
           </Space>

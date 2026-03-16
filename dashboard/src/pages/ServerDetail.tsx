@@ -157,7 +157,7 @@ export default function ServerDetail() {
       key: 'port',
       width: 80,
       sorter: (a, b) => a.port - b.port,
-      render: (port) => <Text strong style={{ fontFamily: 'monospace', color: 'var(--primary-400)' }}>{port}</Text>,
+      render: (port) => <Text strong style={{ fontFamily: 'monospace', color: 'var(--kerneleye-colorPrimaryHover)' }}>{port}</Text>,
     },
     {
       title: 'Service',
@@ -166,11 +166,11 @@ export default function ServerDetail() {
       width: 120,
       render: (service: string, record: PortTraffic) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Tag style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', marginBottom: 0 }}>
+          <Tag style={{ background: 'var(--kerneleye-colorFillAlter)', border: '1px solid var(--kerneleye-colorBorderSecondary)', marginBottom: 0 }}>
             {service || record.protocol}
           </Tag>
           {service && service !== record.protocol && (
-            <Text style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1 }}>
+            <Text style={{ fontSize: 10, color: 'var(--kerneleye-colorTextTertiary)', lineHeight: 1 }}>
               {record.protocol}
             </Text>
           )}
@@ -208,7 +208,7 @@ export default function ServerDetail() {
       dataIndex: 'total_bytes_in',
       key: 'bytes_in',
       width: 110,
-      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
+      render: (bytes) => <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>{formatBytes(bytes || 0)}</Text>,
       sorter: (a, b) => a.total_bytes_in - b.total_bytes_in,
     },
     {
@@ -216,7 +216,7 @@ export default function ServerDetail() {
       dataIndex: 'total_bytes_out',
       key: 'bytes_out',
       width: 110,
-      render: (bytes) => <Text style={{ color: 'var(--text-secondary)' }}>{formatBytes(bytes || 0)}</Text>,
+      render: (bytes) => <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>{formatBytes(bytes || 0)}</Text>,
       sorter: (a, b) => a.total_bytes_out - b.total_bytes_out,
     },
     {
@@ -225,7 +225,7 @@ export default function ServerDetail() {
       key: 'hits',
       width: 80,
       sorter: (a, b) => a.total_hits - b.total_hits,
-      render: (hits) => <Text strong style={{ color: 'var(--text-primary)' }}>{hits.toLocaleString()}</Text>,
+      render: (hits) => <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>{hits.toLocaleString()}</Text>,
     },
     {
       title: 'SYN/ACK',
@@ -233,9 +233,9 @@ export default function ServerDetail() {
       width: 100,
       render: (_, record) => (
         <Text type="secondary">
-          <Text style={{ color: record.total_syn > 10 ? '#ef4444' : 'var(--text-secondary)' }}>{record.total_syn}</Text>
-          <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
-          <Text style={{ color: 'var(--text-secondary)' }}>{record.total_ack}</Text>
+          <Text style={{ color: record.total_syn > 10 ? '#ef4444' : 'var(--kerneleye-colorTextSecondary)' }}>{record.total_syn}</Text>
+          <span style={{ color: 'var(--kerneleye-colorTextQuaternary)', margin: '0 4px' }}>/</span>
+          <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>{record.total_ack}</Text>
         </Text>
       ),
     },
@@ -246,11 +246,11 @@ export default function ServerDetail() {
       render: (_: unknown, record: PortTraffic) => {
         const icmpIn = record.total_icmp_in ?? 0
         const icmpOut = record.total_icmp_out ?? 0
-        if (icmpIn === 0 && icmpOut === 0) return <Text style={{ color: 'var(--text-muted)' }}>—</Text>
+        if (icmpIn === 0 && icmpOut === 0) return <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)' }}>—</Text>
         const isHigh = icmpIn > 100
         return (
           <Tooltip title={`${icmpIn.toLocaleString()} packets in / ${icmpOut.toLocaleString()} packets out`}>
-            <Text style={{ color: isHigh ? '#f59e0b' : 'var(--text-secondary)', fontFamily: 'monospace', fontSize: 12 }}>
+            <Text style={{ color: isHigh ? '#f59e0b' : 'var(--kerneleye-colorTextSecondary)', fontFamily: 'monospace', fontSize: 12 }}>
               ↓{icmpIn} ↑{icmpOut}
             </Text>
           </Tooltip>
@@ -268,7 +268,7 @@ export default function ServerDetail() {
           size="small" 
           showInfo={false}
           strokeColor={score > 50 ? '#ef4444' : score > 20 ? '#f59e0b' : '#10b981'}
-          trailColor="var(--border-subtle)"
+          trailColor="var(--kerneleye-colorBorderSecondary)"
           style={{ width: 60 }}
         />
       ),
@@ -285,7 +285,7 @@ export default function ServerDetail() {
       title: 'Last Seen',
       dataIndex: 'last_seen',
       key: 'time',
-      render: (date) => <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{formatDate(date)}</Text>,
+      render: (date) => <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>{formatDate(date)}</Text>,
       width: 170,
       sorter: (a, b) => new Date(a.last_seen).getTime() - new Date(b.last_seen).getTime(),
       defaultSortOrder: 'descend',
@@ -367,7 +367,7 @@ export default function ServerDetail() {
         cell: ({ row }) => (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140 }}>
             <CountryFlag countryCode={row.original.country || ''} size={14} />
-            <Text code style={{ fontSize: 12, background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+            <Text code style={{ fontSize: 12, background: 'var(--kerneleye-colorFillAlter)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
               {row.original.source_ip}
             </Text>
           </div>
@@ -407,7 +407,7 @@ export default function ServerDetail() {
       columnHelper.accessor('country', {
         header: 'Country',
         cell: ({ row }) => (
-          <span style={{ color: row.original.country ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12 }}>
+          <span style={{ color: row.original.country ? 'var(--kerneleye-colorText)' : 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>
             {row.original.country || 'Unknown'}
           </span>
         ),
@@ -416,8 +416,8 @@ export default function ServerDetail() {
         header: 'City',
         cell: ({ row }) => (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <MapPin size={13} style={{ color: 'var(--text-muted)', opacity: 0.7 }} />
-            <span style={{ color: row.original.city ? 'var(--text-secondary)' : 'var(--text-muted)', fontSize: 12 }}>
+            <MapPin size={13} style={{ color: 'var(--kerneleye-colorTextQuaternary)', opacity: 0.7 }} />
+            <span style={{ color: row.original.city ? 'var(--kerneleye-colorTextSecondary)' : 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>
               {row.original.city || '-'}
             </span>
           </div>
@@ -432,7 +432,7 @@ export default function ServerDetail() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <ArrowDownLeft size={12} style={{ color: '#10b981', opacity: 0.7 }} />
               <span style={{
-                color: (row.original.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--text-secondary)',
+                color: (row.original.bytes_in || 0) > 1000000 ? '#10b981' : 'var(--kerneleye-colorTextSecondary)',
                 fontWeight: (row.original.bytes_in || 0) > 1000000 ? 600 : 400,
                 fontSize: 12
               }}>
@@ -467,7 +467,7 @@ export default function ServerDetail() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <ArrowUpRight size={12} style={{ color: '#3b82f6', opacity: 0.7 }} />
               <span style={{
-                color: (row.original.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--text-secondary)',
+                color: (row.original.bytes_out || 0) > 1000000 ? '#3b82f6' : 'var(--kerneleye-colorTextSecondary)',
                 fontWeight: (row.original.bytes_out || 0) > 1000000 ? 600 : 400,
                 fontSize: 12
               }}>
@@ -502,11 +502,11 @@ export default function ServerDetail() {
             justifyContent: 'center',
             padding: '2px 8px',
             borderRadius: 10,
-            background: row.original.syn_count > 10 ? 'rgba(220, 38, 38, 0.15)' : 'var(--bg-tertiary)',
-            border: `1px solid ${row.original.syn_count > 10 ? 'rgba(220, 38, 38, 0.3)' : 'var(--border-subtle)'}`,
+            background: row.original.syn_count > 10 ? 'rgba(220, 38, 38, 0.15)' : 'var(--kerneleye-colorFillAlter)',
+            border: `1px solid ${row.original.syn_count > 10 ? 'rgba(220, 38, 38, 0.3)' : 'var(--kerneleye-colorBorderSecondary)'}`,
           }}>
             <span style={{ 
-              color: row.original.syn_count > 10 ? '#dc2626' : 'var(--text-secondary)',
+              color: row.original.syn_count > 10 ? '#dc2626' : 'var(--kerneleye-colorTextSecondary)',
               fontWeight: row.original.syn_count > 10 ? 600 : 400,
               fontSize: 12
             }}>
@@ -524,10 +524,10 @@ export default function ServerDetail() {
             justifyContent: 'center',
             padding: '2px 8px',
             borderRadius: 10,
-            background: 'var(--bg-tertiary)',
-            border: '1px solid var(--border-subtle)',
+            background: 'var(--kerneleye-colorFillAlter)',
+            border: '1px solid var(--kerneleye-colorBorderSecondary)',
           }}>
-            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+            <span style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 12 }}>
               {row.original.ack_count}
             </span>
           </div>
@@ -543,12 +543,12 @@ export default function ServerDetail() {
             gap: 4,
             padding: '2px 8px',
             borderRadius: 10,
-            background: row.original.hit_count > 50 ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
-            border: `1px solid ${row.original.hit_count > 50 ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-subtle)'}`,
+            background: row.original.hit_count > 50 ? 'rgba(99, 102, 241, 0.15)' : 'var(--kerneleye-colorFillAlter)',
+            border: `1px solid ${row.original.hit_count > 50 ? 'rgba(99, 102, 241, 0.3)' : 'var(--kerneleye-colorBorderSecondary)'}`,
           }}>
-            <Activity size={11} style={{ color: row.original.hit_count > 50 ? '#6366f1' : 'var(--text-muted)' }} />
+            <Activity size={11} style={{ color: row.original.hit_count > 50 ? '#6366f1' : 'var(--kerneleye-colorTextQuaternary)' }} />
             <span style={{ 
-              color: row.original.hit_count > 50 ? '#6366f1' : 'var(--text-secondary)',
+              color: row.original.hit_count > 50 ? '#6366f1' : 'var(--kerneleye-colorTextSecondary)',
               fontWeight: row.original.hit_count > 50 ? 600 : 400,
               fontSize: 12
             }}>
@@ -563,13 +563,13 @@ export default function ServerDetail() {
           const icmpIn = row.original.icmp_packets_in ?? 0
           const icmpOut = row.original.icmp_packets_out ?? 0
           if (icmpIn === 0 && icmpOut === 0) {
-            return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+            return <span style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>—</span>
           }
           const isHigh = icmpIn > 50
           return (
             <Tooltip title={`${icmpIn.toLocaleString()} in / ${icmpOut.toLocaleString()} out`}>
               <span style={{
-                color: isHigh ? '#f59e0b' : 'var(--text-secondary)',
+                color: isHigh ? '#f59e0b' : 'var(--kerneleye-colorTextSecondary)',
                 fontSize: 11,
                 fontFamily: 'monospace',
               }}>
@@ -583,12 +583,12 @@ export default function ServerDetail() {
         header: 'Duration',
         cell: ({ row }) => {
           const ms = row.original.connection_duration_ms ?? 0
-          if (ms === 0) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+          if (ms === 0) return <span style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>—</span>
           let label: string
           if (ms < 1000) label = `${ms}ms`
           else if (ms < 60000) label = `${(ms / 1000).toFixed(1)}s`
           else label = `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
-          return <span style={{ color: 'var(--text-tertiary)', fontSize: 12, fontFamily: 'monospace' }}>{label}</span>
+          return <span style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, fontFamily: 'monospace' }}>{label}</span>
         },
       }),
       columnHelper.accessor('threat_score', {
@@ -627,11 +627,11 @@ export default function ServerDetail() {
           return (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Clock size={13} style={{ 
-                color: isRecent ? '#22c55e' : 'var(--text-muted)',
+                color: isRecent ? '#22c55e' : 'var(--kerneleye-colorTextQuaternary)',
                 opacity: isRecent ? 1 : 0.5
               }} />
               <span style={{ 
-                color: isRecent ? '#22c55e' : 'var(--text-tertiary)', 
+                color: isRecent ? '#22c55e' : 'var(--kerneleye-colorTextTertiary)', 
                 fontSize: 12,
                 fontWeight: isRecent ? 500 : 400
               }}>
@@ -644,7 +644,6 @@ export default function ServerDetail() {
                   borderRadius: '50%',
                   background: '#22c55e',
                   boxShadow: '0 0 6px #22c55e',
-                  animation: 'pulse 2s infinite'
                 }} />
               )}
             </div>
@@ -700,7 +699,7 @@ export default function ServerDetail() {
           <Button 
             icon={<ArrowLeft size={16} />} 
             type="text"
-            style={{ color: 'var(--text-secondary)' }}
+            style={{ color: 'var(--kerneleye-colorTextSecondary)' }}
           >
             Back to Servers
           </Button>
@@ -720,7 +719,7 @@ export default function ServerDetail() {
               icon={<Server size={32} color={statusConfig.color} />}
             />
             <div>
-              <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+              <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                 {server?.hostname}
               </Title>
               <Space size={12} style={{ marginTop: 8 }}>
@@ -746,7 +745,7 @@ export default function ServerDetail() {
                         boxShadow: isConnected ? '0 0 8px #10b981' : 'none',
                       }} 
                     />
-                    <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                    <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                       {isConnected ? 'Live' : 'Offline'}
                     </Text>
                   </Space>
@@ -763,9 +762,9 @@ export default function ServerDetail() {
                 onClick={handleRefresh}
                 loading={isRefreshing}
                 style={{
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-secondary)',
+                  background: 'var(--kerneleye-colorFillAlter)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  color: 'var(--kerneleye-colorTextSecondary)',
                 }}
               >
                 Refresh
@@ -795,9 +794,9 @@ export default function ServerDetail() {
       <Card
         variant="borderless"
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: 'var(--kerneleye-borderRadiusLG)',
           marginBottom: 24,
         }}
         bodyStyle={{ padding: 24 }}
@@ -805,32 +804,32 @@ export default function ServerDetail() {
         <Row gutter={[32, 16]}>
           <Col xs={24} sm={12} md={6}>
             <Space direction="vertical" size={4}>
-              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 IP Address
               </Text>
-              <Text code style={{ fontSize: 14, background: 'var(--bg-tertiary)', padding: '4px 12px', borderRadius: 6 }}>
+              <Text code style={{ fontSize: 14, background: 'var(--kerneleye-colorFillAlter)', padding: '4px 12px', borderRadius: 6 }}>
                 {server?.ip_address || '-'}
               </Text>
             </Space>
           </Col>
           <Col xs={24} sm={12} md={6}>
             <Space direction="vertical" size={4}>
-              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Agent Version
               </Text>
-              <Text strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>
+              <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 14 }}>
                 {server?.agent_version || '-'}
               </Text>
             </Space>
           </Col>
           <Col xs={24} sm={12} md={6}>
             <Space direction="vertical" size={4}>
-              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Last Seen
               </Text>
               <Space size={6}>
                 <Clock size={14} style={{ opacity: 0.5 }} />
-                <Text style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 14 }}>
                   {server?.last_seen ? new Date(server.last_seen).toLocaleString() : '-'}
                 </Text>
               </Space>
@@ -838,7 +837,7 @@ export default function ServerDetail() {
           </Col>
           <Col xs={24} sm={12} md={6}>
             <Space direction="vertical" size={4}>
-              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Connection
               </Text>
               <Space size={6}>
@@ -858,9 +857,9 @@ export default function ServerDetail() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -869,8 +868,8 @@ export default function ServerDetail() {
                 <Activity size={20} color="#818cf8" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Total Events</Text>
-                <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, display: 'block' }}>Total Events</Text>
+                <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                   {(stats?.total_events || 0).toLocaleString()}
                 </Title>
               </div>
@@ -881,9 +880,9 @@ export default function ServerDetail() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -892,8 +891,8 @@ export default function ServerDetail() {
                 <Clock size={20} color="#06b6d4" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Events (24h)</Text>
-                <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, display: 'block' }}>Events (24h)</Text>
+                <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                   {(stats?.events_last_24h || 0).toLocaleString()}
                 </Title>
               </div>
@@ -904,9 +903,9 @@ export default function ServerDetail() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -915,8 +914,8 @@ export default function ServerDetail() {
                 <Shield size={20} color="#ef4444" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Threat Events</Text>
-                <Title level={4} style={{ margin: 0, color: (stats?.threat_events || 0) > 0 ? '#ef4444' : 'var(--text-primary)' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, display: 'block' }}>Threat Events</Text>
+                <Title level={4} style={{ margin: 0, color: (stats?.threat_events || 0) > 0 ? '#ef4444' : 'var(--kerneleye-colorText)' }}>
                   {(stats?.threat_events || 0).toLocaleString()}
                 </Title>
               </div>
@@ -927,9 +926,9 @@ export default function ServerDetail() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -938,8 +937,8 @@ export default function ServerDetail() {
                 <Globe size={20} color="#10b981" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block' }}>Total Traffic</Text>
-                <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, display: 'block' }}>Total Traffic</Text>
+                <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                   {formatBytes((stats?.total_bytes_in || 0) + (stats?.total_bytes_out || 0))}
                 </Title>
               </div>
@@ -952,15 +951,15 @@ export default function ServerDetail() {
       <Card 
         variant="borderless"
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: 'var(--kerneleye-borderRadiusLG)',
         }}
         bodyStyle={{ padding: 0 }}
         title={
           <Space>
             <Globe size={18} color="#818cf8" />
-            <Text strong style={{ color: 'var(--text-primary)' }}>Recent Traffic Events</Text>
+            <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>Recent Traffic Events</Text>
           </Space>
         }
         extra={
@@ -973,12 +972,12 @@ export default function ServerDetail() {
               size="small"
               prefix={<Search size={14} />}
             />
-            <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
               {isConnected ? '● Live' : '○ Paused'}
             </Text>
             <Badge 
               count={trafficPagination?.total_count || portTraffic.length} 
-              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
+              style={{ background: 'var(--kerneleye-colorFillAlter)', color: 'var(--kerneleye-colorTextSecondary)' }}
             />
           </Space>
         }
@@ -999,14 +998,13 @@ export default function ServerDetail() {
           size="small"
           scroll={{ x: 1100 }}
           style={{ background: 'transparent' }}
-          rowClassName={() => 'traffic-row'}
           locale={{ 
             emptyText: (
               <div style={{ padding: '60px 0', textAlign: 'center' }}>
                 <div style={{ marginBottom: 16 }}>
-                  <Globe size={64} color="var(--text-muted)" opacity={0.3} />
+                  <Globe size={64} color="var(--kerneleye-colorTextQuaternary)" opacity={0.3} />
                 </div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 16 }}>
                   No traffic events yet
                 </Text>
               </div>
@@ -1052,26 +1050,26 @@ export default function ServerDetail() {
             {/* Filter Bar */}
             <div style={{ 
               padding: '12px 16px', 
-              borderBottom: '1px solid var(--border-subtle)',
-              background: 'var(--bg-tertiary)',
+              borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
+              background: 'var(--kerneleye-colorFillAlter)',
               display: 'flex',
               gap: 12,
               alignItems: 'center',
               flexWrap: 'wrap'
             }}>
-              <Search size={16} color="var(--text-tertiary)" />
+              <Search size={16} color="var(--kerneleye-colorTextTertiary)" />
               <Input
                 placeholder="Filter by IP, country, or city..."
                 value={ipFilter}
                 onChange={(e) => setIpFilter(e.target.value)}
                 style={{ 
                   width: 300,
-                  background: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-subtle)'
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  borderColor: 'var(--kerneleye-colorBorderSecondary)'
                 }}
                 allowClear
               />
-              <Text style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12 }}>
                 Click column headers to sort
               </Text>
               {sorting.length > 0 && (
@@ -1090,8 +1088,8 @@ export default function ServerDetail() {
                 loading={sourcesLoading}
                 onClick={() => refetchSources()}
                 style={{
-                  background: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-subtle)'
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  borderColor: 'var(--kerneleye-colorBorderSecondary)'
                 }}
               >
                 Refresh
@@ -1109,7 +1107,7 @@ export default function ServerDetail() {
                   position: 'sticky', 
                   top: 0, 
                   zIndex: 1,
-                  background: 'var(--bg-secondary)'
+                  background: 'var(--kerneleye-colorBgContainer)'
                 }}>
                   {ipTable.getHeaderGroups().map(headerGroup => (
                     <tr key={headerGroup.id}>
@@ -1124,8 +1122,8 @@ export default function ServerDetail() {
                             fontSize: 11,
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em',
-                            color: 'var(--text-secondary)',
-                            borderBottom: '1px solid var(--border-subtle)',
+                            color: 'var(--kerneleye-colorTextSecondary)',
+                            borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
                             cursor: header.column.getCanSort() ? 'pointer' : 'default',
                             whiteSpace: 'nowrap',
                             userSelect: 'none'
@@ -1164,7 +1162,7 @@ export default function ServerDetail() {
                         style={{ 
                           padding: '60px 24px', 
                           textAlign: 'center',
-                          color: 'var(--text-tertiary)'
+                          color: 'var(--kerneleye-colorTextTertiary)'
                         }}
                       >
                         <Globe size={48} style={{ marginBottom: 16, opacity: 0.3 }} />
@@ -1176,11 +1174,11 @@ export default function ServerDetail() {
                       <tr 
                         key={row.id}
                         style={{
-                          borderBottom: '1px solid var(--border-subtle)',
+                          borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
                           transition: 'background 0.15s'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--bg-tertiary)';
+                          e.currentTarget.style.background = 'var(--kerneleye-colorFillAlter)';
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = 'transparent';
@@ -1191,7 +1189,7 @@ export default function ServerDetail() {
                             key={cell.id}
                             style={{
                               padding: '10px 8px',
-                              color: 'var(--text-primary)',
+                              color: 'var(--kerneleye-colorText)',
                               whiteSpace: 'nowrap'
                             }}
                           >
@@ -1209,15 +1207,15 @@ export default function ServerDetail() {
             {sourcesPagination && sourcesPagination.total_count > 0 && (
               <div style={{ 
                 padding: '12px 16px', 
-                borderTop: '1px solid var(--border-subtle)',
-                background: 'var(--bg-tertiary)',
+                borderTop: '1px solid var(--kerneleye-colorBorderSecondary)',
+                background: 'var(--kerneleye-colorFillAlter)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 flexWrap: 'wrap',
                 gap: 12
               }}>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13 }}>
                   Showing {(sourcesPagination.page - 1) * sourcesPagination.page_size + 1} to {Math.min(
                     sourcesPagination.page * sourcesPagination.page_size,
                     sourcesPagination.total_count
@@ -1230,8 +1228,8 @@ export default function ServerDetail() {
                     disabled={sourcesPagination.page <= 1}
                     onClick={() => setSourcesParams(prev => ({ ...prev, page: prev.page - 1 }))}
                     style={{
-                      background: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-subtle)'
+                      background: 'var(--kerneleye-colorBgContainer)',
+                      borderColor: 'var(--kerneleye-colorBorderSecondary)'
                     }}
                   >
                     Previous
@@ -1259,9 +1257,9 @@ export default function ServerDetail() {
                           onClick={() => setSourcesParams(prev => ({ ...prev, page: pageNum }))}
                           style={{
                             minWidth: 32,
-                            background: isActive ? '#3b82f6' : 'var(--bg-secondary)',
-                            borderColor: isActive ? '#3b82f6' : 'var(--border-subtle)',
-                            color: isActive ? '#fff' : 'var(--text-primary)'
+                            background: isActive ? '#3b82f6' : 'var(--kerneleye-colorBgContainer)',
+                            borderColor: isActive ? '#3b82f6' : 'var(--kerneleye-colorBorderSecondary)',
+                            color: isActive ? '#fff' : 'var(--kerneleye-colorText)'
                           }}
                         >
                           {pageNum}
@@ -1275,8 +1273,8 @@ export default function ServerDetail() {
                     disabled={sourcesPagination.page >= sourcesPagination.total_pages}
                     onClick={() => setSourcesParams(prev => ({ ...prev, page: prev.page + 1 }))}
                     style={{
-                      background: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-subtle)'
+                      background: 'var(--kerneleye-colorBgContainer)',
+                      borderColor: 'var(--kerneleye-colorBorderSecondary)'
                     }}
                   >
                     Next
@@ -1286,17 +1284,17 @@ export default function ServerDetail() {
                     value={sourcesParams.page_size}
                     onChange={e => setSourcesParams(prev => ({ ...prev, page_size: Number(e.target.value), page: 1 }))}
                     style={{
-                      background: 'var(--bg-secondary)',
-                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--kerneleye-colorBgContainer)',
+                      border: '1px solid var(--kerneleye-colorBorderSecondary)',
                       borderRadius: 6,
                       padding: '4px 8px',
-                      color: 'var(--text-primary)',
+                      color: 'var(--kerneleye-colorText)',
                       fontSize: 13,
                       cursor: 'pointer'
                     }}
                   >
                     {[10, 25, 50, 100].map(pageSize => (
-                      <option key={pageSize} value={pageSize} style={{ background: 'var(--bg-card)' }}>
+                      <option key={pageSize} value={pageSize} style={{ background: 'var(--kerneleye-colorBgContainer)' }}>
                         {pageSize} / page
                       </option>
                     ))}

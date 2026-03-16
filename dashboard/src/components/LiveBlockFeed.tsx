@@ -134,30 +134,19 @@ export default function LiveBlockFeed() {
 
   return (
     <>
-      {/* inject keyframe once */}
-      <style>{`
-        @keyframes liveFeedFlash {
-          0%   { background-color: rgba(239,68,68,0.18); }
-          100% { background-color: transparent; }
-        }
-        .live-block-item-flash {
-          animation: liveFeedFlash 1.2s ease-out;
-        }
-      `}</style>
-
       <Card
         variant="borderless"
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: 'var(--kerneleye-borderRadiusLG)',
           marginBottom: 24,
         }}
         styles={{ body: { padding: '12px 16px' } }}
         title={
           <Space>
             <Activity size={16} style={{ color: isConnected ? '#10b981' : '#6b7280' }} />
-            <Text strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>Live Block Feed</Text>
+            <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 14 }}>Live Block Feed</Text>
             <Badge
               status={isConnected ? 'processing' : 'default'}
               color={isConnected ? '#10b981' : '#6b7280'}
@@ -182,9 +171,9 @@ export default function LiveBlockFeed() {
                 icon={<Trash2 size={13} />}
                 onClick={handleClear}
                 style={{
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-secondary)',
+                  background: 'var(--kerneleye-colorFillAlter)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  color: 'var(--kerneleye-colorTextSecondary)',
                 }}
               />
             </Tooltip>
@@ -195,7 +184,7 @@ export default function LiveBlockFeed() {
           <div style={{ padding: '12px 0', textAlign: 'center' }}>
             <WifiOff size={20} style={{ color: '#6b7280', marginBottom: 6 }} />
             <br />
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
               WebSocket disconnected — live events will appear here when connected
             </Text>
           </div>
@@ -208,13 +197,12 @@ export default function LiveBlockFeed() {
                 height: 8,
                 borderRadius: '50%',
                 background: '#10b981',
-                boxShadow: '0 0 0 0 rgba(16,185,129,0.4)',
-                animation: 'pulse 2s infinite',
+                boxShadow: '0 0 0 4px rgba(16,185,129,0.16)',
                 marginBottom: 8,
               }}
             />
             <br />
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
               Waiting for new block events…
             </Text>
           </div>
@@ -226,16 +214,16 @@ export default function LiveBlockFeed() {
             {events.map(evt => (
               <div
                 key={evt._key}
-                className={evt._key === flashKey ? 'live-block-item-flash' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
                   padding: '7px 4px',
-                  borderBottom: '1px solid var(--border-subtle)',
+                  borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
                   borderRadius: 4,
                   flexWrap: 'wrap',
                   transition: 'background-color 0.3s',
+                  backgroundColor: evt._key === flashKey ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
                 }}
               >
                 {/* Flag + IP */}
@@ -246,7 +234,7 @@ export default function LiveBlockFeed() {
                       fontFamily: 'monospace',
                       fontSize: 13,
                       fontWeight: 600,
-                      color: 'var(--text-primary)',
+                      color: 'var(--kerneleye-colorText)',
                     }}
                   >
                     {evt.ip_address}
@@ -284,21 +272,21 @@ export default function LiveBlockFeed() {
 
                 {/* Server */}
                 {evt.server_name && (
-                  <Text style={{ color: 'var(--text-secondary)', fontSize: 12, minWidth: 80 }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 12, minWidth: 80 }}>
                     {evt.server_name}
                   </Text>
                 )}
 
                 {/* Country/City */}
                 {(evt.country_name || evt.city) && (
-                  <Text style={{ color: 'var(--text-tertiary, #9ca3af)', fontSize: 12, minWidth: 80 }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, minWidth: 80 }}>
                     {[evt.city, evt.country_name].filter(Boolean).join(', ')}
                   </Text>
                 )}
 
                 {/* Timestamp */}
                 <Tooltip title={dayjs(evt.blocked_at || evt._ts).format('YYYY-MM-DD HH:mm:ss')}>
-                  <Text style={{ color: 'var(--text-tertiary, #9ca3af)', fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
                     {dayjs(evt.blocked_at || evt._ts).fromNow()}
                   </Text>
                 </Tooltip>

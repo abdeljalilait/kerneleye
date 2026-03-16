@@ -97,10 +97,10 @@ export default function Profile() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
               Profile & Settings
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Manage your account, preferences, and application settings
             </Text>
           </Space>
@@ -114,9 +114,9 @@ export default function Profile() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
               marginBottom: 24,
             }}
             bodyStyle={{ padding: 24 }}
@@ -146,14 +146,14 @@ export default function Profile() {
                 strong 
                 style={{ 
                   fontSize: 16, 
-                  color: 'var(--text-primary)', 
+                  color: 'var(--kerneleye-colorText)', 
                   display: 'block',
                   marginBottom: 4,
                 }}
               >
                 {user?.email?.split('@')[0] || 'User'}
               </Text>
-              <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
                 {user?.email}
               </Text>
             </div>
@@ -174,7 +174,7 @@ export default function Profile() {
               )}
             </div>
 
-            <Divider style={{ borderColor: 'var(--border-subtle)', margin: '20px 0' }} />
+            <Divider style={{ borderColor: 'var(--kerneleye-colorBorderSecondary)', margin: '20px 0' }} />
 
             <Space direction="vertical" style={{ width: '100%' }} size={8}>
               <Button
@@ -199,9 +199,9 @@ export default function Profile() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 8 }}
           >
@@ -218,8 +218,8 @@ export default function Profile() {
                     style={{
                       justifyContent: 'flex-start',
                       height: 44,
-                      background: isActive ? 'var(--bg-tertiary)' : 'transparent',
-                      color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      background: isActive ? 'var(--kerneleye-colorFillAlter)' : 'transparent',
+                      color: isActive ? 'var(--kerneleye-colorText)' : 'var(--kerneleye-colorTextSecondary)',
                       fontWeight: isActive ? 600 : 400,
                       borderRadius: 8,
                     }}
@@ -228,7 +228,7 @@ export default function Profile() {
                       size={18} 
                       style={{ 
                         marginRight: 12,
-                        color: isActive ? '#6366f1' : 'var(--text-tertiary)',
+                        color: isActive ? '#6366f1' : 'var(--kerneleye-colorTextTertiary)',
                       }} 
                     />
                     {item.label}
@@ -248,9 +248,9 @@ export default function Profile() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                   marginBottom: 24,
                 }}
                 title={
@@ -268,7 +268,7 @@ export default function Profile() {
                     >
                       <User size={18} color="#818cf8" />
                     </div>
-                    <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                    <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
                       Profile Information
                     </Text>
                   </Space>
@@ -287,34 +287,34 @@ export default function Profile() {
                   <Row gutter={16}>
                     <Col xs={24} md={12}>
                       <Form.Item
-                        label={<Text style={{ color: 'var(--text-secondary)' }}>Display Name</Text>}
+                        label={<Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Display Name</Text>}
                         name="displayName"
                       >
                         <Input
-                          prefix={<User size={16} style={{ color: 'var(--text-tertiary)' }} />}
+                          prefix={<User size={16} style={{ color: 'var(--kerneleye-colorTextTertiary)' }} />}
                           placeholder="Your name"
                           size="large"
                           style={{
-                            background: 'var(--bg-tertiary)',
-                            borderColor: 'var(--border-subtle)',
-                            color: 'var(--text-primary)',
+                            background: 'var(--kerneleye-colorFillAlter)',
+                            borderColor: 'var(--kerneleye-colorBorderSecondary)',
+                            color: 'var(--kerneleye-colorText)',
                           }}
                         />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={12}>
                       <Form.Item
-                        label={<Text style={{ color: 'var(--text-secondary)' }}>Email</Text>}
+                        label={<Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Email</Text>}
                         name="email"
                       >
                         <Input
-                          prefix={<Mail size={16} style={{ color: 'var(--text-tertiary)' }} />}
+                          prefix={<Mail size={16} style={{ color: 'var(--kerneleye-colorTextTertiary)' }} />}
                           disabled
                           size="large"
                           style={{
-                            background: 'var(--bg-tertiary)',
-                            borderColor: 'var(--border-subtle)',
-                            color: 'var(--text-primary)',
+                            background: 'var(--kerneleye-colorFillAlter)',
+                            borderColor: 'var(--kerneleye-colorBorderSecondary)',
+                            color: 'var(--kerneleye-colorText)',
                           }}
                         />
                       </Form.Item>
@@ -322,16 +322,16 @@ export default function Profile() {
                   </Row>
 
                   <Form.Item
-                    label={<Text style={{ color: 'var(--text-secondary)' }}>Bio</Text>}
+                    label={<Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Bio</Text>}
                     name="bio"
                   >
                     <Input.TextArea
                       rows={3}
                       placeholder="Tell us about yourself..."
                       style={{
-                        background: 'var(--bg-tertiary)',
-                        borderColor: 'var(--border-subtle)',
-                        color: 'var(--text-primary)',
+                        background: 'var(--kerneleye-colorFillAlter)',
+                        borderColor: 'var(--kerneleye-colorBorderSecondary)',
+                        color: 'var(--kerneleye-colorText)',
                         resize: 'none',
                       }}
                     />
@@ -355,9 +355,9 @@ export default function Profile() {
               <Card
                 variant="borderless"
                 style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
                 title={
                   <Space>
@@ -374,7 +374,7 @@ export default function Profile() {
                     >
                       <Shield size={18} color="#10b981" />
                     </div>
-                    <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                    <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
                       Security
                     </Text>
                   </Space>
@@ -384,22 +384,22 @@ export default function Profile() {
                 <Space direction="vertical" style={{ width: '100%' }} size={16}>
                   <Row justify="space-between" align="middle">
                     <Space direction="vertical" size={4}>
-                      <Text strong style={{ color: 'var(--text-primary)' }}>
+                      <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                         Two-Factor Authentication
                       </Text>
-                      <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
                         Add an extra layer of security to your account
                       </Text>
                     </Space>
-                    <Badge status="default" text="Disabled" style={{ color: 'var(--text-secondary)' }} />
+                    <Badge status="default" text="Disabled" style={{ color: 'var(--kerneleye-colorTextSecondary)' }} />
                   </Row>
-                  <Divider style={{ borderColor: 'var(--border-subtle)', margin: '8px 0' }} />
+                  <Divider style={{ borderColor: 'var(--kerneleye-colorBorderSecondary)', margin: '8px 0' }} />
                   <Row justify="space-between" align="middle">
                     <Space direction="vertical" size={4}>
-                      <Text strong style={{ color: 'var(--text-primary)' }}>
+                      <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                         Change Password
                       </Text>
-                      <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
                         Update your password regularly for better security
                       </Text>
                     </Space>
@@ -417,9 +417,9 @@ export default function Profile() {
             <Card
               variant="borderless"
               style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-lg)',
+                background: 'var(--kerneleye-colorBgContainer)',
+                border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                borderRadius: 'var(--kerneleye-borderRadiusLG)',
               }}
               title={
                 <Space>
@@ -436,14 +436,14 @@ export default function Profile() {
                   >
                     <Palette size={18} color="#8b5cf6" />
                   </div>
-                  <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                  <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
                     Appearance
                   </Text>
                 </Space>
               }
               bodyStyle={{ padding: 24 }}
             >
-              <Text style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: 20 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', display: 'block', marginBottom: 20 }}>
                 Choose your preferred theme. The system theme will automatically match your device's settings.
               </Text>
 
@@ -459,8 +459,8 @@ export default function Profile() {
                         style={{
                           background: isSelected 
                             ? `${option.color}15`
-                            : 'var(--bg-tertiary)',
-                          border: `2px solid ${isSelected ? option.color : 'var(--border-subtle)'}`,
+                            : 'var(--kerneleye-colorFillAlter)',
+                          border: `2px solid ${isSelected ? option.color : 'var(--kerneleye-colorBorderSecondary)'}`,
                           borderRadius: 12,
                           cursor: 'pointer',
                           transition: 'all 0.2s',
@@ -472,19 +472,19 @@ export default function Profile() {
                             width: 48,
                             height: 48,
                             borderRadius: 12,
-                            background: isSelected ? option.color : 'var(--bg-secondary)',
+                            background: isSelected ? option.color : 'var(--kerneleye-colorBgContainer)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             margin: '0 auto 12px',
                           }}
                         >
-                          <Icon size={24} color={isSelected ? 'white' : 'var(--text-secondary)'} />
+                          <Icon size={24} color={isSelected ? 'white' : 'var(--kerneleye-colorTextSecondary)'} />
                         </div>
                         <Text
                           strong
                           style={{
-                            color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            color: isSelected ? 'var(--kerneleye-colorText)' : 'var(--kerneleye-colorTextSecondary)',
                             display: 'block',
                           }}
                         >
@@ -517,7 +517,7 @@ export default function Profile() {
                   marginTop: 24,
                   background: 'rgba(99, 102, 241, 0.1)',
                   border: '1px solid rgba(99, 102, 241, 0.3)',
-                  borderRadius: 'var(--radius-lg)',
+                  borderRadius: 'var(--kerneleye-borderRadiusLG)',
                 }}
               />
             </Card>
@@ -528,9 +528,9 @@ export default function Profile() {
             <Card
               variant="borderless"
               style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-lg)',
+                background: 'var(--kerneleye-colorBgContainer)',
+                border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                borderRadius: 'var(--kerneleye-borderRadiusLG)',
               }}
               title={
                 <Space>
@@ -547,7 +547,7 @@ export default function Profile() {
                   >
                     <Bell size={18} color="#f59e0b" />
                   </div>
-                  <Text strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>
+                  <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
                     Notifications
                   </Text>
                 </Space>
@@ -591,8 +591,8 @@ export default function Profile() {
                       key={item.key}
                       variant="borderless"
                       style={{
-                        background: 'var(--bg-tertiary)',
-                        border: '1px solid var(--border-subtle)',
+                        background: 'var(--kerneleye-colorFillAlter)',
+                        border: '1px solid var(--kerneleye-colorBorderSecondary)',
                         borderRadius: 12,
                       }}
                       bodyStyle={{ padding: 16 }}
@@ -613,10 +613,10 @@ export default function Profile() {
                             <Icon size={20} color={item.color} />
                           </div>
                           <Space direction="vertical" size={2}>
-                            <Text strong style={{ color: 'var(--text-primary)' }}>
+                            <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
                               {item.title}
                             </Text>
-                            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
                               {item.description}
                             </Text>
                           </Space>

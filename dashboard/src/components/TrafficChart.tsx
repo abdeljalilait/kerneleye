@@ -73,17 +73,17 @@ export default function TrafficChart() {
       return (
         <div 
           style={{
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 'var(--radius-md)',
+            background: 'var(--kerneleye-colorBgContainer)',
+            border: '1px solid var(--kerneleye-colorBorder)',
+            borderRadius: 'var(--kerneleye-borderRadius)',
             padding: '12px 16px',
-            boxShadow: 'var(--shadow-lg)',
+            boxShadow: 'var(--kerneleye-boxShadowSecondary)',
           }}
         >
-          <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block', marginBottom: 4 }}>
+          <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block', marginBottom: 4 }}>
             {label}
           </Text>
-          <Text strong style={{ color: 'var(--primary-400)', fontSize: 18 }}>
+          <Text strong style={{ color: 'var(--kerneleye-colorPrimaryHover)', fontSize: 18 }}>
             {payload[0].value} events/sec
           </Text>
         </div>
@@ -96,9 +96,9 @@ export default function TrafficChart() {
     <Card
       variant="borderless"
       style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-lg)',
+        background: 'var(--kerneleye-colorBgContainer)',
+        border: '1px solid var(--kerneleye-colorBorderSecondary)',
+        borderRadius: 'var(--kerneleye-borderRadiusLG)',
         backdropFilter: 'blur(10px)',
         height: '100%',
       }}
@@ -122,7 +122,7 @@ export default function TrafficChart() {
               <Activity size={18} color="#818cf8" />
             </div>
             <div>
-              <Title level={5} style={{ margin: 0, color: 'var(--text-primary)', fontSize: 16 }}>
+              <Title level={5} style={{ margin: 0, color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
                 Network Traffic
               </Title>
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -135,7 +135,7 @@ export default function TrafficChart() {
         <Space>
           <Badge 
             status="processing" 
-            text={<Text style={{ fontSize: 12, color: 'var(--success)' }}>Live</Text>}
+            text={<Text style={{ fontSize: 12, color: 'var(--kerneleye-colorSuccess)' }}>Live</Text>}
             style={{ 
               padding: '4px 12px', 
               background: 'rgba(16, 185, 129, 0.1)',
@@ -153,7 +153,7 @@ export default function TrafficChart() {
             onChange={(value) => setTimeRange(value as TimeRange)}
             size="small"
             style={{
-              background: 'var(--bg-tertiary)',
+              background: 'var(--kerneleye-colorFillAlter)',
             }}
           />
         </Space>
@@ -167,47 +167,47 @@ export default function TrafficChart() {
           gap: 16,
           marginBottom: 24,
           padding: 16,
-          background: 'var(--bg-tertiary)',
-          borderRadius: 'var(--radius-md)',
+          background: 'var(--kerneleye-colorFillAlter)',
+          borderRadius: 'var(--kerneleye-borderRadius)',
         }}
       >
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 }}>
             <Zap size={14} color="#818cf8" />
-            <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Current
             </Text>
           </div>
-          <Text strong style={{ fontSize: 20, color: 'var(--text-primary)' }}>
+          <Text strong style={{ fontSize: 20, color: 'var(--kerneleye-colorText)' }}>
             {data[data.length - 1]?.pps || 0}
           </Text>
-          <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>pps</Text>
+          <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', marginLeft: 4 }}>pps</Text>
         </div>
         
-        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border-subtle)', borderRight: '1px solid var(--border-subtle)' }}>
+        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--kerneleye-colorBorderSecondary)', borderRight: '1px solid var(--kerneleye-colorBorderSecondary)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 }}>
             <TrendingUp size={14} color="#f59e0b" />
-            <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Peak
             </Text>
           </div>
-          <Text strong style={{ fontSize: 20, color: 'var(--accent-amber)' }}>
+          <Text strong style={{ fontSize: 20, color: 'var(--kerneleye-colorWarning)' }}>
             {peakPps}
           </Text>
-          <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>pps</Text>
+          <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', marginLeft: 4 }}>pps</Text>
         </div>
         
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 }}>
             <Activity size={14} color="#10b981" />
-            <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Total
             </Text>
           </div>
-          <Text strong style={{ fontSize: 20, color: 'var(--success)' }}>
+          <Text strong style={{ fontSize: 20, color: 'var(--kerneleye-colorSuccess)' }}>
             {totalEvents.toLocaleString()}
           </Text>
-          <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>events</Text>
+          <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', marginLeft: 4 }}>events</Text>
         </div>
       </div>
 
@@ -239,14 +239,14 @@ export default function TrafficChart() {
               tickLine={false}
               axisLine={false}
               minTickGap={30}
-              tick={{ fill: 'var(--text-tertiary)' }}
+              tick={{ fill: 'var(--kerneleye-colorTextTertiary)' }}
             />
             <YAxis 
               stroke="rgba(255,255,255,0.2)" 
               fontSize={11} 
               tickLine={false}
               axisLine={false}
-              tick={{ fill: 'var(--text-tertiary)' }}
+              tick={{ fill: 'var(--kerneleye-colorTextTertiary)' }}
               tickFormatter={(value) => `${value}`}
             />
             <Tooltip content={<CustomTooltip />} />

@@ -167,7 +167,7 @@ const Subscription = () => {
     return (
       <div style={{ padding: 48, textAlign: 'center' }}>
         <Spin size="large" />
-        <Text style={{ display: 'block', marginTop: 16, color: 'var(--text-secondary)' }}>
+        <Text style={{ display: 'block', marginTop: 16, color: 'var(--kerneleye-colorTextSecondary)' }}>
           Loading subscription details...
         </Text>
       </div>
@@ -178,10 +178,10 @@ const Subscription = () => {
     <div style={{ padding: '24px 48px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+        <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
           {status?.plan === 'none' ? 'Choose Your Plan' : 'Subscription & Billing'}
         </Title>
-        <Text style={{ color: 'var(--text-secondary)' }}>
+        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
           {status?.plan === 'none' 
             ? 'Start your 7-day free trial or subscribe to a plan to add servers' 
             : 'Manage your KernelEye subscription and billing details'}
@@ -193,8 +193,8 @@ const Subscription = () => {
         <Card 
           style={{ 
             marginBottom: 32, 
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
+            background: 'var(--kerneleye-colorBgContainer)',
+            border: '1px solid var(--kerneleye-colorBorderSecondary)',
           }}
         >
           <Row gutter={[32, 24]} align="middle">
@@ -216,8 +216,8 @@ const Subscription = () => {
                   <Crown size={28} color="white" />
                 </div>
                 <div>
-                  <Text style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Current Plan</Text>
-                  <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 12 }}>Current Plan</Text>
+                  <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
                     {status.plan_display_name}
                   </Title>
                   <Tag color={status.is_trialing ? 'gold' : status.status === 'active' ? 'green' : status.plan === 'none' ? 'red' : 'default'}>
@@ -230,18 +230,18 @@ const Subscription = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Statistic
-                    title={<Text style={{ color: 'var(--text-secondary)' }}>Servers</Text>}
+                    title={<Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Servers</Text>}
                     value={status.plan === 'none' ? '0' : `${status.current_servers} / ${status.max_servers}`}
                     prefix={<Server size={16} style={{ marginRight: 8 }} />}
-                    valueStyle={{ color: 'var(--text-primary)', fontSize: 18 }}
+                    valueStyle={{ color: 'var(--kerneleye-colorText)', fontSize: 18 }}
                   />
                 </Col>
                 <Col span={12}>
                   <Statistic
-                    title={<Text style={{ color: 'var(--text-secondary)' }}>Data Retention</Text>}
+                    title={<Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Data Retention</Text>}
                     value={status.plan === 'none' ? '-' : `${status.data_retention_days} days`}
                     prefix={<Database size={16} style={{ marginRight: 8 }} />}
-                    valueStyle={{ color: 'var(--text-primary)', fontSize: 18 }}
+                    valueStyle={{ color: 'var(--kerneleye-colorText)', fontSize: 18 }}
                   />
                 </Col>
               </Row>
@@ -300,7 +300,7 @@ const Subscription = () => {
 
           {!status.is_trialing && status.cancel_at_period_end && (
             <Alert
-              message="Your subscription will cancel at the end of the current period"
+              message={`Your subscription will cancel at the end of the current period on ${new Date(status.current_period_end!).toLocaleDateString()}`}
               type="warning"
               showIcon
               style={{ marginTop: 16 }}
@@ -322,7 +322,7 @@ const Subscription = () => {
       )}
 
       {/* Plans */}
-      <Title level={4} style={{ marginBottom: 24, color: 'var(--text-primary)' }}>
+      <Title level={4} style={{ marginBottom: 24, color: 'var(--kerneleye-colorText)' }}>
         Available Plans
       </Title>
 
@@ -336,8 +336,8 @@ const Subscription = () => {
               <Card
                 style={{
                   height: '100%',
-                  background: 'var(--bg-card)',
-                  border: isCurrentPlan ? '2px solid #6366f1' : '1px solid var(--border-subtle)',
+                  background: 'var(--kerneleye-colorBgContainer)',
+                  border: isCurrentPlan ? '2px solid #6366f1' : '1px solid var(--kerneleye-colorBorderSecondary)',
                   position: 'relative',
                 }}
                 bodyStyle={{ height: '100%', display: 'flex', flexDirection: 'column' }}
@@ -352,41 +352,41 @@ const Subscription = () => {
                 )}
 
                 <div style={{ flex: 1 }}>
-                  <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+                  <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
                     {plan.display_name}
                   </Title>
-                  <Paragraph style={{ color: 'var(--text-secondary)', minHeight: 44 }}>
+                  <Paragraph style={{ color: 'var(--kerneleye-colorTextSecondary)', minHeight: 44 }}>
                     {plan.description}
                   </Paragraph>
 
                   <div style={{ margin: '24px 0' }}>
-                    <Text style={{ fontSize: 32, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <Text style={{ fontSize: 32, fontWeight: 700, color: 'var(--kerneleye-colorText)' }}>
                       {formatPrice(plan.price_cents, plan.currency)}
                     </Text>
-                    <Text style={{ color: 'var(--text-secondary)' }}>
+                    <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                       /{plan.billing_interval}
                     </Text>
                   </div>
 
-                  <Divider style={{ borderColor: 'var(--border-subtle)' }} />
+                  <Divider style={{ borderColor: 'var(--kerneleye-colorBorderSecondary)' }} />
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                     <li style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Check size={16} style={{ color: '#10b981' }} />
-                      <Text style={{ color: 'var(--text-secondary)' }}>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                         Up to {plan.max_servers} servers
                       </Text>
                     </li>
                     <li style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Check size={16} style={{ color: '#10b981' }} />
-                      <Text style={{ color: 'var(--text-secondary)' }}>
+                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                         {plan.data_retention_days} days data retention
                       </Text>
                     </li>
                     {plan.features && Object.entries(plan.features).map(([key, value]) => (
                       <li key={key} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Check size={16} style={{ color: '#10b981' }} />
-                        <Text style={{ color: 'var(--text-secondary)' }}>
+                        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                           {typeof value === 'string' ? value : key}
                         </Text>
                       </li>
@@ -408,7 +408,7 @@ const Subscription = () => {
                       >
                         {selectedPlan === plan.name && checkoutMutation.isPending ? 'Loading Checkout...' : 'Start 7-Day Free Trial'}
                       </Button>
-                      <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', display: 'block' }}>
+                      <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', textAlign: 'center', display: 'block' }}>
                         Credit card required. Cancel anytime during trial.
                       </Text>
                     </Space>
@@ -455,10 +455,10 @@ const Subscription = () => {
       >
         <Row align="middle" justify="space-between">
           <Col xs={24} md={16}>
-            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
               Need a custom enterprise solution?
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Contact our sales team for unlimited servers, dedicated support, and custom integrations.
             </Text>
           </Col>

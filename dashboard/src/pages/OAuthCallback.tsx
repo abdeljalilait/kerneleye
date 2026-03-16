@@ -54,7 +54,7 @@ export default function OAuthCallback() {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center', 
-        background: 'var(--bg-primary)',
+        background: 'var(--kerneleye-colorBgLayout)',
         padding: 24,
       }}
     >
@@ -63,9 +63,9 @@ export default function OAuthCallback() {
         style={{ 
           width: '100%',
           maxWidth: 400,
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-xl)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: '20px',
           textAlign: 'center',
           padding: 40,
         }}
@@ -89,10 +89,10 @@ export default function OAuthCallback() {
         {status === 'processing' && (
           <>
             <Spin size="large" style={{ marginBottom: 24 }} />
-            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
               Completing sign in...
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Please wait while we authenticate you
             </Text>
           </>
@@ -101,10 +101,10 @@ export default function OAuthCallback() {
         {status === 'success' && (
           <>
             <CheckCircle size={48} style={{ color: '#10b981', marginBottom: 16 }} />
-            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
               Sign in successful!
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Redirecting to your dashboard...
             </Text>
           </>
@@ -113,7 +113,7 @@ export default function OAuthCallback() {
         {status === 'error' && (
           <>
             <XCircle size={48} style={{ color: '#ef4444', marginBottom: 16 }} />
-            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+            <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
               Sign in failed
             </Title>
             <Alert

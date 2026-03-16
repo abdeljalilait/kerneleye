@@ -105,7 +105,7 @@ function ThreatDetailsDrawer({ threat, visible, onClose }: ThreatDetailsProps) {
             <Text style={{ fontSize: 12, color: config.color, fontWeight: 600 }}>
               {config.label}
             </Text>
-            <Title level={4} style={{ margin: '4px 0', color: 'var(--text-primary)' }}>
+            <Title level={4} style={{ margin: '4px 0', color: 'var(--kerneleye-colorText)' }}>
               {threat.source_ip}
             </Title>
           </div>
@@ -131,7 +131,9 @@ function ThreatDetailsDrawer({ threat, visible, onClose }: ThreatDetailsProps) {
 
       <Descriptions title="Network Information" bordered column={1} style={{ marginBottom: 24 }}>
         <Descriptions.Item label="Source IP">
-          <Text copyable className="font-mono">{threat.source_ip}</Text>
+          <Text copyable style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+            {threat.source_ip}
+          </Text>
         </Descriptions.Item>
         <Descriptions.Item label="Target Port">
           {threat.destination_port}
@@ -248,7 +250,7 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
                 <Text strong style={{ 
-                  color: 'var(--text-primary)', 
+                  color: 'var(--kerneleye-colorText)', 
                   fontSize: 14, 
                   fontFamily: 'monospace',
                   whiteSpace: 'nowrap',
@@ -283,7 +285,7 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                 <CountryFlag countryCode={record.country_code || record.country || ''} size={14} />
-                <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                <Text style={{ fontSize: 12, color: 'var(--kerneleye-colorTextTertiary)', whiteSpace: 'nowrap' }}>
                   {record.city && record.country 
                     ? `${record.city}, ${record.country}`
                     : record.country || record.city || record.isp || 'Unknown Location'}
@@ -309,11 +311,11 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
         }
         return (
           <div>
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
               {typeLabels[threatType] || 'Detected by heuristics'}
             </Text>
             {record.reason && (
-              <Text style={{ color: 'var(--text-tertiary)', fontSize: 11, display: 'block', marginTop: 2 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, display: 'block', marginTop: 2 }}>
                 {record.reason}
               </Text>
             )}
@@ -368,7 +370,7 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
       key: 'last_seen',
       width: 150,
       render: (date) => (
-        <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
           {date ? new Date(date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown'}
         </Text>
       )
@@ -384,9 +386,9 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
             icon={<ExternalLink size={14} />}
             onClick={() => handleDetails(record)}
             style={{ 
-              color: 'var(--text-secondary)',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-subtle)',
+              color: 'var(--kerneleye-colorTextSecondary)',
+              background: 'var(--kerneleye-colorFillAlter)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
             }}
           >
             Details
@@ -437,9 +439,9 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
     <Card
       variant="borderless"
       style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-lg)',
+        background: 'var(--kerneleye-colorBgContainer)',
+        border: '1px solid var(--kerneleye-colorBorderSecondary)',
+        borderRadius: 'var(--kerneleye-borderRadiusLG)',
         backdropFilter: 'blur(10px)',
         height: '100%',
       }}
@@ -460,10 +462,10 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
             <Shield size={18} color="#ef4444" />
           </div>
           <div>
-            <Title level={5} style={{ margin: 0, color: 'var(--text-primary)', fontSize: 16 }}>
+            <Title level={5} style={{ margin: 0, color: 'var(--kerneleye-colorText)', fontSize: 16 }}>
               Detected Threats
             </Title>
-            <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            <Text style={{ fontSize: 12, color: 'var(--kerneleye-colorTextTertiary)' }}>
               {threats.length} detected, {blockedCount} blocked
             </Text>
           </div>
@@ -477,8 +479,8 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
           onChange={(e) => setSearchText(e.target.value)}
           style={{ 
             width: 200, 
-            background: 'var(--bg-tertiary)',
-            border: '1px solid var(--border-subtle)',
+            background: 'var(--kerneleye-colorFillAlter)',
+            border: '1px solid var(--kerneleye-colorBorderSecondary)',
           }}
         />
       }
@@ -487,7 +489,6 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
         columns={columns} 
         dataSource={filteredThreats} 
         rowKey={(record) => `${record.source_ip}-${record.last_seen || Math.random()}`}
-        rowClassName="threats-table-row"
         pagination={{ 
           pageSize: 5,
           size: 'small',
@@ -498,13 +499,13 @@ export default function ThreatsList({ threats }: ThreatsListProps) {
           emptyText: (
             <div style={{ padding: '40px 0', textAlign: 'center' }}>
               <div style={{ marginBottom: 16 }}>
-                <Shield size={48} color="var(--text-muted)" opacity={0.3} />
+                <Shield size={48} color="var(--kerneleye-colorTextQuaternary)" opacity={0.3} />
               </div>
-              <Text style={{ color: 'var(--text-tertiary)' }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>
                 {searchText ? 'No matching threats found' : 'No threats detected'}
               </Text>
               <br />
-              <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 12 }}>
                 {searchText ? 'Try a different search term' : 'Your systems are secure'}
               </Text>
             </div>

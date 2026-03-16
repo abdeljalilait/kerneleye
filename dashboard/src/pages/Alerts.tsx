@@ -80,10 +80,10 @@ export default function Alerts() {
       width: 160,
       render: (date) => (
         <Space direction="vertical" size={0}>
-          <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
+          <Text style={{ color: 'var(--kerneleye-colorText)', fontSize: 13 }}>
             {new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
-          <Text style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
+          <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11 }}>
             {new Date(date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
           </Text>
         </Space>
@@ -126,8 +126,8 @@ export default function Alerts() {
       render: (ip) => (
         <Text code style={{ 
           fontSize: 12, 
-          background: 'var(--bg-tertiary)',
-          color: 'var(--text-secondary)',
+          background: 'var(--kerneleye-colorFillAlter)',
+          color: 'var(--kerneleye-colorTextSecondary)',
         }}>
           {ip}
         </Text>
@@ -140,8 +140,8 @@ export default function Alerts() {
       width: 180,
       render: (hostname) => (
         <Space size={8}>
-          <Server size={14} color="var(--text-tertiary)" />
-          <Text style={{ color: 'var(--text-secondary)' }}>
+          <Server size={14} color="var(--kerneleye-colorTextTertiary)" />
+          <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
             {hostname || 'Unknown server'}
           </Text>
         </Space>
@@ -153,7 +153,7 @@ export default function Alerts() {
       key: 'reason',
       render: (reason) => (
         <div>
-          <Text style={{ color: 'var(--text-primary)', fontSize: 14 }}>
+          <Text style={{ color: 'var(--kerneleye-colorText)', fontSize: 14 }}>
             {reason}
           </Text>
         </div>
@@ -204,10 +204,10 @@ export default function Alerts() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
               Alerts
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Remediation incidents created when threats trigger an operator-facing action
             </Text>
           </Space>
@@ -217,9 +217,9 @@ export default function Alerts() {
             icon={<ReloadOutlined />}
             onClick={() => queryClient.invalidateQueries({ queryKey: ['alerts'] })}
             style={{
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-secondary)',
+              background: 'var(--kerneleye-colorFillAlter)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              color: 'var(--kerneleye-colorTextSecondary)',
             }}
           >
             Refresh
@@ -233,9 +233,9 @@ export default function Alerts() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 24 }}
           >
@@ -256,7 +256,7 @@ export default function Alerts() {
                     <Bell size={28} color="#f59e0b" />
                   </div>
                   <div>
-                    <Text style={{ color: 'var(--text-tertiary)', fontSize: 13, display: 'block' }}>
+                    <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13, display: 'block' }}>
                       Active Alerts
                     </Text>
                     <Title level={2} style={{ margin: '4px 0', color: '#f59e0b' }}>
@@ -290,9 +290,9 @@ export default function Alerts() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 24 }}
           >
@@ -313,7 +313,7 @@ export default function Alerts() {
                     <Shield size={28} color="#10b981" />
                   </div>
                   <div>
-                    <Text style={{ color: 'var(--text-tertiary)', fontSize: 13, display: 'block' }}>
+                    <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13, display: 'block' }}>
                       Resolved Incidents
                     </Text>
                     <Title level={2} style={{ margin: '4px 0', color: '#10b981' }}>
@@ -358,22 +358,22 @@ export default function Alerts() {
       <Card
         variant="borderless"
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: 'var(--kerneleye-borderRadiusLG)',
         }}
         bodyStyle={{ padding: 0 }}
         title={
           <Space>
             <AlertTriangle size={18} color="#f59e0b" />
-            <Text strong style={{ color: 'var(--text-primary)' }}>
+            <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
               Remediation Alerts
             </Text>
             <Badge 
               count={alerts?.length || 0} 
               style={{ 
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)',
+                background: 'var(--kerneleye-colorFillAlter)',
+                color: 'var(--kerneleye-colorTextSecondary)',
               }}
             />
           </Space>
@@ -391,13 +391,13 @@ export default function Alerts() {
             emptyText: (
               <div style={{ padding: '60px 0', textAlign: 'center' }}>
                 <div style={{ marginBottom: 16 }}>
-                  <Shield size={64} color="var(--text-muted)" opacity={0.3} />
+                  <Shield size={64} color="var(--kerneleye-colorTextQuaternary)" opacity={0.3} />
                 </div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 16 }}>
                   No remediation alerts
                 </Text>
                 <br />
-                <Text style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 13 }}>
                   Threats will still appear on the Threats page even when no alert has been created
                 </Text>
               </div>

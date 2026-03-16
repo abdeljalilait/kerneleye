@@ -150,7 +150,7 @@ export default function Dashboard() {
   })), [])
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+    <Layout style={{ minHeight: '100vh', background: 'var(--kerneleye-colorBgLayout)' }}>
       {/* Sidebar */}
       <Sider
         trigger={null}
@@ -159,9 +159,9 @@ export default function Dashboard() {
         collapsedWidth={80}
         width={260}
         style={{
-          background: 'var(--glass-bg)',
+          background: 'var(--kerneleye-colorBgElevated)',
           backdropFilter: 'blur(20px)',
-          borderRight: '1px solid var(--glass-border)',
+          borderRight: '1px solid var(--kerneleye-colorBorderSecondary)',
           position: 'fixed',
           left: 0,
           top: 0,
@@ -179,7 +179,7 @@ export default function Dashboard() {
             justifyContent: collapsed ? 'center' : 'flex-start',
             padding: collapsed ? 0 : '0 24px',
             gap: 12,
-            borderBottom: '1px solid var(--glass-border)',
+            borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
           }}
         >
           <img 
@@ -189,10 +189,10 @@ export default function Dashboard() {
           />
           {!collapsed && (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <Text strong style={{ fontSize: 20, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+              <Text strong style={{ fontSize: 20, color: 'var(--kerneleye-colorText)', lineHeight: 1.2 }}>
                 KernelEye
               </Text>
-              <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', letterSpacing: '0.1em' }}>
+              <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', letterSpacing: '0.1em' }}>
                 SECURITY MONITOR
               </Text>
             </div>
@@ -204,7 +204,7 @@ export default function Dashboard() {
           <Text 
             style={{ 
               fontSize: 11, 
-              color: 'var(--text-tertiary)', 
+              color: 'var(--kerneleye-colorTextTertiary)', 
               letterSpacing: '0.1em',
               marginLeft: collapsed ? 0 : 12,
               marginBottom: 8,
@@ -231,7 +231,7 @@ export default function Dashboard() {
           <Text 
             style={{ 
               fontSize: 11, 
-              color: 'var(--text-tertiary)', 
+              color: 'var(--kerneleye-colorTextTertiary)', 
               letterSpacing: '0.1em',
               marginLeft: collapsed ? 0 : 12,
               marginBottom: 8,
@@ -270,9 +270,9 @@ export default function Dashboard() {
             icon={collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             onClick={() => setCollapsed(!collapsed)}
             style={{
-              color: 'var(--text-tertiary)',
+              color: 'var(--kerneleye-colorTextTertiary)',
               background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid var(--border-subtle)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
               borderRadius: 8,
               width: collapsed ? 40 : '100%',
               height: 36,
@@ -290,7 +290,7 @@ export default function Dashboard() {
             left: 0,
             right: 0,
             padding: '16px',
-            borderTop: '1px solid var(--glass-border)',
+            borderTop: '1px solid var(--kerneleye-colorBorderSecondary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'flex-start',
@@ -301,7 +301,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
               <Badge
                 dot
-                color="var(--success)"
+                color="var(--kerneleye-colorSuccess)"
                 offset={[-4, 32]}
               >
                 <Avatar
@@ -316,10 +316,10 @@ export default function Dashboard() {
               </Badge>
               {!collapsed && (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <Text strong style={{ color: 'var(--text-primary)', fontSize: 14, lineHeight: 1.3 }}>
+                  <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 14, lineHeight: 1.3 }}>
                     Administrator
                   </Text>
-                  <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.3 }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, lineHeight: 1.3 }}>
                     Online
                   </Text>
                 </div>
@@ -334,7 +334,7 @@ export default function Dashboard() {
         style={{ 
           marginLeft: collapsed ? 80 : 260,
           transition: 'margin-left 0.3s ease',
-          background: 'var(--bg-primary)',
+          background: 'var(--kerneleye-colorBgLayout)',
           minHeight: '100vh',
         }}
       >
@@ -345,7 +345,7 @@ export default function Dashboard() {
         <Content
           style={{
             padding: '32px',
-            background: 'var(--bg-primary)',
+            background: 'var(--kerneleye-colorBgLayout)',
             position: 'relative',
           }}
         >

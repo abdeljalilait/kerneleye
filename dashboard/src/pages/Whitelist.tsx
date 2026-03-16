@@ -87,7 +87,7 @@ export default function Whitelist() {
       key: 'ip_address',
       render: (ip: string, record: WhitelistEntry) => (
         <Space>
-          <Globe size={18} color="var(--text-secondary)" />
+          <Globe size={18} color="var(--kerneleye-colorTextSecondary)" />
           <Text strong style={{ fontFamily: 'monospace', fontSize: 14 }}>
             {ip}
           </Text>
@@ -105,7 +105,7 @@ export default function Whitelist() {
       dataIndex: 'reason',
       key: 'reason',
       render: (reason: string) => (
-        <Text type="secondary" style={{ color: 'var(--text-secondary)' }}>
+        <Text type="secondary" style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
           {reason || '-'}
         </Text>
       ),
@@ -176,10 +176,10 @@ export default function Whitelist() {
       <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
               Whitelist Management
             </Title>
-            <Text style={{ color: 'var(--text-secondary)' }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Manage IPs that should never be blocked by the firewall
             </Text>
           </Space>
@@ -202,9 +202,9 @@ export default function Whitelist() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -223,7 +223,7 @@ export default function Whitelist() {
                 <CheckCircle size={24} color="#10b981" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Total Whitelisted
                 </Text>
                 <Title level={3} style={{ margin: 0, color: '#10b981' }}>
@@ -237,9 +237,9 @@ export default function Whitelist() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -258,7 +258,7 @@ export default function Whitelist() {
                 <Shield size={24} color="#3b82f6" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   Manual Entries
                 </Text>
                 <Title level={3} style={{ margin: 0, color: '#3b82f6' }}>
@@ -272,9 +272,9 @@ export default function Whitelist() {
           <Card
             variant="borderless"
             style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
+              background: 'var(--kerneleye-colorBgContainer)',
+              border: '1px solid var(--kerneleye-colorBorderSecondary)',
+              borderRadius: 'var(--kerneleye-borderRadiusLG)',
             }}
             bodyStyle={{ padding: 20 }}
           >
@@ -293,7 +293,7 @@ export default function Whitelist() {
                 <Server size={24} color="#8b5cf6" />
               </div>
               <div>
-                <Text style={{ color: 'var(--text-tertiary)', fontSize: 12, display: 'block' }}>
+                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
                   System Entries
                 </Text>
                 <Title level={3} style={{ margin: 0, color: '#8b5cf6' }}>
@@ -309,9 +309,9 @@ export default function Whitelist() {
       <Card
         variant="borderless"
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
+          borderRadius: 'var(--kerneleye-borderRadiusLG)',
         }}
       >
         <Space style={{ marginBottom: 16 }}>

@@ -31,7 +31,7 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
       >
         <div style={{ padding: '48px 0', textAlign: 'center' }}>
           <Spin size="large" />
-          <Text style={{ display: 'block', marginTop: 16, color: 'var(--text-secondary)' }}>
+          <Text style={{ display: 'block', marginTop: 16, color: 'var(--kerneleye-colorTextSecondary)' }}>
             Checking subscription status...
           </Text>
         </div>
@@ -81,7 +81,7 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
           showIcon
           style={{ marginBottom: 24 }}
         />
-        <Text style={{ color: 'var(--text-secondary)' }}>
+        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
           KernelEye offers flexible plans to fit your security monitoring needs. 
           Start with a 7-day free trial to explore all features.
         </Text>
@@ -102,7 +102,7 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
           </div>
           <div>
             <Title level={4} style={{ margin: 0 }}>Add New Server</Title>
-            <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+            <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13 }}>
               Configure your KernelEye agent
             </Text>
           </div>

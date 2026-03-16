@@ -150,7 +150,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
           <CloudServerOutlined style={{ fontSize: 32, color: '#3b82f6' }} />
         </div>
         <Title level={3} style={{ marginBottom: 8 }}>Name Your Server</Title>
-        <Paragraph style={{ color: 'var(--text-secondary)' }}>
+        <Paragraph style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
           Give this agent a descriptive name so you can identify it in the dashboard
         </Paragraph>
       </div>
@@ -164,7 +164,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
               placeholder="e.g., production-web-01, database-primary"
               value={serverName}
               onChange={(e) => setServerName(e.target.value)}
-              prefix={<CloudServerOutlined style={{ color: 'var(--text-tertiary)' }} />}
+              prefix={<CloudServerOutlined style={{ color: 'var(--kerneleye-colorTextTertiary)' }} />}
               style={{ borderRadius: 8 }}
             />
           </div>
@@ -190,7 +190,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <Title level={4} style={{ marginBottom: 8 }}>Choose Your Protection Level</Title>
-        <Paragraph style={{ color: 'var(--text-secondary)' }}>
+        <Paragraph style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
           Select how aggressive you want threat protection to be
         </Paragraph>
       </div>
@@ -221,7 +221,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                       <Tag color="green">Recommended</Tag>
                     )}
                   </div>
-                  <Paragraph style={{ color: 'var(--text-secondary)', marginBottom: 12 }}>
+                  <Paragraph style={{ color: 'var(--kerneleye-colorTextSecondary)', marginBottom: 12 }}>
                     {mode.description}
                   </Paragraph>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -248,7 +248,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <Title level={4} style={{ marginBottom: 8 }}>Configure Protection Features</Title>
-        <Paragraph style={{ color: 'var(--text-secondary)' }}>
+        <Paragraph style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
           Toggle features based on your security requirements
         </Paragraph>
       </div>
@@ -270,10 +270,10 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <Text strong style={{ fontSize: 16 }}>Auto-Blocking</Text>
                   <Tooltip title="Automatically block IPs that exceed the threat threshold">
-                    <InfoCircleOutlined style={{ color: 'var(--text-tertiary)' }} />
+                    <InfoCircleOutlined style={{ color: 'var(--kerneleye-colorTextTertiary)' }} />
                   </Tooltip>
                 </div>
-                <Paragraph style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
+                <Paragraph style={{ fontSize: 14, color: 'var(--kerneleye-colorTextSecondary)', margin: 0 }}>
                   Block malicious IPs automatically when threat score exceeds threshold
                 </Paragraph>
               </div>
@@ -285,7 +285,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
             </div>
 
             {config.features.auto_block && (
-              <div style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ background: 'var(--kerneleye-colorFillAlter)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text strong>Block Threshold</Text>
@@ -337,7 +337,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div style={{ flex: 1, paddingRight: 16 }}>
             <Text strong style={{ fontSize: 16 }}>Run as Daemon</Text>
-            <Paragraph style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
+            <Paragraph style={{ fontSize: 14, color: 'var(--kerneleye-colorTextSecondary)', margin: 0 }}>
               Keep the agent running in the background. Disable to run in foreground.
             </Paragraph>
           </div>
@@ -367,7 +367,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                 style={{
                   display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
                   padding: 16, borderRadius: 8, border: '1px solid',
-                  borderColor: config.features[feature.key] ?? feature.default_value ? '#bae7ff' : 'var(--border-subtle)',
+                  borderColor: config.features[feature.key] ?? feature.default_value ? '#bae7ff' : 'var(--kerneleye-colorBorderSecondary)',
                   background: config.features[feature.key] ?? feature.default_value ? 'rgba(24, 144, 255, 0.05)' : undefined,
                   transition: 'all 0.2s'
                 }}
@@ -376,10 +376,10 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <Text strong style={{ fontSize: 16 }}>{feature.name}</Text>
                     <Tooltip title={feature.details}>
-                      <InfoCircleOutlined style={{ color: 'var(--text-tertiary)', cursor: 'help' }} />
+                      <InfoCircleOutlined style={{ color: 'var(--kerneleye-colorTextTertiary)', cursor: 'help' }} />
                     </Tooltip>
                   </div>
-                  <Paragraph style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                  <Paragraph style={{ fontSize: 14, color: 'var(--kerneleye-colorTextSecondary)', marginBottom: 8 }}>
                     {feature.description}
                   </Paragraph>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -421,7 +421,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
               <CheckCircleFilled style={{ fontSize: 32, color: '#10b981' }} />
             </div>
             <Title level={4} style={{ marginBottom: 4 }}>Installation Ready!</Title>
-            <Paragraph style={{ color: 'var(--text-secondary)' }}>
+            <Paragraph style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
               Run this command on your Linux server to install the agent
             </Paragraph>
           </div>
@@ -453,7 +453,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <Text strong style={{ display: 'block' }}>What happens when you run this:</Text>
-              <ol style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <ol style={{ fontSize: 14, color: 'var(--kerneleye-colorTextSecondary)', margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <li>1. Downloads the KernelEye agent binary to <code>/usr/local/bin/kerneleye-agent</code></li>
                 <li>2. Starts the agent with your API key and configuration</li>
                 <li>3. Agent connects to KernelEye and appears in your dashboard</li>
@@ -536,7 +536,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
 
       {/* Navigation */}
       {currentStep < 3 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--kerneleye-colorBorderSecondary)' }}>
           <Button 
             size="large"
             onClick={() => setCurrentStep(currentStep - 1)}

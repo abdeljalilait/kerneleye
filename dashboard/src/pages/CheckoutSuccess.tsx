@@ -40,24 +40,24 @@ const CheckoutSuccess = () => {
     <div style={{ padding: '48px 24px', maxWidth: 600, margin: '0 auto' }}>
       <Card
         style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
+          background: 'var(--kerneleye-colorBgContainer)',
+          border: '1px solid var(--kerneleye-colorBorderSecondary)',
           textAlign: 'center',
         }}
       >
         {isLoading ? (
           <div style={{ padding: 48 }}>
             <Spin size="large" />
-            <Text style={{ display: 'block', marginTop: 24, color: 'var(--text-secondary)' }}>
+            <Text style={{ display: 'block', marginTop: 24, color: 'var(--kerneleye-colorTextSecondary)' }}>
               Verifying your subscription...
             </Text>
           </div>
         ) : isActive ? (
           <Result
             icon={<CheckCircle size={64} style={{ color: '#10b981' }} />}
-            title={<Title level={3} style={{ color: 'var(--text-primary)' }}>Welcome to KernelEye!</Title>}
+            title={<Title level={3} style={{ color: 'var(--kerneleye-colorText)' }}>Welcome to KernelEye!</Title>}
             subTitle={
-              <div style={{ color: 'var(--text-secondary)' }}>
+              <div style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                 <Paragraph>
                   Your subscription to <strong>{status?.plan_display_name}</strong> is now active.
                 </Paragraph>
@@ -95,9 +95,9 @@ const CheckoutSuccess = () => {
           <Result
             status="info"
             icon={<RefreshCw size={64} style={{ color: '#6366f1' }} />}
-            title={<Title level={3} style={{ color: 'var(--text-primary)' }}>Processing Your Subscription</Title>}
+            title={<Title level={3} style={{ color: 'var(--kerneleye-colorText)' }}>Processing Your Subscription</Title>}
             subTitle={
-              <div style={{ color: 'var(--text-secondary)' }}>
+              <div style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
                 <Paragraph>
                   We're still processing your subscription. This usually takes a few moments.
                 </Paragraph>

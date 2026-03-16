@@ -39,7 +39,7 @@ export default function PendingAgentsList({ servers, onRefresh }: PendingAgentsL
       style={{
         background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05))',
         border: '1px solid rgba(245, 158, 11, 0.3)',
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: 'var(--kerneleye-borderRadiusLG)',
       }}
       bodyStyle={{ padding: 24 }}
     >
@@ -58,10 +58,10 @@ export default function PendingAgentsList({ servers, onRefresh }: PendingAgentsL
           <AlertTriangle size={22} color="#f59e0b" />
         </div>
         <div>
-          <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+          <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
             Pending Approval
           </Title>
-          <Text style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+          <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13 }}>
             {pendingServers.length} server{pendingServers.length > 1 ? 's' : ''} waiting for approval
           </Text>
         </div>
@@ -75,9 +75,9 @@ export default function PendingAgentsList({ servers, onRefresh }: PendingAgentsL
             <Card 
               variant="borderless"
               style={{
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
+                background: 'var(--kerneleye-colorFillAlter)',
+                border: '1px solid var(--kerneleye-colorBorderSecondary)',
+                borderRadius: 'var(--kerneleye-borderRadius)',
               }}
               bodyStyle={{ padding: 16 }}
             >
@@ -91,10 +91,10 @@ export default function PendingAgentsList({ servers, onRefresh }: PendingAgentsL
                   icon={<Server size={24} color="#f59e0b" />}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Title level={5} style={{ margin: 0, marginBottom: 4, color: 'var(--text-primary)' }}>
+                  <Title level={5} style={{ margin: 0, marginBottom: 4, color: 'var(--kerneleye-colorText)' }}>
                     {server.hostname || server.name}
                   </Title>
-                  <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block' }}>
+                  <Text style={{ fontSize: 12, color: 'var(--kerneleye-colorTextTertiary)', display: 'block' }}>
                     ID: {server.id.slice(0, 12)}...
                   </Text>
                   <Tag 
