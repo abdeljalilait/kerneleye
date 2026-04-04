@@ -56,7 +56,7 @@ const markStaleServersOffline = `
 UPDATE servers
 SET status = 'offline'
 WHERE status = 'active'
-  AND last_seen < NOW() - ($1 || ' seconds')::interval
+  AND last_seen < NOW() - ($1 * interval '1 second')
 `
 
 // MarkStaleServersOffline sets status='offline' for active servers whose last
