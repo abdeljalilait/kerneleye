@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -507,6 +508,22 @@ func HandleCreateCustomerPortal(queries *database.Queries, polarClient *polar.Cl
 		)
 		if err != nil {
 			log.Printf("[Polar] Failed to create customer portal session: %v", err)
+
+			// If Polar says the customer doesn't exist (stale ID, env mismatch, etc.),
+			// clear the stored customer ID so the next checkout re-links them.
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "Customer does not exist") {
+				log.Printf("[Polar] Stale customer ID %s for user %s — clearing from database", user.PolarCustomerID.String, userID)
+				_ = queries.UpdateUserPolarCustomerID(c.Context(), database.UpdateUserPolarCustomerIDParams{
+					ID:              user.ID,
+					PolarCustomerID: database.ToPgText(""),
+				})
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error":   "customer_not_found",
+					"message": "Your billing account was not found. Please start a new subscription to re-link your account.",
+				})
+			}
+
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to create customer portal session")
 		}
 
@@ -839,6 +856,46 @@ func HandlePolarWebhook(queries *database.Queries, emailService *email.Service, 
 			if userID != "" {
 				if err := uncancelUserSubscription(queries, c, userID, sub); err != nil {
 					log.Printf("[Polar] Failed to uncancel user subscription: %v", err)
+				}
+			}
+
+		case "checkout.expired":
+			// Checkout expired - user did not complete payment, reset to inactive if no real subscription exists
+			log.Printf("[Polar] Processing checkout.expired event")
+			var checkoutData struct {
+				ID            string            `json:"id"`
+				Status        string            `json:"status"`
+				CustomerEmail string            `json:"customer_email"`
+				Metadata      map[string]string `json:"metadata"`
+			}
+			if err := json.Unmarshal(event.Data, &checkoutData); err != nil {
+				log.Printf("[Polar] Failed to parse expired checkout: %v", err)
+			} else {
+				polarEventID = checkoutData.ID
+				if uid, ok := checkoutData.Metadata["user_id"]; ok && uid != "" {
+					userID = uid
+					log.Printf("[Polar] Checkout expired for user %s (checkout ID: %s)", userID, checkoutData.ID)
+
+					user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
+					if err != nil {
+						log.Printf("[Polar] Failed to fetch user %s for checkout expiry: %v", userID, err)
+					} else if !hasSubscriptionEntitlement(user, time.Now()) {
+						// No active subscription or trial — reset to inactive so the user is not stuck
+						params := database.UpdateUserSubscriptionParams{
+							ID:                 database.ToPgUUID(userID),
+							Plan:               "none",
+							SubscriptionStatus: database.ToPgText("inactive"),
+						}
+						if err := queries.UpdateUserSubscription(c.Context(), params); err != nil {
+							log.Printf("[Polar] Failed to reset user %s after checkout expiry: %v", userID, err)
+						} else {
+							log.Printf("[Polar] Reset user %s to inactive after checkout expiry", userID)
+						}
+					} else {
+						log.Printf("[Polar] User %s has active entitlement, skipping reset after checkout expiry", userID)
+					}
+				} else {
+					log.Printf("[Polar] Checkout expired with no user_id in metadata (checkout ID: %s)", checkoutData.ID)
 				}
 			}
 
