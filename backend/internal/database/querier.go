@@ -178,6 +178,7 @@ type Querier interface {
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
 	UpdateServerMetadata(ctx context.Context, arg UpdateServerMetadataParams) error
+	MarkStaleServersOffline(ctx context.Context, thresholdSeconds int) (int64, error)
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
 	UpdateTrafficScore(ctx context.Context, arg UpdateTrafficScoreParams) error
 	UpdateUserPolarCustomerID(ctx context.Context, arg UpdateUserPolarCustomerIDParams) error

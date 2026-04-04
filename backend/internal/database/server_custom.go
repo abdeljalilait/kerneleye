@@ -51,3 +51,20 @@ func (q *Queries) CreateServerWithIDAndAPIKey(ctx context.Context, arg CreateSer
 	)
 	return i, err
 }
+
+const markStaleServersOffline = `
+UPDATE servers
+SET status = 'offline'
+WHERE status = 'active'
+  AND last_seen < NOW() - ($1 || ' seconds')::interval
+`
+
+// MarkStaleServersOffline sets status='offline' for active servers whose last
+// heartbeat is older than thresholdSeconds. Returns the number of rows updated.
+func (q *Queries) MarkStaleServersOffline(ctx context.Context, thresholdSeconds int) (int64, error) {
+	result, err := q.db.Exec(ctx, markStaleServersOffline, thresholdSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

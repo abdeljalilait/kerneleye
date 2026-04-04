@@ -207,6 +207,26 @@ func main() {
 	}, queries, hub)
 	go blockManager.Start(ctx)
 
+	// Mark servers offline when no heartbeat received within 2 minutes (4 missed beats at 30s interval)
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		const staleThresholdSeconds = 120
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := queries.MarkStaleServersOffline(context.Background(), staleThresholdSeconds)
+				if err != nil {
+					log.Printf("[StaleChecker] Error marking stale servers offline: %v", err)
+				} else if n > 0 {
+					log.Printf("[StaleChecker] Marked %d server(s) offline (no heartbeat in %ds)", n, staleThresholdSeconds)
+				}
+			}
+		}
+	}()
+
 	// Start data retention manager for archiving old traffic data
 	dataRetention := analysis.NewDataRetentionManager(queries, analysis.DefaultDataRetentionConfig())
 	dataRetention.Start(ctx)
