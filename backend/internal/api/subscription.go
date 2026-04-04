@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -973,6 +974,17 @@ func cancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID stri
 	}
 
 	log.Printf("[Polar] Canceled subscription for user %s", userID)
+
+	// If the subscription is canceled with immediate effect (period already ended),
+	// suspend all servers so existing agents stop being served.
+	// When cancel_at_period_end is true the user retains access until period end;
+	// entitlement check in ValidateAPIKey handles that window correctly.
+	if !sub.CancelAtPeriodEnd || sub.CurrentPeriodEnd.Before(now) {
+		if err := suspendUserServers(c.Context(), queries, userID); err != nil {
+			log.Printf("[Polar] Failed to suspend servers for user %s: %v", userID, err)
+		}
+	}
+
 	return nil
 }
 
@@ -1005,7 +1017,56 @@ func uncancelUserSubscription(queries *database.Queries, c *fiber.Ctx, userID st
 		return fmt.Errorf("failed to uncancel subscription: %w", err)
 	}
 
+	// Reactivate any servers that were suspended due to subscription lapse.
+	if err := reactivateUserServers(c.Context(), queries, userID); err != nil {
+		log.Printf("[Polar] Failed to reactivate servers for user %s: %v", userID, err)
+	}
+
 	log.Printf("[Polar] Uncanceled subscription for user %s", userID)
+	return nil
+}
+
+// suspendUserServers sets all active servers for a user to "suspended" so agents
+// stop receiving responses from ValidateAPIKey.
+func suspendUserServers(ctx context.Context, queries *database.Queries, userID string) error {
+	servers, err := queries.ListServersByUser(ctx, database.ToPgUUID(userID))
+	if err != nil {
+		return fmt.Errorf("failed to list servers: %w", err)
+	}
+	for _, srv := range servers {
+		if srv.Status != "active" {
+			continue
+		}
+		if err := queries.UpdateServerStatus(ctx, database.UpdateServerStatusParams{
+			ID:     srv.ID,
+			Status: "suspended",
+		}); err != nil {
+			log.Printf("[Polar] Failed to suspend server %s: %v", srv.ID.String(), err)
+		}
+	}
+	log.Printf("[Polar] Suspended %d servers for user %s", len(servers), userID)
+	return nil
+}
+
+// reactivateUserServers restores suspended servers to "active" when a subscription
+// is reinstated or uncanceled.
+func reactivateUserServers(ctx context.Context, queries *database.Queries, userID string) error {
+	servers, err := queries.ListServersByUser(ctx, database.ToPgUUID(userID))
+	if err != nil {
+		return fmt.Errorf("failed to list servers: %w", err)
+	}
+	for _, srv := range servers {
+		if srv.Status != "suspended" {
+			continue
+		}
+		if err := queries.UpdateServerStatus(ctx, database.UpdateServerStatusParams{
+			ID:     srv.ID,
+			Status: "active",
+		}); err != nil {
+			log.Printf("[Polar] Failed to reactivate server %s: %v", srv.ID.String(), err)
+		}
+	}
+	log.Printf("[Polar] Reactivated %d servers for user %s", len(servers), userID)
 	return nil
 }
 

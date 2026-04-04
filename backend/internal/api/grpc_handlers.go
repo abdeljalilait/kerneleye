@@ -41,9 +41,13 @@ func (h *GrpcIngestHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequ
 	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
 	if err != nil {
 		log.Printf("[gRPC Heartbeat] API key validation failed: %v", err)
+		msg := "invalid_key"
+		if err.Error() == "subscription_inactive" {
+			msg = "subscription_inactive"
+		}
 		return &pb.HeartbeatResponse{
 			Success: false,
-			Message: "invalid_key",
+			Message: msg,
 		}, nil
 	}
 
