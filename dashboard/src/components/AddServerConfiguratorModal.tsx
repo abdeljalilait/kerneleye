@@ -1,4 +1,4 @@
-import { Modal, Button, Typography, Alert, Spin } from 'antd'
+import { Modal, Button, Typography, Alert, Spin, Space } from 'antd'
 import { Server, Crown } from 'lucide-react'
 import { useSubscriptionStatus } from '../hooks/useQueries'
 import { AgentConfigurator } from './AgentConfigurator'
@@ -12,26 +12,38 @@ interface AddServerConfiguratorModalProps {
   onSuccess?: () => void
 }
 
+function ModalIcon({ icon: Icon, color }: { icon: typeof Server; color: string }) {
+  return (
+    <div
+      style={{
+        width: 40, height: 40,
+        background: `linear-gradient(135deg, #6366f1, #8b5cf6)`,
+        borderRadius: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <Icon size={20} color="white" />
+    </div>
+  )
+}
+
 export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServerConfiguratorModalProps) {
   const navigate = useNavigate()
   const { data: subscription, isLoading: subLoading } = useSubscriptionStatus()
-
-  // Check subscription status
   const noSubscription = subscription && subscription.plan === 'none'
 
-  // Show loading state while fetching subscription
   if (subLoading) {
     return (
       <Modal
         title={<Title level={4}>Add New Server</Title>}
         open={isOpen}
         onCancel={onClose}
-        footer={[<Button key="close" onClick={onClose}>Cancel</Button>]}
+        footer={<Button onClick={onClose}>Cancel</Button>}
         width={800}
       >
         <div style={{ padding: '48px 0', textAlign: 'center' }}>
           <Spin size="large" />
-          <Text style={{ display: 'block', marginTop: 16, color: 'var(--kerneleye-colorTextSecondary)' }}>
+          <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
             Checking subscription status...
           </Text>
         </div>
@@ -39,38 +51,26 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
     )
   }
 
-  // Show subscription required view if no active subscription/trial
   if (noSubscription) {
     return (
       <Modal
         title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 40, height: 40,
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Crown size={20} color="white" />
-            </div>
-            <div>
-              <Title level={4} style={{ margin: 0 }}>Subscription Required</Title>
-            </div>
-          </div>
+          <Space size={12}>
+            <ModalIcon icon={Crown} color="white" />
+            <Title level={4} style={{ margin: 0 }}>Subscription Required</Title>
+          </Space>
         }
         open={isOpen}
         onCancel={onClose}
         footer={[
           <Button key="close" onClick={onClose}>Cancel</Button>,
-          <Button 
-            key="subscribe" 
+          <Button
+            key="subscribe"
             type="primary"
-            onClick={() => {
-              onClose()
-              navigate({ to: '/dashboard/subscription' })
-            }}
+            onClick={() => { onClose(); navigate({ to: '/dashboard/subscription' }) }}
           >
             View Plans
-          </Button>
+          </Button>,
         ]}
         width={600}
       >
@@ -81,8 +81,8 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
           showIcon
           style={{ marginBottom: 24 }}
         />
-        <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
-          KernelEye offers flexible plans to fit your security monitoring needs. 
+        <Text type="secondary">
+          KernelEye offers flexible plans to fit your security monitoring needs.
           Start with a 7-day free trial to explore all features.
         </Text>
       </Modal>
@@ -92,27 +92,19 @@ export default function AddServerConfiguratorModal({ isOpen, onClose }: AddServe
   return (
     <Modal
       title={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 40, height: 40,
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-            borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Server size={20} color="white" />
-          </div>
+        <Space size={12}>
+          <ModalIcon icon={Server} color="white" />
           <div>
             <Title level={4} style={{ margin: 0 }}>Add New Server</Title>
-            <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13 }}>
-              Configure your KernelEye agent
-            </Text>
+            <Text type="secondary" style={{ fontSize: 13 }}>Configure your KernelEye agent</Text>
           </div>
-        </div>
+        </Space>
       }
       open={isOpen}
       onCancel={onClose}
       footer={null}
       width={900}
-      bodyStyle={{ padding: '24px 0', maxHeight: '70vh', overflow: 'auto' }}
+      styles={{ body: { padding: '24px 0', maxHeight: '70vh', overflow: 'auto' } }}
     >
       <AgentConfigurator />
     </Modal>

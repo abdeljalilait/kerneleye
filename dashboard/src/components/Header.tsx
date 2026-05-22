@@ -1,4 +1,4 @@
-import { Button, Badge, Typography } from 'antd'
+import { Button, Typography, Space, Tag, theme } from 'antd'
 import { Bell } from 'lucide-react'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useAlerts } from '../hooks/useQueries'
@@ -13,100 +13,88 @@ export default function Header({ menuItems }: HeaderProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { data: alerts } = useAlerts()
+  const { token } = theme.useToken()
 
   const activeAlerts = alerts?.filter(a => a.status === 'active').length || 0
 
-  const getSelectedKey = () => {
-    const pathname = location.pathname
-    const matched = menuItems.find(item => 
-      pathname === item.key || 
-      (item.key !== '/dashboard' && pathname.startsWith(item.key))
-    )
-    return matched?.key || '/dashboard'
-  }
+  const currentLabel =
+    menuItems.find(
+      item =>
+        location.pathname === item.key ||
+        (item.key !== '/dashboard' && location.pathname.startsWith(item.key)),
+    )?.label || 'Overview'
 
   return (
     <div
       style={{
-        background: 'var(--kerneleye-colorBgElevated)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
         position: 'sticky',
         top: 0,
         zIndex: 99,
-        height: 80,
-        padding: '0 32px',
+        height: 72,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        padding: `0 ${token.paddingXL}px`,
+        backdropFilter: 'blur(12px)',
+        borderBottom: `1px solid ${token.colorBorderSecondary}`,
       }}
     >
-      {/* Breadcrumb / Page Title */}
+      {/* Page title */}
       <div>
-        <Text style={{ 
-          fontSize: 12, 
-          color: 'var(--kerneleye-colorTextTertiary)', 
-          textTransform: 'uppercase',
-          letterSpacing: '0.1em',
-        }}>
+        <Text style={{ fontSize: 12, color: token.colorTextTertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Dashboard
         </Text>
-        <Text strong style={{ 
-          fontSize: 20, 
-          color: 'var(--kerneleye-colorText)', 
-          display: 'block',
-          marginTop: 2,
-        }}>
-          {menuItems.find(item => item.key === getSelectedKey())?.label || 'Overview'}
+        <Text strong style={{ fontSize: 20, display: 'block' }}>
+          {currentLabel}
         </Text>
       </div>
 
-      {/* Right Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Notification Bell */}
-        <Badge count={activeAlerts} size="small" style={{ background: activeAlerts > 0 ? '#ef4444' : 'var(--kerneleye-colorFillAlter)' }}>
-          <Button
-            type="text"
-            icon={<Bell size={20} />}
-            onClick={() => navigate({ to: '/dashboard/alerts' })}
-            style={{
-              color: 'var(--kerneleye-colorTextSecondary)',
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-            }}
-          />
-        </Badge>
+      {/* Right actions */}
+      <Space size={16}>
+        {/* Alert bell */}
+        <Button
+          type="text"
+          icon={<Bell size={20} />}
+          onClick={() => navigate({ to: '/dashboard/alerts' })}
+          style={{ width: 44, height: 44 }}
+        >
+          {activeAlerts > 0 && (
+            <span
+              style={{
+                position: 'absolute',
+                top: 4,
+                right: 4,
+                minWidth: 18,
+                height: 18,
+                borderRadius: 9,
+                background: token.colorError,
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 4px',
+              }}
+            >
+              {activeAlerts}
+            </span>
+          )}
+        </Button>
 
-        {/* Status Indicator */}
-        <div 
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 8,
-            padding: '8px 16px',
-            background: 'rgba(16, 185, 129, 0.1)',
+        {/* Status indicator */}
+        <Tag
+          color="success"
+          style={{
+            padding: '4px 14px',
+            fontSize: 13,
+            fontWeight: 500,
             borderRadius: 20,
-            border: '1px solid rgba(16, 185, 129, 0.2)',
           }}
         >
-          <span 
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              display: 'inline-block',
-              background: 'var(--kerneleye-colorSuccess)',
-              boxShadow: '0 0 8px var(--kerneleye-colorSuccess)',
-            }}
-          />
-          <Text style={{ color: 'var(--kerneleye-colorSuccess)', fontSize: 13, fontWeight: 500 }}>
-            System Active
-          </Text>
-        </div>
-      </div>
+          System Active
+        </Tag>
+      </Space>
     </div>
   )
 }

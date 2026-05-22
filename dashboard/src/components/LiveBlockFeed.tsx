@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Badge, Button, Card, Space, Tag, Tooltip, Typography } from 'antd'
+import { Badge, Button, Card, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import { Activity, Trash2, WifiOff } from 'lucide-react'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -9,10 +9,8 @@ import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
 dayjs.extend(relativeTime)
 
 const { Text } = Typography
-
 const MAX_EVENTS = 100
 
-// Shape of the `data` field inside a `new_block` WS message
 interface NewBlockData {
   id?: string
   block_id?: string
@@ -34,10 +32,8 @@ interface NewBlockData {
 
 interface LiveBlockEvent extends NewBlockData {
   _key: string
-  _ts: number // epoch ms, for sorting / flash detection
+  _ts: number
 }
-
-// ── helpers ─────────────────────────────────────────────────────────────────
 
 const countryFlag = (code?: string) => {
   if (!code || code.length !== 2) return '🌐'
@@ -83,14 +79,13 @@ const scoreColor = (score: number) => {
   return '#10b981'
 }
 
-// ── component ────────────────────────────────────────────────────────────────
-
 export default function LiveBlockFeed() {
   const { isConnected } = useWebSocket()
   const [events, setEvents] = useState<LiveBlockEvent[]>([])
   const [flashKey, setFlashKey] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const seenIds = useRef(new Set<string>())
+  const { token } = theme.useToken()
 
   const handleNewBlock = useCallback((data: NewBlockData) => {
     const reasons = data.reasons && data.reasons.length > 0
@@ -101,7 +96,6 @@ export default function LiveBlockFeed() {
           ? [data.threat_type]
           : []
     const key = data.id || data.block_id || `${data.ip_address}-${Date.now()}`
-    // deduplicate (backend currently sends the event twice)
     if (seenIds.current.has(key)) return
     seenIds.current.add(key)
 
@@ -120,7 +114,6 @@ export default function LiveBlockFeed() {
 
   useWebSocketEvent<NewBlockData>('new_block', handleNewBlock)
 
-  // scroll to top whenever a new event is added
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = 0
@@ -133,168 +126,121 @@ export default function LiveBlockFeed() {
   }
 
   return (
-    <>
-      <Card
-        variant="borderless"
-        style={{
-          background: 'var(--kerneleye-colorBgContainer)',
-          border: '1px solid var(--kerneleye-colorBorderSecondary)',
-          borderRadius: 'var(--kerneleye-borderRadiusLG)',
-          marginBottom: 24,
-        }}
-        styles={{ body: { padding: '12px 16px' } }}
-        title={
-          <Space>
-            <Activity size={16} style={{ color: isConnected ? '#10b981' : '#6b7280' }} />
-            <Text strong style={{ color: 'var(--kerneleye-colorText)', fontSize: 14 }}>Live Block Feed</Text>
-            <Badge
-              status={isConnected ? 'processing' : 'default'}
-              color={isConnected ? '#10b981' : '#6b7280'}
-              text={
-                <Text style={{ color: isConnected ? '#10b981' : '#6b7280', fontSize: 12 }}>
-                  {isConnected ? 'Connected' : 'Disconnected'}
-                </Text>
-              }
-            />
-            {events.length > 0 && (
-              <Tag style={{ fontSize: 11, marginLeft: 4 }}>
-                {events.length} event{events.length !== 1 ? 's' : ''}
-              </Tag>
-            )}
-          </Space>
-        }
-        extra={
-          events.length > 0 && (
-            <Tooltip title="Clear feed">
-              <Button
-                size="small"
-                icon={<Trash2 size={13} />}
-                onClick={handleClear}
-                style={{
-                  background: 'var(--kerneleye-colorFillAlter)',
-                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
-                  color: 'var(--kerneleye-colorTextSecondary)',
-                }}
-              />
-            </Tooltip>
-          )
-        }
-      >
-        {!isConnected && events.length === 0 ? (
-          <div style={{ padding: '12px 0', textAlign: 'center' }}>
-            <WifiOff size={20} style={{ color: '#6b7280', marginBottom: 6 }} />
-            <br />
-            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
-              WebSocket disconnected — live events will appear here when connected
-            </Text>
-          </div>
-        ) : events.length === 0 ? (
-          <div style={{ padding: '12px 0', textAlign: 'center' }}>
+    <Card
+      styles={{ body: { padding: '12px 16px' } }}
+      style={{ marginBottom: 24 }}
+      title={
+        <Space>
+          <Activity size={16} style={{ color: isConnected ? token.colorSuccess : token.colorTextQuaternary }} />
+          <Text strong style={{ fontSize: 14 }}>Live Block Feed</Text>
+          <Badge
+            status={isConnected ? 'processing' : 'default'}
+            color={isConnected ? token.colorSuccess : token.colorTextQuaternary}
+            text={
+              <Text style={{ color: isConnected ? token.colorSuccess : token.colorTextQuaternary, fontSize: 12 }}>
+                {isConnected ? 'Connected' : 'Disconnected'}
+              </Text>
+            }
+          />
+          {events.length > 0 && <Tag style={{ fontSize: 11 }}>{events.length} event{events.length !== 1 ? 's' : ''}</Tag>}
+        </Space>
+      }
+      extra={
+        events.length > 0 && (
+          <Tooltip title="Clear feed">
+            <Button size="small" icon={<Trash2 size={13} />} onClick={handleClear} />
+          </Tooltip>
+        )
+      }
+    >
+      {!isConnected && events.length === 0 ? (
+        <div style={{ padding: '12px 0', textAlign: 'center' }}>
+          <WifiOff size={20} style={{ color: token.colorTextQuaternary, marginBottom: 6 }} />
+          <br />
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            WebSocket disconnected — live events will appear here when connected
+          </Text>
+        </div>
+      ) : events.length === 0 ? (
+        <div style={{ padding: '12px 0', textAlign: 'center' }}>
+          <Badge status="success" />
+          <br />
+          <Text type="secondary" style={{ fontSize: 13 }}>Waiting for new block events…</Text>
+        </div>
+      ) : (
+        <div ref={listRef} style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'hidden' }}>
+          {events.map(evt => (
             <div
+              key={evt._key}
               style={{
-                display: 'inline-block',
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: '#10b981',
-                boxShadow: '0 0 0 4px rgba(16,185,129,0.16)',
-                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '7px 4px',
+                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 4,
+                flexWrap: 'wrap',
+                transition: 'background-color 0.3s',
+                backgroundColor: evt._key === flashKey ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
               }}
-            />
-            <br />
-            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
-              Waiting for new block events…
-            </Text>
-          </div>
-        ) : (
-          <div
-            ref={listRef}
-            style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'hidden' }}
-          >
-            {events.map(evt => (
-              <div
-                key={evt._key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '7px 4px',
-                  borderBottom: '1px solid var(--kerneleye-colorBorderSecondary)',
-                  borderRadius: 4,
-                  flexWrap: 'wrap',
-                  transition: 'background-color 0.3s',
-                  backgroundColor: evt._key === flashKey ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-                }}
-              >
-                {/* Flag + IP */}
-                <div style={{ minWidth: 150, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 18, lineHeight: 1 }}>{countryFlag(evt.country_code)}</span>
-                  <Text
-                    style={{
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: 'var(--kerneleye-colorText)',
-                    }}
-                  >
-                    {evt.ip_address}
-                  </Text>
-                </div>
-
-                {/* Reasons */}
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1, minWidth: 100 }}>
-                  {(evt.reasons && evt.reasons.length > 0 ? evt.reasons : ['unknown']).map(r => (
-                    <Tag
-                      key={r}
-                      color={reasonColor(normalizeReason(r))}
-                      style={{ fontSize: 11, padding: '0 5px', margin: 0 }}
-                    >
-                      {reasonLabel(normalizeReason(r))}
-                    </Tag>
-                  ))}
-                </div>
-
-                {/* Threat score */}
-                {evt.threat_score !== undefined && (
-                  <Text
-                    style={{
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: scoreColor(evt.threat_score),
-                      minWidth: 32,
-                      textAlign: 'right',
-                    }}
-                  >
-                    {evt.threat_score}
-                  </Text>
-                )}
-
-                {/* Server */}
-                {evt.server_name && (
-                  <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 12, minWidth: 80 }}>
-                    {evt.server_name}
-                  </Text>
-                )}
-
-                {/* Country/City */}
-                {(evt.country_name || evt.city) && (
-                  <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, minWidth: 80 }}>
-                    {[evt.city, evt.country_name].filter(Boolean).join(', ')}
-                  </Text>
-                )}
-
-                {/* Timestamp */}
-                <Tooltip title={dayjs(evt.blocked_at || evt._ts).format('YYYY-MM-DD HH:mm:ss')}>
-                  <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-                    {dayjs(evt.blocked_at || evt._ts).fromNow()}
-                  </Text>
-                </Tooltip>
+            >
+              {/* Flag + IP */}
+              <div style={{ minWidth: 150, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{countryFlag(evt.country_code)}</span>
+                <Text style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600 }}>
+                  {evt.ip_address}
+                </Text>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
-    </>
+
+              {/* Reasons */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1, minWidth: 100 }}>
+                {(evt.reasons && evt.reasons.length > 0 ? evt.reasons : ['unknown']).map(r => (
+                  <Tag key={r} color={reasonColor(normalizeReason(r))} style={{ fontSize: 11, margin: 0 }}>
+                    {reasonLabel(normalizeReason(r))}
+                  </Tag>
+                ))}
+              </div>
+
+              {/* Threat score */}
+              {evt.threat_score !== undefined && (
+                <Text
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: scoreColor(evt.threat_score),
+                    minWidth: 32,
+                    textAlign: 'right',
+                  }}
+                >
+                  {evt.threat_score}
+                </Text>
+              )}
+
+              {/* Server */}
+              {evt.server_name && (
+                <Text style={{ color: token.colorTextSecondary, fontSize: 12, minWidth: 80 }}>
+                  {evt.server_name}
+                </Text>
+              )}
+
+              {/* Country/City */}
+              {(evt.country_name || evt.city) && (
+                <Text style={{ color: token.colorTextTertiary, fontSize: 12, minWidth: 80 }}>
+                  {[evt.city, evt.country_name].filter(Boolean).join(', ')}
+                </Text>
+              )}
+
+              {/* Timestamp */}
+              <Tooltip title={dayjs(evt.blocked_at || evt._ts).format('YYYY-MM-DD HH:mm:ss')}>
+                <Text style={{ color: token.colorTextTertiary, fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                  {dayjs(evt.blocked_at || evt._ts).fromNow()}
+                </Text>
+              </Tooltip>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }

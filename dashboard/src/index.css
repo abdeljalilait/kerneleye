@@ -1,9 +1,9 @@
-@import 'antd/dist/reset.css';
-
+/* Minimal global resets - antd v5 handles its own reset */
 html,
 body,
 #root {
   min-height: 100%;
+  margin: 0;
 }
 
 html {
@@ -11,10 +11,11 @@ html {
 }
 
 body {
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--kerneleye-colorBgLayout);
-  color: var(--kerneleye-colorText);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove default link styling in menus */
+.ant-menu-item a {
+  text-decoration: none;
 }
