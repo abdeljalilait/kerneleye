@@ -128,7 +128,7 @@ export const organizationSchema = {
   name: siteConfig.name,
   url: siteConfig.url,
   logo: siteConfig.logo,
-  sameAs: ['https://twitter.com/kerneleye', 'https://github.com/kerneleye', 'https://linkedin.com/company/kerneleye'],
+  sameAs: ['https://twitter.com/kerneleye', 'https://github.com/abdeljalilait/kerneleye', 'https://linkedin.com/company/kerneleye'],
 };
 
 export const softwareApplicationSchema = {

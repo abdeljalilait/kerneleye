@@ -47,7 +47,14 @@ const Footer = () => {
           <p className="text-small">© {currentYear} KernelEye. All rights reserved.</p>
           <div style={{ display: 'flex', gap: '1.5rem' }}>
             <a href="#" className="footer-link">Twitter</a>
-            <a href="#" className="footer-link">GitHub</a>
+            <a
+              href="https://github.com/abdeljalilait/kerneleye"
+              className="footer-link"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
             <a href="#" className="footer-link">LinkedIn</a>
           </div>
         </div>
