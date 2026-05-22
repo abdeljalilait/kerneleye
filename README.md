@@ -1,256 +1,304 @@
 <p align="center">
-  <img src="dashboard/logo_with_text.png" alt="KernelEye Logo" width="400">
+  <img src="dashboard/logo_kerneleye.png" alt="KernelEye Logo" width="180">
 </p>
 
-# KernelEye 👁️
+# KernelEye
 
-> **Kernel-Level Traffic Intelligence & Threat Remediation for Linux Servers**
+> Kernel-level traffic intelligence and threat remediation for Linux servers.
 
-A CrowdSec-like security monitoring platform without the operational complexity. Built for DigitalOcean users, SaaS founders, indie hackers, and agencies managing 5-50 servers.
+KernelEye is a security monitoring platform for Linux servers. It uses eBPF, TC, and XDP in a Go agent to observe network metadata, score suspicious activity, and apply remediation through kernel-level XDP blocking and ipset/iptables rules. A Go backend stores and analyzes events, while a React dashboard provides server management, live traffic, threat views, blocked IPs, whitelisting, reports, and subscription flows.
 
-## 🎯 What is KernelEye?
+## What It Does
 
-KernelEye is a real-time Linux server security platform that uses **eBPF** and **XDP** to detect and mitigate threats at the kernel level—before they reach your application.
+- Real-time Linux traffic monitoring with eBPF.
+- Bandwidth tracking with TC hooks.
+- Threat scoring from shared Go scoring logic in `shared/scoring`.
+- Agent-side analysis and optional automatic remediation.
+- XDP fast-path packet blocking and ipset/iptables fallback.
+- Backend-side analysis workers, block management, data retention, and monthly reports.
+- gRPC ingestion and block command streaming between agent and backend.
+- React dashboard with WebSocket updates, server detail views, blocked IP management, whitelisting, reports, analytics, and subscription pages.
+- GeoIP enrichment when MaxMind databases are configured.
+- OAuth support for GitHub and Google, plus password login for existing users.
+- Privacy-first collection: metadata only, no packet payloads.
 
-**Core Features:**
+## Architecture
 
-- ✅ **Real-time traffic monitoring** using eBPF (kernel-level, no log parsing)
-- ✅ **XDP-based firewall** for ultra-fast packet filtering (before network stack)
-- ✅ **Intelligent threat scoring** with configurable thresholds
-- ✅ **Automatic remediation** (IP blocking, rate limiting)
-- ✅ **Bandwidth tracking** via TC hooks (ingress/egress per IP)
-- ✅ **Traffic direction tracking** (inbound/outbound detection)
-- ✅ **Live stream dashboard** with real-time WebSocket updates
-- ✅ **Privacy-first**: metadata only, no payload inspection
-
-## 🏗️ Architecture
-
-```
-┌───────────────────────────────────────┐
-│           Customer Host               │
-│                                       │
-│  ┌─────────────┐    ┌──────────────┐  │
-│  │ XDP Firewall│◄───│   Analyzer   │  │  Ultra-fast blocking
-│  │ (kernel)    │    │  (userspace) │  │  before network stack
-│  └─────────────┘    └──────────────┘  │
-│         ▲                  ▲          │
-│         │                  │          │
-│  ┌──────┴──────────────────┴───────┐  │
-│  │        eBPF Agent (Go)          │  │  TCP/UDP monitoring
-│  │   • Traffic Probe (kprobes)     │  │  Bandwidth tracking
-│  │   • TC Hooks (ingress/egress)   │  │  Connection analysis
-│  └───────────────┬─────────────────┘  │
-│                  │ gRPC (TLS)         │
-└──────────────────┼────────────────────┘
-                   ▼
-┌──────────────────────────────────────┐
-│       Central SaaS (Go API)          │
-│                                      │
-│  Ingest → Score → Store → Alert      │
-└──────┬───────────────┬───────────────┘
-       │               │
-       ▼               ▼
-  PostgreSQL    Dashboard (React)
-                + WebSocket Live Stream
+```text
+Customer Linux host
+  eBPF traffic probe + TC bandwidth hooks
+  XDP firewall and ipset/iptables remediation
+  Go agent
+      |
+      | gRPC ingestion and block commands
+      v
+Go backend API
+  Fiber HTTP API
+  gRPC ingest/block services
+  analysis worker, block manager, retention, reports
+      |
+      v
+PostgreSQL
+      ^
+      |
+React dashboard
+  REST API + WebSocket live updates
 ```
 
-### Key Components
+## Key Components
 
-1. **Agent (Go + eBPF)** - Kernel-level network monitoring
-   - `traffic_probe.c` - TCP/UDP connection tracking via kprobes
-   - `xdp_firewall.c` - XDP-based packet filtering
-   - TC hooks for bandwidth measurement
-   - Threat analyzer with configurable rules
+### Agent
 
-2. **Remediation System** - Multi-layer protection
-   - **XDP Remediator** - Kernel-level blocking (fastest)
-   - **IPSet Remediator** - iptables/ipset-based blocking
-   - **Hybrid Remediator** - Combines both for optimal protection
+The agent lives in `agent/` and is the Linux host process.
 
-3. **API Backend (Go)** - Ingests, scores, and stores traffic data
+- `agent/main.go` starts registration, eBPF loading, bandwidth tracking, remediation, scoring, aggregation, and block command streaming.
+- `agent/ebpf/traffic_probe.c` captures traffic metadata.
+- `agent/ebpf/xdp_firewall.c` implements XDP packet filtering.
+- `agent/tc.go` configures TC bandwidth tracking.
+- `agent/aggregator.go` batches and flushes events to the backend.
+- `agent/history_store.go` and `agent/flush.go` handle local persistence and retry behavior.
+- `agent/remediation/` contains analyzer, auto-blocking, XDP, ipset, and hybrid remediators.
 
-4. **Dashboard (React)** - Real-time threat visualization
-   - Live traffic stream via WebSocket
-   - Server management
-   - Threat scoring & alerts
+The agent requires Linux and elevated privileges for eBPF/XDP operations.
 
-5. **PostgreSQL** - Events, scores, and user data
+### Backend
 
-## 🔒 Privacy & Security
+The backend lives in `backend/`.
 
-We **NEVER** collect:
+- `backend/cmd/api/main.go` starts the Fiber HTTP API and gRPC services.
+- `backend/internal/api/` contains auth, dashboard handlers, gRPC handlers, block APIs, whitelist APIs, WebSocket handling, rate limiting, and subscription endpoints.
+- `backend/internal/analysis/` contains scoring workers, block management, data retention, and monthly report logic.
+- `backend/internal/database/` contains sqlc-generated database access code.
+- `backend/internal/geoip/` handles GeoIP enrichment.
+- `backend/internal/email/` sends Mailtrap-backed emails when configured.
+- `backend/internal/payments/polar/` integrates Polar subscriptions.
+- `backend/migrations/` contains PostgreSQL migrations.
 
-- ❌ Packet payloads
-- ❌ User credentials
-- ❌ Request content
-- ❌ Application data
+HTTP defaults to port `8080`; gRPC defaults to port `9091`.
 
-We **ONLY** collect metadata:
+### Dashboard
 
-- ✅ Source/Destination IP addresses
-- ✅ Ports and protocols (TCP/UDP)
-- ✅ Connection flags (SYN/ACK)
-- ✅ Packet counts & bytes in/out
-- ✅ Traffic direction (inbound/outbound)
-- ✅ Timestamps
+The dashboard lives in `dashboard/` and is a Vite React application.
 
-## 📊 Threat Detection & Scoring
+- `dashboard/src/pages/` includes overview, servers, server detail, threats, alerts, reports, visualizer, blocked IPs, whitelist, subscription, login, profile, and OAuth callback pages.
+- `dashboard/src/components/` contains live traffic, block feed, charts, server lists, configurators, and shared layout components.
+- `dashboard/src/api/client.ts` defines the REST API client.
+- `dashboard/src/context/WebSocketContext.tsx` manages live event updates.
 
-### Detection Signals (eBPF-based)
+The dev server is configured for `http://localhost:3000`.
 
-| Signal            | Description                        | Weight   |
-| ----------------- | ---------------------------------- | -------- |
-| SYN Rate          | High volume of connection attempts | ×2       |
-| Port Scanning     | Many unique ports accessed         | ×3       |
-| Failed Handshakes | Incomplete TCP connections         | ×5       |
-| SYN Flood         | Rapid SYN without ACK completion   | Critical |
+### Landing Page
 
-### Scoring Thresholds
+The public marketing site lives in `kerneleye-landing-page/`. The production frontend image builds both the landing page and dashboard, then serves them through nginx.
 
+### Shared Code and Protocols
+
+- `shared/scoring/` contains the shared threat scoring module used by both agent and backend.
+- `proto/kerneleye/v1/` contains protobuf definitions for ingest and block services.
+- `proto/gen/go/` contains generated Go protobuf code.
+
+## Privacy
+
+KernelEye does not inspect packet payloads or application content.
+
+Collected metadata includes:
+
+- Source and destination IP addresses.
+- Ports and protocols.
+- TCP flags and connection counters.
+- Packet and byte counts.
+- Traffic direction.
+- Timestamps.
+- Optional GeoIP/ASN enrichment.
+
+Not collected:
+
+- Packet payloads.
+- HTTP request bodies or headers.
+- User credentials.
+- Application data.
+
+## Threat Scoring
+
+Threat scoring is implemented in `shared/scoring/scorer.go`. The current scorer is more nuanced than a single linear formula: it considers SYN rate, unique port access, failed handshakes, burst behavior, service abuse, direction, confidence, and score decay over time.
+
+Default classification thresholds:
+
+```text
+< 20   normal
+20-39  suspicious
+>= 40  malicious
+>= 40  eligible for auto-blocking when remediation is enabled
 ```
-Score = (syn_rate × 2) + (unique_ports × 3) + (failed_connections × 5)
 
-< 20  → Normal ✅      (No action)
-20-40 → Suspicious ⚠️  (Monitor closely)
-> 40  → Malicious 🚨   (Auto-block if enabled)
-```
+The backend analysis worker also uses accumulated traffic windows and can trigger block management for high-risk sources.
 
-### Remediation Actions
+## Remediation
 
-| Action             | Implementation            | Speed  |
-| ------------------ | ------------------------- | ------ |
-| **XDP Block**      | Drops at NIC driver level | ~50ns  |
-| **XDP Rate Limit** | Token bucket in kernel    | ~100ns |
-| **IPSet Block**    | iptables + ipset          | ~1µs   |
-| **CIDR Block**     | Network range blocking    | ~100ns |
+KernelEye supports active remediation when enabled on the agent.
 
-## 🚀 Quick Start
+| Layer | Implementation | Purpose |
+| --- | --- | --- |
+| XDP | `agent/remediation/xdp_remediator.go` | Fast kernel-level drops before the network stack |
+| IPSet | `agent/remediation/ipset_remediator.go` | ipset/iptables block management |
+| Hybrid | `agent/remediation/hybrid_remediator.go` | Coordinates XDP and ipset behavior |
+| Auto-blocker | `agent/remediation/auto_blocker.go` | Blocks sources above configured score thresholds |
+| Backend block manager | `backend/internal/analysis/block_manager.go` | Coordinates backend-generated block state and commands |
 
-### 1. Clone & Setup
+The dashboard also exposes blocked IP and whitelist management.
+
+## Quick Start
+
+### Prerequisites
+
+- Go 1.25.x for the current backend and agent modules.
+- Node.js/npm for the React apps.
+- PostgreSQL 14+ or 15+.
+- For the agent: Linux with BTF support, root privileges, clang/LLVM, bpftool, libbpf headers, ipset, and iptables.
+
+### Configure Environment
 
 ```bash
-git clone https://github.com/abdeljalilait/kerneleye.git
-cd kerneleye
-chmod +x setup.sh
-./setup.sh
+cp .env.example .env
 ```
 
-### 2. Start Services
+Set at least:
+
+```text
+DATABASE_URL=postgres://kerneleye:<password>@localhost:5432/kerneleye?sslmode=disable
+JWT_SECRET=<at-least-32-characters>
+API_KEY_SECRET=<strong-secret>
+CORS_ORIGINS=http://localhost:3000
+```
+
+Optional integrations include Redis rate limiting, Mailtrap email, Polar subscriptions, GitHub/Google OAuth, and MaxMind GeoIP.
+
+### Start Backend
 
 ```bash
-# Terminal 1: Backend
-cd backend && go run cmd/api/main.go
+cd backend
+go mod download
+go run cmd/api/main.go
+```
 
-# Terminal 2: Dashboard
-cd dashboard && npm install && npm run dev
+The backend starts:
 
-# Terminal 3: Agent (Linux only, requires root)
+- HTTP API on `http://localhost:8080`
+- gRPC on `localhost:9091`
+
+### Start Dashboard
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+Registration is OAuth-first in the current backend. Configure GitHub or Google OAuth for self-service sign-in, or use password login only for users that already exist in the database.
+
+### Build and Run Agent
+
+```bash
 cd agent
+bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
 go generate ./...
 go build -o kerneleye-agent
-sudo ./kerneleye-agent
+sudo KERNELEYE_API_KEY=<server-api-key> \
+  KERNELEYE_SERVER=localhost:8080 \
+  KERNELEYE_GRPC_URL=localhost:9091 \
+  ./kerneleye-agent
 ```
 
-### 3. Access Dashboard
+Useful agent flags:
 
-Open http://localhost:3000 and login with:
-
-- **Email**: `demo@kerneleye.net`
-- **Password**: `demo`
-
-📖 **Full Guide**: See [docs/getting-started.md](docs/getting-started.md)
-
-## 📁 Project Structure
-
+```text
+-enable-remediation     enable active blocking and auto-blocking
+-xdp                    enable XDP fast-path blocking
+-interface <name>       select XDP network interface
+-list-blocked           print current ipset state and exit
+-flush-blocklists       flush ipset and XDP blocklists and exit
+-clear-data             remove local agent SQLite stores and exit
+-version                print build version
 ```
+
+## Project Structure
+
+```text
 kerneleye/
-├── agent/                  # Go + eBPF monitoring agent
-│   ├── ebpf/               # eBPF C programs
-│   │   ├── traffic_probe.c # TCP/UDP connection tracking
-│   │   └── xdp_firewall.c  # XDP packet filtering
-│   ├── remediation/        # Threat mitigation
-│   │   ├── analyzer.go     # Threat analysis engine
-│   │   ├── xdp_remediator.go    # XDP-based blocking
-│   │   ├── remediator.go        # IPSet-based blocking
-│   │   └── hybrid_remediator.go # Combined approach
-│   ├── main.go             # Agent entry point
-│   ├── aggregator.go       # Event aggregation
-│   ├── network.go          # Network utilities
-│   └── tc.go               # TC hooks for bandwidth
-├── backend/                # Go API server
-│   ├── cmd/api/            # Entry point
-│   ├── internal/api/       # HTTP/gRPC handlers
-│   ├── internal/database/  # PostgreSQL queries (sqlc)
-│   ├── internal/scoring/   # Threat detection logic
-│   └── migrations/         # Database migrations
-├── dashboard/              # React frontend
-│   ├── src/components/     # UI components
-│   ├── src/pages/          # Dashboard pages
-│   └── src/context/        # WebSocket context
-├── proto/                  # Protobuf definitions
-│   └── kerneleye/v1/       # API v1 schema
-└── docs/                   # Documentation
+├── agent/                     Go eBPF/XDP monitoring agent
+│   ├── ebpf/                  eBPF C programs and compiled objects
+│   ├── remediation/           analyzer, XDP, ipset, hybrid remediation
+│   ├── assets/                embedded XDP object assets
+│   └── scripts/               ipset helper scripts and service files
+├── backend/                   Go Fiber API and gRPC backend
+│   ├── cmd/api/               backend entrypoint
+│   ├── internal/api/          HTTP, auth, WebSocket, gRPC, block APIs
+│   ├── internal/analysis/     workers, blocking, retention, reports
+│   ├── internal/database/     sqlc generated queries and helpers
+│   ├── internal/email/        Mailtrap email service
+│   ├── internal/geoip/        MaxMind GeoIP service
+│   ├── internal/payments/     Polar integration
+│   └── migrations/            PostgreSQL migrations
+├── dashboard/                 React dashboard app
+├── kerneleye-landing-page/    React landing page app
+├── proto/                     protobuf definitions and generated Go code
+├── shared/scoring/            shared threat scoring Go module
+├── docs/                      additional project documentation
+├── tests/                     traffic simulation shell scripts
+├── docker/                    frontend nginx and install script templates
+├── Dockerfile.backend         backend container build
+├── Dockerfile.frontend        landing + dashboard + agent download image
+├── docker-compose.yml         production-oriented compose stack
+└── Makefile                   generation, build, and docker targets
 ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-| Layer              | Technologies                                   |
-| ------------------ | ---------------------------------------------- |
-| **Agent**          | Go 1.21+, eBPF (cilium/ebpf), XDP, TC, gRPC    |
-| **Backend**        | Go, Fiber, PostgreSQL, sqlc                    |
-| **Dashboard**      | React, TypeScript, Vite, React Query, Recharts |
-| **Infrastructure** | Docker, Docker Compose, Protobuf               |
+| Layer | Technologies |
+| --- | --- |
+| Agent | Go, cilium/ebpf, XDP, TC, gRPC, SQLite local stores, zap |
+| Backend | Go, Fiber, gRPC, PostgreSQL, sqlc, Redis, Mailtrap, Polar |
+| Dashboard | React, TypeScript, Vite, Ant Design, React Query, Recharts |
+| Landing page | React, TypeScript, Vite, Tailwind CSS |
+| Protocols | Protobuf, gRPC |
+| Deployment | Docker, Docker Compose, nginx, Traefik labels |
 
-## �️ Roadmap
+## Build and Generation
 
-### Phase 1 (MVP) ✅ Complete
+Common Make targets:
 
-- [x] eBPF TCP/UDP connection monitoring
-- [x] Traffic direction tracking (inbound/outbound)
-- [x] Bandwidth tracking (bytes in/out per IP)
-- [x] gRPC ingestion API with TLS
-- [x] Threat scoring engine
-- [x] PostgreSQL schema with migrations
-- [x] React dashboard with live stream
-- [x] WebSocket real-time updates
-- [x] XDP-based firewall
-- [x] Hybrid remediation (XDP + iptables)
-- [x] Threat analyzer with configurable thresholds
+```bash
+make gen-proto
+make gen-sql
+make gen-ebpf
+make build-backend
+make build-agent
+make build
+make docker-build
+```
 
-### Phase 2 (In Progress)
+The frontend Docker image builds the landing page, dashboard, and a downloadable Linux agent binary.
 
-- [ ] Email/webhook alerting
-- [ ] Slack/Discord integrations
-- [ ] Multi-user support with RBAC
-- [ ] Custom scoring rules UI
-- [ ] Geographic IP visualization
+## Documentation
 
-### Phase 3 (Planned)
+- [Getting Started](docs/getting-started.md)
+- [Development Guide](docs/development.md)
+- [Agent Architecture](agent/README.md)
+- [Remediation](agent/remediation/README.md)
+- [Scoring System Analysis](docs/scoring-system-analysis.md)
+- [Codebase Index](docs/codebase-index.md)
+- [Security Audit Middleware](docs/security-audit-middleware.md)
+- [Database Migrations](backend/migrations/)
 
-- [ ] Cloudflare integration
-- [ ] Advanced analytics & ML
-- [ ] Kubernetes support
-- [ ] API rate limiting dashboard
+Some older docs still describe earlier MVP assumptions; the top-level README reflects the current repository layout and runtime behavior.
 
-## 📖 Documentation
+## Contact
 
-- **[Getting Started](docs/getting-started.md)** - 10-minute setup guide
-- **[Development Guide](docs/development.md)** - Full development workflow
-- **[Agent Architecture](agent/README.md)** - eBPF & XDP implementation
-- **[Database Schema](backend/migrations/)** - PostgreSQL structure
+- Website: https://kerneleye.net
+- Email: abdeljalil.aitetaleb@gmail.com
 
-## 📧 Contact
-
-- **Website**: https://kerneleye.net
-- **Email**: hello@kerneleye.net
-- **Support**: support@kerneleye.net
-
-## 📄 License
+## License
 
 Proprietary - All Rights Reserved
-
----
-
-**Built with ❤️ for indie hackers and small teams**
-
-_Made simple. Made secure. Made for you._
