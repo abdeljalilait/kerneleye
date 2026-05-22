@@ -1,9 +1,7 @@
 import { useEffect } from 'react'
-import { Typography, Button, Spin, Alert as AntAlert, Table, Tag, Space, Card, Row, Col, Badge } from 'antd'
+import { Typography, Button, Spin, Alert as AntAlert, Table, Tag, Space, Card, Row, Col, theme, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { 
-  ReloadOutlined, 
-  InfoCircleOutlined} from '@ant-design/icons'
+import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import { Bell, Shield, AlertTriangle, CheckCircle, Clock, Server } from 'lucide-react'
 import { Alert } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
@@ -12,9 +10,32 @@ import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
 
+const severityConfigMap: Record<string, { color: string; Icon: any; bg: string }> = {
+  info: { color: '#3b82f6', Icon: InfoCircleOutlined, bg: 'rgba(59,130,246,0.12)' },
+  warning: { color: '#f59e0b', Icon: AlertTriangle, bg: 'rgba(245,158,11,0.12)' },
+  critical: { color: '#ef4444', Icon: AlertTriangle, bg: 'rgba(239,68,68,0.12)' },
+  high: { color: '#f97316', Icon: AlertTriangle, bg: 'rgba(249,115,22,0.12)' },
+  medium: { color: '#f59e0b', Icon: InfoCircleOutlined, bg: 'rgba(245,158,11,0.12)' },
+}
+
+const statusConfigMap: Record<string, { color: string; bg: string; Icon: any }> = {
+  active: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', Icon: Clock },
+  acknowledged: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', Icon: InfoCircleOutlined },
+  resolved: { color: '#10b981', bg: 'rgba(16,185,129,0.12)', Icon: CheckCircle },
+}
+
+function getSeverityConfig(severity: string) {
+  return severityConfigMap[severity] || severityConfigMap.info
+}
+
+function getStatusConfig(status: string) {
+  return statusConfigMap[status] || { color: '#64748b', bg: 'rgba(100,116,139,0.12)', Icon: InfoCircleOutlined }
+}
+
 export default function Alerts() {
   const { data: alerts, isLoading: loading, error } = useAlerts()
   const { lastMessage } = useWebSocket()
+  const { token } = theme.useToken()
 
   useEffect(() => {
     if (lastMessage?.type === 'new_alert') {
@@ -28,50 +49,6 @@ export default function Alerts() {
   const activeCount = alerts?.filter(a => a.status === 'active').length || 0
   const resolvedCount = alerts?.filter(a => a.status === 'resolved').length || 0
 
-  const getSeverityConfig = (severity: string) => {
-    const configs: Record<string, { color: string; icon: any; bg: string }> = {
-      info: {
-        color: '#3b82f6',
-        icon: InfoCircleOutlined,
-        bg: 'rgba(59, 130, 246, 0.15)',
-      },
-      warning: {
-        color: '#f59e0b',
-        icon: AlertTriangle,
-        bg: 'rgba(245, 158, 11, 0.15)',
-      },
-      critical: { 
-        color: '#ef4444', 
-        icon: AlertTriangle, 
-        bg: 'rgba(239, 68, 68, 0.15)' 
-      },
-      high: { 
-        color: '#f97316', 
-        icon: AlertTriangle, 
-        bg: 'rgba(249, 115, 22, 0.15)' 
-      },
-      medium: { 
-        color: '#f59e0b', 
-        icon: InfoCircleOutlined, 
-        bg: 'rgba(245, 158, 11, 0.15)' 
-      },
-    }
-    return configs[severity] || configs.info
-  }
-
-  const getStatusConfig = (status: string) => {
-    if (status === 'active') {
-      return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', icon: Clock }
-    }
-    if (status === 'acknowledged') {
-      return { color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)', icon: InfoCircleOutlined }
-    }
-    if (status === 'resolved') {
-      return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', icon: CheckCircle }
-    }
-    return { color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)', icon: InfoCircleOutlined }
-  }
-
   const columns: ColumnsType<Alert> = [
     {
       title: 'Time',
@@ -80,14 +57,10 @@ export default function Alerts() {
       width: 160,
       render: (date) => (
         <Space direction="vertical" size={0}>
-          <Text style={{ color: 'var(--kerneleye-colorText)', fontSize: 13 }}>
-            {new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-          <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 11 }}>
-            {new Date(date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-          </Text>
+          <Text style={{ fontSize: 13 }}>{new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>{new Date(date).toLocaleDateString([], { month: 'short', day: 'numeric' })}</Text>
         </Space>
-      )
+      ),
     },
     {
       title: 'Severity',
@@ -96,42 +69,21 @@ export default function Alerts() {
       width: 140,
       render: (severity) => {
         const config = getSeverityConfig(severity)
-        const Icon = config.icon
+        const Icon = config.Icon
         return (
-          <Tag 
-            style={{
-              margin: 0,
-              padding: '4px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              background: config.bg,
-              color: config.color,
-              border: 'none',
-              textTransform: 'uppercase',
-            }}
-          >
-            <Space size={4}>
-              <Icon size={12} />
-              {severity}
-            </Space>
+          <Tag style={{ background: config.bg, color: config.color, border: 'none', fontWeight: 600, textTransform: 'uppercase', fontSize: 11 }}>
+            <Icon style={{ marginRight: 4 }} />
+            {severity}
           </Tag>
         )
-      }
+      },
     },
     {
       title: 'Source',
       dataIndex: 'source_ip',
       key: 'source_ip',
       width: 140,
-      render: (ip) => (
-        <Text code style={{ 
-          fontSize: 12, 
-          background: 'var(--kerneleye-colorFillAlter)',
-          color: 'var(--kerneleye-colorTextSecondary)',
-        }}>
-          {ip}
-        </Text>
-      )
+      render: (ip) => <Text code style={{ fontSize: 12 }}>{ip}</Text>,
     },
     {
       title: 'Server',
@@ -140,24 +92,16 @@ export default function Alerts() {
       width: 180,
       render: (hostname) => (
         <Space size={8}>
-          <Server size={14} color="var(--kerneleye-colorTextTertiary)" />
-          <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
-            {hostname || 'Unknown server'}
-          </Text>
+          <Server size={14} color={token.colorTextTertiary} />
+          <Text type="secondary">{hostname || 'Unknown server'}</Text>
         </Space>
-      )
+      ),
     },
     {
       title: 'Description',
       dataIndex: 'reason',
       key: 'reason',
-      render: (reason) => (
-        <div>
-          <Text style={{ color: 'var(--kerneleye-colorText)', fontSize: 14 }}>
-            {reason}
-          </Text>
-        </div>
-      )
+      render: (reason) => <Text style={{ fontSize: 14 }}>{reason}</Text>,
     },
     {
       title: 'Status',
@@ -166,28 +110,15 @@ export default function Alerts() {
       width: 130,
       render: (status) => {
         const config = getStatusConfig(status)
-        const Icon = config.icon
+        const Icon = config.Icon
         return (
-          <Tag 
-            style={{
-              margin: 0,
-              padding: '4px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              background: config.bg,
-              color: config.color,
-              border: 'none',
-              textTransform: 'uppercase',
-            }}
-          >
-            <Space size={4}>
-              <Icon size={12} />
-              {status}
-            </Space>
+          <Tag style={{ background: config.bg, color: config.color, border: 'none', fontWeight: 600, textTransform: 'uppercase', fontSize: 11 }}>
+            <Icon style={{ marginRight: 4 }} />
+            {status}
           </Tag>
         )
-      }
-    }
+      },
+    },
   ]
 
   if (loading) {
@@ -201,140 +132,74 @@ export default function Alerts() {
   return (
     <div>
       {/* Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
+      <Row justify="space-between" align="middle" style={{ marginBottom: token.marginLG }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
-              Alerts
-            </Title>
-            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
-              Remediation incidents created when threats trigger an operator-facing action
-            </Text>
+            <Title level={2} style={{ margin: 0 }}>Alerts</Title>
+            <Text type="secondary">Remediation incidents created when threats trigger an operator-facing action</Text>
           </Space>
         </Col>
         <Col>
-          <Button 
-            icon={<ReloadOutlined />}
-            onClick={() => queryClient.invalidateQueries({ queryKey: ['alerts'] })}
-            style={{
-              background: 'var(--kerneleye-colorFillAlter)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              color: 'var(--kerneleye-colorTextSecondary)',
-            }}
-          >
+          <Button icon={<ReloadOutlined />} onClick={() => queryClient.invalidateQueries({ queryKey: ['alerts'] })}>
             Refresh
           </Button>
         </Col>
       </Row>
 
       {/* Stats Cards */}
-      <Row gutter={[20, 20]} style={{ marginBottom: 32 }}>
+      <Row gutter={[20, 20]} style={{ marginBottom: token.marginLG }}>
         <Col xs={24} sm={12}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'var(--kerneleye-colorBgContainer)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-            }}
-            bodyStyle={{ padding: 24 }}
-          >
+          <Card styles={{ body: { padding: token.paddingLG } }}>
             <Row align="middle" justify="space-between">
               <Col>
-                <Space align="center" size={16}>
-                  <div 
-                    style={{
-                      width: 56,
-                      height: 56,
-                      background: 'rgba(245, 158, 11, 0.15)',
-                      borderRadius: 14,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
+                <Space size={16}>
+                  <div style={{
+                    width: 56, height: 56, background: 'rgba(245,158,11,0.12)',
+                    borderRadius: token.borderRadius, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
                     <Bell size={28} color="#f59e0b" />
                   </div>
                   <div>
-                    <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13, display: 'block' }}>
-                      Active Alerts
-                    </Text>
-                    <Title level={2} style={{ margin: '4px 0', color: '#f59e0b' }}>
-                      {activeCount}
-                    </Title>
+                    <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>Active Alerts</Text>
+                    <Title level={2} style={{ margin: '4px 0', color: '#f59e0b' }}>{activeCount}</Title>
                   </div>
                 </Space>
               </Col>
               <Col>
-                <div 
-                  style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: '50%',
-                    border: '4px solid rgba(245, 158, 11, 0.2)',
-                    borderTopColor: '#f59e0b',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#f59e0b', fontWeight: 700 }}>
-                    {activeCount > 0 ? '!' : '✓'}
-                  </Text>
+                <div style={{
+                  width: 60, height: 60, borderRadius: '50%',
+                  border: '4px solid rgba(245,158,11,0.2)', borderTopColor: '#f59e0b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ color: '#f59e0b', fontWeight: 700 }}>{activeCount > 0 ? '!' : '✓'}</Text>
                 </div>
               </Col>
             </Row>
           </Card>
         </Col>
         <Col xs={24} sm={12}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'var(--kerneleye-colorBgContainer)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-            }}
-            bodyStyle={{ padding: 24 }}
-          >
+          <Card styles={{ body: { padding: token.paddingLG } }}>
             <Row align="middle" justify="space-between">
               <Col>
-                <Space align="center" size={16}>
-                  <div 
-                    style={{
-                      width: 56,
-                      height: 56,
-                      background: 'rgba(16, 185, 129, 0.15)',
-                      borderRadius: 14,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
+                <Space size={16}>
+                  <div style={{
+                    width: 56, height: 56, background: 'rgba(16,185,129,0.12)',
+                    borderRadius: token.borderRadius, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
                     <Shield size={28} color="#10b981" />
                   </div>
                   <div>
-                    <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 13, display: 'block' }}>
-                      Resolved Incidents
-                    </Text>
-                    <Title level={2} style={{ margin: '4px 0', color: '#10b981' }}>
-                      {resolvedCount}
-                    </Title>
+                    <Text type="secondary" style={{ fontSize: 13, display: 'block' }}>Resolved Incidents</Text>
+                    <Title level={2} style={{ margin: '4px 0', color: '#10b981' }}>{resolvedCount}</Title>
                   </div>
                 </Space>
               </Col>
               <Col>
-                <div 
-                  style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: '50%',
-                    border: '4px solid rgba(16, 185, 129, 0.2)',
-                    borderTopColor: '#10b981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
+                <div style={{
+                  width: 60, height: 60, borderRadius: '50%',
+                  border: '4px solid rgba(16,185,129,0.2)', borderTopColor: '#10b981',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
                   <Text style={{ color: '#10b981', fontWeight: 700 }}>
                     {Math.round((resolvedCount / (alerts?.length || 1)) * 100)}%
                   </Text>
@@ -345,63 +210,32 @@ export default function Alerts() {
         </Col>
       </Row>
 
-      {error && (
-        <AntAlert 
-          message="Failed to load alerts" 
-          type="error" 
-          showIcon 
-          style={{ marginBottom: 16 }}
-        />
-      )}
+      {error && <AntAlert message="Failed to load alerts" type="error" showIcon style={{ marginBottom: 16 }} />}
 
       {/* Alerts Table */}
       <Card
-        variant="borderless"
-        style={{
-          background: 'var(--kerneleye-colorBgContainer)',
-          border: '1px solid var(--kerneleye-colorBorderSecondary)',
-          borderRadius: 'var(--kerneleye-borderRadiusLG)',
-        }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
         title={
           <Space>
             <AlertTriangle size={18} color="#f59e0b" />
-            <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
-              Remediation Alerts
-            </Text>
-            <Badge 
-              count={alerts?.length || 0} 
-              style={{ 
-                background: 'var(--kerneleye-colorFillAlter)',
-                color: 'var(--kerneleye-colorTextSecondary)',
-              }}
-            />
+            <Text strong>Remediation Alerts</Text>
           </Space>
         }
       >
-        <Table 
-          columns={columns} 
-          dataSource={alerts || []} 
+        <Table
+          columns={columns}
+          dataSource={alerts || []}
           rowKey="id"
-          pagination={{ 
-            pageSize: 10,
-            style: { margin: '16px 24px' }
-          }}
-          locale={{ 
+          pagination={{ pageSize: 10, style: { margin: '16px 24px' } }}
+          locale={{
             emptyText: (
-              <div style={{ padding: '60px 0', textAlign: 'center' }}>
-                <div style={{ marginBottom: 16 }}>
-                  <Shield size={64} color="var(--kerneleye-colorTextQuaternary)" opacity={0.3} />
-                </div>
-                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 16 }}>
-                  No remediation alerts
-                </Text>
-                <br />
-                <Text style={{ color: 'var(--kerneleye-colorTextQuaternary)', fontSize: 13 }}>
-                  Threats will still appear on the Threats page even when no alert has been created
-                </Text>
-              </div>
-            ) 
+              <Empty
+                image={<Shield size={64} color={token.colorTextQuaternary} style={{ opacity: 0.3 }} />}
+                description="No remediation alerts"
+              >
+                Threats will still appear on the Threats page even when no alert has been created
+              </Empty>
+            ),
           }}
         />
       </Card>

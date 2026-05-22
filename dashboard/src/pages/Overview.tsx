@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { Server as ServerIcon, Shield, AlertTriangle, Zap, Crown, Sparkles, Activity, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
-import { Row, Col, Typography, Card, Space, Badge, Tag } from 'antd'
+import { Server as ServerIcon, Shield, AlertTriangle, Crown, Sparkles } from 'lucide-react'
+import { Row, Col, Typography, Card, Space, Tag, theme } from 'antd'
 import { useNavigate } from '@tanstack/react-router'
 import StatCard from '../components/StatCard'
 import TrafficChart from '../components/TrafficChart'
@@ -9,116 +9,59 @@ import ServersList from '../components/ServersList'
 import LiveStream from '../components/LiveStream'
 import { Threat, StatsOverview } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
-import { useServers, useThreats, useStats, useSubscriptionStatus, useSystemStatus } from '../hooks/useQueries'
+import { useServers, useThreats, useStats, useSubscriptionStatus } from '../hooks/useQueries'
 import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
 
-// System Status Card Component
-function SystemStatusCard() {
-  const { data: systemStatus, isLoading } = useSystemStatus()
+function SubscriptionCard() {
+  const { data: subscription } = useSubscriptionStatus()
+  const navigate = useNavigate()
+  const { token } = theme.useToken()
 
-  if (isLoading || !systemStatus) {
-    return (
-      <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
-        <Col xs={24}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'var(--kerneleye-colorBgContainer)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-            }}
-            bodyStyle={{ padding: 24 }}
-          >
-            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>Loading system status...</Text>
-          </Card>
-        </Col>
-      </Row>
-    )
-  }
+  const noSubscription = subscription && subscription.plan === 'none'
+  const hasActiveTrial = subscription && subscription.is_trialing
+  const isClickable = noSubscription
 
-  const statusConfig = {
-    healthy: {
-      icon: CheckCircle,
-      color: '#10b981',
-      bgColor: 'rgba(16, 185, 129, 0.1)',
-      title: 'System Status: Protected',
-    },
-    warning: {
-      icon: AlertCircle,
-      color: '#f59e0b',
-      bgColor: 'rgba(245, 158, 11, 0.1)',
-      title: 'System Status: Warning',
-    },
-    error: {
-      icon: XCircle,
-      color: '#ef4444',
-      bgColor: 'rgba(239, 68, 68, 0.1)',
-      title: 'System Status: Attention Required',
-    },
-  }
-
-  const config = statusConfig[systemStatus.status]
-  const StatusIcon = config.icon
+  const accentColor = noSubscription ? token.colorPrimary : hasActiveTrial ? token.colorWarning : token.colorSuccess
+  const bgAlpha = noSubscription ? 0.1 : 0.06
+  const Icon = noSubscription ? Crown : hasActiveTrial ? Sparkles : Crown
 
   return (
-    <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
-      <Col xs={24}>
-        <Card
-          variant="borderless"
-          style={{
-            background: config.bgColor,
-            border: `1px solid ${config.color}30`,
-            borderRadius: 'var(--kerneleye-borderRadiusLG)',
-          }}
-          bodyStyle={{ padding: 24 }}
-        >
-          <Row justify="space-between" align="middle">
-            <Col>
-              <Space size={16} align="center">
-                <div 
-                  style={{
-                    width: 48,
-                    height: 48,
-                    background: config.color,
-                    borderRadius: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: `0 4px 14px ${config.color}40`,
-                  }}
-                >
-                  <StatusIcon size={24} color="white" />
-                </div>
-                <div>
-                  <Title level={4} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
-                    {config.title}
-                  </Title>
-                  <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
-                    {systemStatus.message}. Last heartbeat {systemStatus.lastHeartbeatAgo}.
-                  </Text>
-                </div>
-              </Space>
-            </Col>
-            <Col>
-              <Space size={12}>
-                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>
-                  Active agents:
-                </Text>
-                <Badge 
-                  count={`${systemStatus.activeServers}/${systemStatus.totalServers}`}
-                  style={{ 
-                    background: systemStatus.activeServers === systemStatus.totalServers ? '#10b981' : '#f59e0b',
-                    color: 'white',
-                  }}
-                />
-              </Space>
-            </Col>
-          </Row>
-        </Card>
-      </Col>
-    </Row>
+    <Card
+      hoverable={!!isClickable}
+      onClick={isClickable ? () => navigate({ to: '/dashboard/subscription' }) : undefined}
+      styles={{ body: { padding: token.paddingMD, display: 'flex', alignItems: 'center', gap: 16 } }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          background: `rgba(99, 102, 241, ${bgAlpha})`,
+          borderRadius: token.borderRadius,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Icon size={24} color={accentColor} />
+      </div>
+      <div>
+        <Text style={{ color: token.colorTextTertiary, fontSize: 12, display: 'block' }}>
+          Current Plan
+        </Text>
+        <Title level={5} style={{ margin: 0, color: accentColor }}>
+          {subscription?.plan_display_name || 'Loading...'}
+        </Title>
+        {noSubscription && (
+          <Text style={{ color: token.colorPrimary, fontSize: 12 }}>Click to start trial</Text>
+        )}
+        {hasActiveTrial && (
+          <Tag color="gold" style={{ marginTop: 4, fontSize: 10 }}>Trial Active</Tag>
+        )}
+      </div>
+    </Card>
   )
 }
 
@@ -126,15 +69,11 @@ export default function Overview() {
   const { data: statsData } = useStats()
   const { data: serversData } = useServers()
   const { data: threatsData } = useThreats()
-  const { data: subscription } = useSubscriptionStatus()
   const { lastMessage } = useWebSocket()
-  const navigate = useNavigate()
+  const { token } = theme.useToken()
 
-  const noSubscription = subscription && subscription.plan === 'none'
-  const hasActiveTrial = subscription && subscription.is_trialing
-
-  const rawStats: Partial<StatsOverview> = statsData || {}
   const threats = threatsData || []
+  const rawStats: Partial<StatsOverview> = statsData || {}
   const stats: StatsOverview = {
     total_servers: rawStats.total_servers ?? 0,
     active_servers: rawStats.active_servers ?? 0,
@@ -165,74 +104,23 @@ export default function Overview() {
   }, [lastMessage])
 
   return (
-    <div style={{ paddingBottom: 32 }}>
-      {/* Welcome Section */}
-      <div style={{ marginBottom: 32 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <Space direction="vertical" size={4}>
-              <Space size={12} align="center">
-                <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
-                  Dashboard
-                </Title>
-                <Badge 
-                  count="LIVE" 
-                  style={{ 
-                    background: 'rgba(16, 185, 129, 0.15)', 
-                    color: '#10b981',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    fontSize: 10,
-                    fontWeight: 600,
-                  }}
-                />
-              </Space>
-              <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 15 }}>
-                Real-time security monitoring and threat detection overview
-              </Text>
-            </Space>
-          </Col>
-          <Col>
-            <Space size={16}>
-              <Card 
-                variant="borderless" 
-                style={{ 
-                  background: 'var(--kerneleye-colorFillAlter)', 
-                  border: '1px solid var(--kerneleye-colorBorderSecondary)',
-                  borderRadius: 12,
-                }}
-                bodyStyle={{ padding: '12px 20px' }}
-              >
-                <Space size={12}>
-                  <div 
-                    style={{
-                      width: 32,
-                      height: 32,
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Zap size={16} color="#818cf8" />
-                  </div>
-                  <div>
-                    <Text style={{ fontSize: 11, color: 'var(--kerneleye-colorTextTertiary)', display: 'block' }}>
-                      Events/sec
-                    </Text>
-                    <Text strong style={{ fontSize: 16, color: 'var(--kerneleye-colorText)' }}>
-                      {(stats.events_last_24h / 86400).toFixed(1)}
-                    </Text>
-                  </div>
-                </Space>
-              </Card>
-
-            </Space>
-          </Col>
-        </Row>
+    <div style={{ paddingBottom: token.paddingXL }}>
+      {/* Page header */}
+      <div style={{ marginBottom: token.marginLG }}>
+        <Space direction="vertical" size={4}>
+          <Space size={12} align="center">
+            <Title level={2} style={{ margin: 0 }}>
+              Dashboard
+            </Title>
+            <Tag color="success" style={{ fontWeight: 600, letterSpacing: '0.05em' }}>LIVE</Tag>
+          </Space>
+          <Text type="secondary" style={{ fontSize: 15 }}>
+            Real-time security monitoring and threat detection overview
+          </Text>
+        </Space>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards row */}
       <Row gutter={[20, 20]}>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
@@ -265,62 +153,11 @@ export default function Overview() {
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card
-            variant="borderless"
-            style={{
-              background: noSubscription 
-                ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1))' 
-                : hasActiveTrial 
-                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05))'
-                  : 'var(--kerneleye-colorBgContainer)',
-              border: `1px solid ${noSubscription || hasActiveTrial ? 'transparent' : 'var(--kerneleye-colorBorderSecondary)'}`,
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-              cursor: noSubscription ? 'pointer' : 'default',
-              height: '100%',
-            }}
-            bodyStyle={{ padding: 20, height: '100%' }}
-            onClick={noSubscription ? () => navigate({ to: '/dashboard/subscription' }) : undefined}
-          >
-            <Space size={16}>
-              <div 
-                style={{
-                  width: 48,
-                  height: 48,
-                  background: noSubscription 
-                    ? 'rgba(99, 102, 241, 0.2)' 
-                    : hasActiveTrial 
-                      ? 'rgba(245, 158, 11, 0.2)'
-                      : 'rgba(16, 185, 129, 0.15)',
-                  borderRadius: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {noSubscription ? <Crown size={24} color="#818cf8" /> : 
-                 hasActiveTrial ? <Sparkles size={24} color="#f59e0b" /> :
-                 <Crown size={24} color="#10b981" />}
-              </div>
-              <div>
-                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
-                  Current Plan
-                </Text>
-                <Title level={3} style={{ margin: 0, color: noSubscription ? '#818cf8' : hasActiveTrial ? '#f59e0b' : '#10b981', fontSize: 20 }}>
-                  {subscription?.plan_display_name || 'Loading...'}
-                </Title>
-                {noSubscription && (
-                  <Text style={{ color: '#818cf8', fontSize: 12 }}>Click to start trial →</Text>
-                )}
-                {hasActiveTrial && (
-                  <Tag color="gold" style={{ marginTop: 4, fontSize: 10 }}>Trial Active</Tag>
-                )}
-              </div>
-            </Space>
-          </Card>
+          <SubscriptionCard />
         </Col>
       </Row>
 
-      {/* Charts Row */}
+      {/* Charts + Servers row */}
       <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
         <Col xs={24} lg={16}>
           <TrafficChart />
@@ -330,7 +167,7 @@ export default function Overview() {
         </Col>
       </Row>
 
-      {/* Threats & Live Stream */}
+      {/* Threats + Live Stream row */}
       <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
         <Col xs={24} lg={16}>
           <ThreatsList threats={threats.slice(0, 5)} />
@@ -339,10 +176,6 @@ export default function Overview() {
           <LiveStream />
         </Col>
       </Row>
-
-      {/* System Status */}
-      <SystemStatusCard />
-
     </div>
   )
 }

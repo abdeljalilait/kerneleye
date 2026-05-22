@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Button, Row, Col, Typography, Alert, Spin, Card, Space, Badge } from 'antd'
+import { Button, Row, Col, Typography, Alert, Spin, Card, Space, theme } from 'antd'
 import { Plus, RefreshCcw, Server as ServerIcon, CheckCircle2, Clock, XCircle, Sparkles, AlertTriangle } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import ServersList from '../components/ServersList'
@@ -11,6 +11,12 @@ import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
 
+const statusCards = [
+  { key: 'active', label: 'Online', color: '#10b981', Icon: CheckCircle2 },
+  { key: 'pending', label: 'Pending', color: '#f59e0b', Icon: Clock },
+  { key: 'offline', label: 'Offline', color: '#ef4444', Icon: XCircle },
+]
+
 export default function Servers() {
   const { data: servers, isLoading: loading, error } = useServers()
   const { data: subscription } = useSubscriptionStatus()
@@ -18,6 +24,7 @@ export default function Servers() {
   const { lastMessage } = useWebSocket()
   const [showAddModal, setShowAddModal] = useState(false)
   const navigate = useNavigate()
+  const { token } = theme.useToken()
 
   const noSubscription = subscription && subscription.plan === 'none'
   const needsAttention = systemStatus && (systemStatus.status === 'warning' || systemStatus.status === 'error')
@@ -28,9 +35,11 @@ export default function Servers() {
     }
   }, [lastMessage])
 
-  const activeCount = servers?.filter(s => s.status === 'active').length || 0
-  const pendingCount = servers?.filter(s => s.status === 'pending').length || 0
-  const offlineCount = servers?.filter(s => s.status === 'offline').length || 0
+  const counts = {
+    active: servers?.filter(s => s.status === 'active').length || 0,
+    pending: servers?.filter(s => s.status === 'pending').length || 0,
+    offline: servers?.filter(s => s.status === 'offline').length || 0,
+  }
 
   if (loading) {
     return (
@@ -43,35 +52,22 @@ export default function Servers() {
   return (
     <div>
       {/* Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: 32 }}>
+      <Row justify="space-between" align="middle" style={{ marginBottom: token.marginLG }}>
         <Col>
           <Space direction="vertical" size={4}>
-            <Title level={2} style={{ margin: 0, color: 'var(--kerneleye-colorText)' }}>
-              Servers
-            </Title>
-            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
-              Manage and monitor your security agents
-            </Text>
+            <Title level={2} style={{ margin: 0 }}>Servers</Title>
+            <Text type="secondary">Manage and monitor your security agents</Text>
           </Space>
         </Col>
         <Col>
           <Space>
-            <Button 
+            <Button
               onClick={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
               icon={<RefreshCcw size={16} />}
-              style={{
-                background: 'var(--kerneleye-colorFillAlter)',
-                border: '1px solid var(--kerneleye-colorBorderSecondary)',
-                color: 'var(--kerneleye-colorTextSecondary)',
-              }}
             >
               Refresh
             </Button>
-            <Button 
-              type="primary" 
-              onClick={() => setShowAddModal(true)}
-              icon={<Plus size={16} />}
-            >
+            <Button type="primary" onClick={() => setShowAddModal(true)} icon={<Plus size={16} />}>
               Install Agent
             </Button>
           </Space>
@@ -88,22 +84,13 @@ export default function Servers() {
             </Space>
           }
           description={
-            <Text style={{ color: 'var(--kerneleye-colorTextSecondary)' }}>
+            <Text type="secondary">
               {systemStatus.message}. Last heartbeat {systemStatus.lastHeartbeatAgo}.
             </Text>
           }
           type={systemStatus.status === 'error' ? 'error' : 'warning'}
           showIcon={false}
-          style={{ 
-            marginBottom: 24, 
-            background: systemStatus.status === 'error' 
-              ? 'rgba(239, 68, 68, 0.1)' 
-              : 'rgba(245, 158, 11, 0.1)', 
-            border: `1px solid ${systemStatus.status === 'error' 
-              ? 'rgba(239, 68, 68, 0.3)' 
-              : 'rgba(245, 158, 11, 0.3)'}`,
-            borderRadius: 'var(--kerneleye-borderRadiusLG)',
-          }}
+          style={{ marginBottom: 24 }}
         />
       )}
 
@@ -114,10 +101,10 @@ export default function Servers() {
           description={
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
               <Text>
-                You need an active subscription to add and monitor servers. Start your 7-day free trial with a credit card. You won't be charged until after the trial ends.
+                You need an active subscription to add and monitor servers. Start your 7-day free trial.
               </Text>
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 icon={<Sparkles size={16} />}
                 onClick={() => navigate({ to: '/dashboard/subscription' })}
               >
@@ -127,174 +114,60 @@ export default function Servers() {
           }
           type="info"
           showIcon
-          style={{ 
-            marginBottom: 24, 
-            background: 'rgba(99, 102, 241, 0.1)', 
-            border: '1px solid rgba(99, 102, 241, 0.3)' 
-          }}
+          style={{ marginBottom: 24 }}
         />
       )}
 
-      {/* Stats Cards */}
-      <Row gutter={[20, 20]} style={{ marginBottom: 32 }}>
-        <Col xs={24} sm={8}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'var(--kerneleye-colorBgContainer)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-            }}
-            bodyStyle={{ padding: 20 }}
-          >
-            <Space size={16}>
-              <div 
-                style={{
-                  width: 48,
-                  height: 48,
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  borderRadius: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <CheckCircle2 size={24} color="#10b981" />
-              </div>
-              <div>
-                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
-                  Online
-                </Text>
-                <Title level={3} style={{ margin: 0, color: '#10b981' }}>
-                  {activeCount}
-                </Title>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'var(--kerneleye-colorBgContainer)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-            }}
-            bodyStyle={{ padding: 20 }}
-          >
-            <Space size={16}>
-              <div 
-                style={{
-                  width: 48,
-                  height: 48,
-                  background: 'rgba(245, 158, 11, 0.15)',
-                  borderRadius: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Clock size={24} color="#f59e0b" />
-              </div>
-              <div>
-                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
-                  Pending
-                </Text>
-                <Title level={3} style={{ margin: 0, color: '#f59e0b' }}>
-                  {pendingCount}
-                </Title>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card
-            variant="borderless"
-            style={{
-              background: 'var(--kerneleye-colorBgContainer)',
-              border: '1px solid var(--kerneleye-colorBorderSecondary)',
-              borderRadius: 'var(--kerneleye-borderRadiusLG)',
-            }}
-            bodyStyle={{ padding: 20 }}
-          >
-            <Space size={16}>
-              <div 
-                style={{
-                  width: 48,
-                  height: 48,
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  borderRadius: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <XCircle size={24} color="#ef4444" />
-              </div>
-              <div>
-                <Text style={{ color: 'var(--kerneleye-colorTextTertiary)', fontSize: 12, display: 'block' }}>
-                  Offline
-                </Text>
-                <Title level={3} style={{ margin: 0, color: '#ef4444' }}>
-                  {offlineCount}
-                </Title>
-              </div>
-            </Space>
-          </Card>
-        </Col>
+      {/* Status Cards */}
+      <Row gutter={[20, 20]} style={{ marginBottom: token.marginLG }}>
+        {statusCards.map(({ key, label, color, Icon }) => (
+          <Col xs={24} sm={8} key={key}>
+            <Card styles={{ body: { padding: token.paddingMD } }}>
+              <Space size={16}>
+                <div
+                  style={{
+                    width: 48, height: 48,
+                    background: `${color}20`,
+                    borderRadius: token.borderRadius,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <Icon size={24} color={color} />
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>{label}</Text>
+                  <Title level={3} style={{ margin: 0, color }}>{counts[key as keyof typeof counts]}</Title>
+                </div>
+              </Space>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
-      {error && (
-        <Alert 
-          message="Failed to load servers" 
-          type="error" 
-          showIcon 
-          style={{ marginBottom: 24 }} 
-        />
-      )}
+      {error && <Alert message="Failed to load servers" type="error" showIcon style={{ marginBottom: 24 }} />}
 
-      {/* Pending Agents Section */}
-      {pendingCount > 0 && (
-        <div style={{ marginBottom: 32 }}>
-          <PendingAgentsList 
-            servers={servers || []} 
-            onRefresh={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
-          />
-        </div>
+      {/* Pending Agents */}
+      {counts.pending > 0 && (
+        <PendingAgentsList
+          servers={servers || []}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
+        />
       )}
 
       {/* Servers Table */}
       <Card
-        variant="borderless"
-        style={{
-          background: 'var(--kerneleye-colorBgContainer)',
-          border: '1px solid var(--kerneleye-colorBorderSecondary)',
-          borderRadius: 'var(--kerneleye-borderRadiusLG)',
-        }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
         title={
           <Space>
-            <ServerIcon size={18} color="#818cf8" />
-            <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
-              All Servers
-            </Text>
-            <Badge 
-              count={servers?.length || 0} 
-              style={{ 
-                background: 'var(--kerneleye-colorFillAlter)',
-                color: 'var(--kerneleye-colorTextSecondary)',
-              }}
-            />
+            <ServerIcon size={18} color={token.colorPrimary} />
+            <Text strong>All Servers</Text>
           </Space>
         }
       >
         <ServersList servers={servers || []} showCard={false} />
       </Card>
 
-      <AddServerConfiguratorModal 
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-      />
+      <AddServerConfiguratorModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
     </div>
   )
 }
