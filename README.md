@@ -301,4 +301,8 @@ Some older docs still describe earlier MVP assumptions; the top-level README ref
 
 ## License
 
-Proprietary - All Rights Reserved
+KernelEye is open source under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-only`). See [LICENSE](LICENSE).
+
+Copyright (C) 2026 Abdeljalil Aitetaleb.
+
+The KernelEye name, logos, and visual identity are not licensed under the AGPL. See [TRADEMARKS.md](TRADEMARKS.md) for brand-use terms.
