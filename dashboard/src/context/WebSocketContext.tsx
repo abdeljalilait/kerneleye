@@ -19,7 +19,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     if (apiUrl) {
       const url = new URL(apiUrl)
       const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      // e.g. https://kerneleye-api.hakiware.com/api/v1 → wss://kerneleye-api.hakiware.com/api/v1/ws
+      // e.g. https://api.example.com/api/v1 → wss://api.example.com/api/v1/ws
       return `${wsProtocol}//${url.host}${url.pathname}/ws`
     }
     // Fallback for local dev without .env

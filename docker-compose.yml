@@ -21,7 +21,7 @@ services:
   backend:
     networks:
       - dokploy-network
-    image: registry.hakiware.com/kerneleye/backend:latest
+    image: ghcr.io/kerneleye/backend:latest
     pull_policy: always
     volumes:
       - ../files/geoip:/opt/kerneleye/geoip
@@ -86,7 +86,7 @@ services:
   frontend:
     networks:
       - dokploy-network
-    image: registry.hakiware.com/kerneleye/frontend:latest
+    image: ghcr.io/kerneleye/frontend:latest
     pull_policy: always
     environment:
       # Backend API URL (for dashboard runtime config)

@@ -3,7 +3,7 @@ import { Mail } from 'lucide-react';
 import { Reveal } from '../components/Reveal';
 
 const contactInfo = [
-  { icon: Mail, label: 'Email', value: 'contact@hakiware.com' },
+  { icon: Mail, label: 'Email', value: 'contact@kerneleye.net' },
 ];
 
 const ContactSection = () => {
