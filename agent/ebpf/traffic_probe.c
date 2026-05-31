@@ -483,9 +483,41 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
         return 0;
 
     // Rate limit check: prevent ring buffer overflow under SYN floods.
-    // Must come after the cheap early-exit filters but before the expensive
-    // ring buffer reservation and SYN tracker map update.
-    if (!check_rate_limit())
+    // SYN tracker update always runs (even when rate-limited) so
+    // detect_tcp_close can still correlate failed handshakes.
+    int rate_limited = !check_rate_limit();
+
+    // Always update SYN tracker for failed-handshake detection,
+    // even when ring buffer events are being rate-limited.
+    {
+        u32 s4 = 0, d4 = 0;
+        struct in6_addr s6 = {}, d6 = {};
+        u16 lp = 0, rp = 0;
+        if (ctx->family == AF_INET) {
+            s4 = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
+                 ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
+            d4 = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
+                 ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
+        } else {
+            bpf_core_read(&s6, sizeof(s6), ctx->saddr_v6);
+            bpf_core_read(&d6, sizeof(d6), ctx->daddr_v6);
+        }
+        lp = bpf_ntohs(ctx->dport);
+        rp = bpf_ntohs(ctx->sport);
+
+        struct syn_track_val stv = { .timestamp = bpf_ktime_get_ns(), .direction = DIR_INBOUND };
+        if (ctx->family == AF_INET) {
+            struct conn_key key = {};
+            make_conn_key(&key, d4, lp, s4, rp);
+            bpf_map_update_elem(&tcp_syn_tracker, &key, &stv, BPF_ANY);
+        } else {
+            struct conn_key_v6 key = {};
+            make_conn_key_v6(&key, &d6, lp, &s6, rp);
+            bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &stv, BPF_ANY);
+        }
+    }
+
+    if (rate_limited)
         return 0;
 
     // Debug counter for SYN_RECV events
@@ -514,21 +546,6 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     e->timestamp = bpf_ktime_get_ns();
 
     fill_process_info(e);
-
-    // Populate SYN tracker for inbound connections so detect_tcp_close can
-    // detect failed handshakes. Key: (server_ip, server_port, client_ip, client_port)
-    // matching what the accepted socket will have at close time.
-    u64 ts = e->timestamp;
-    struct syn_track_val stv = { .timestamp = ts, .direction = DIR_INBOUND };
-    if (ctx->family == AF_INET) {
-        struct conn_key key = {};
-        make_conn_key(&key, e->daddr.addr4, e->lport, e->saddr.addr4, e->rport);
-        bpf_map_update_elem(&tcp_syn_tracker, &key, &stv, BPF_ANY);
-    } else {
-        struct conn_key_v6 key = {};
-        make_conn_key_v6(&key, &e->daddr.addr6, e->lport, &e->saddr.addr6, e->rport);
-        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &stv, BPF_ANY);
-    }
 
     bpf_ringbuf_submit(e, 0);
     return 0;

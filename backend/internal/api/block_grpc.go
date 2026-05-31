@@ -475,6 +475,7 @@ func signHubCommand(hub *Hub, agentID, action, ip, reason, blockType string, dur
 
 		cmd["signature"] = sig
 		cmd["nonce"] = fmt.Sprintf("%d", nonce)
+		cmd["issued_at_unix_nano"] = fmt.Sprintf("%d", issuedAt.UnixNano())
 	}
 
 	hub.SendCommandToAgent(agentID, cmd)

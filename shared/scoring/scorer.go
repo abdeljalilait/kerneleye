@@ -491,10 +491,17 @@ func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, 
 	totalPackets := metrics.SYNCount + metrics.ACKCount
 	if totalPackets > 10 {
 		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
-		if synRatio > 0.75 && synRate > ts.SuspiciousSYNRate {
+		// Mirror calculateSYNScore suppression: suppress SYN reason only when
+		// synRate is moderate AND SYN is a small fraction of total TCP traffic.
+		// Emit reason whenever scoring would actually count SYN as a threat.
+		suppressed := synRate <= ts.SuspiciousSYNRate && synRatio < 0.5
+		if !suppressed && synRate > ts.NormalSYNRate {
 			reasons = append(reasons, fmt.Sprintf("SYN flood: %.1f SYN/sec (%.0f%% SYN ratio)",
 				synRate, synRatio*100))
 		}
+	} else if synRate > ts.SuspiciousSYNRate {
+		// Low total packet count but high SYN rate — still a threat
+		reasons = append(reasons, fmt.Sprintf("SYN flood: %.1f SYN/sec", synRate))
 	}
 
 	if failedRate > ts.FailedHandshakeRate {
