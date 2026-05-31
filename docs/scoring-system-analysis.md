@@ -1,8 +1,9 @@
 # KernelEye Scoring System Analysis
 
 **Date**: 2026-02-20  
-**Status**: Phase 1 (IPSet) - Production Ready  
-**Next**: Phase 2 (XDP), Phase 3 (ML/AI)
+**Status**: Production (XDP + ipset hybrid remediation, HMAC-signed commands)
+
+> Note: Phase 2 (XDP) and Phase 3 have been implemented. Phase 4 (ML/AI) is deferred.
 
 ---
 
@@ -166,7 +167,7 @@ CrowdSec (Reference)
 - Multi-factor analysis
 - Confidence weighting
 
-### Phase 2 (Next) - Statistical Enhancements
+### Phase 2 - Statistical Enhancements ✅ IMPLEMENTED
 ```go
 // Per-server baselines
 type Baseline struct {
@@ -182,7 +183,9 @@ if (synRate - baseline.Avg) / baseline.StdDev > 3 {
 }
 ```
 
-### Phase 3 - ML/AI
+### Phase 3 - ML/AI (Deferred)
+> Note: Phase 4 (ML/AI) has been deferred. Current focus is on hardening
+> the deterministic scoring engine and hybrid remediation pipeline.
 ```go
 // Isolation Forest
 features := []float64{
@@ -221,8 +224,7 @@ threatScorer := &ThreatScorer{
 
 ## Related Files
 
-- `agent/internal/scoring/scorer.go` - Agent scoring implementation
-- `backend/internal/scoring/scorer.go` - Backend scoring
+- `shared/scoring/scorer.go` - Shared threat scoring engine (used by both agent and backend)
 - `agent/remediation/auto_blocker.go` - Auto-blocking based on scores
 
 ---

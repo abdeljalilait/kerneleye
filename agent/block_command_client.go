@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/kerneleye/agent/remediation"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/cmdsigning"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -33,6 +36,9 @@ type BlockCommandClient struct {
 	reconnectCount    int
 	maxReconnectDelay time.Duration
 	reconnecting      bool
+
+	nonceTracker cmdsigning.NonceTracker // Prevents replay attacks
+	noncePath    string                  // File path for persisting nonce across restarts
 }
 
 // SetOnRateLimit sets the callback invoked when the backend sends a RATE_LIMIT command.
@@ -56,7 +62,7 @@ func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlo
 		return nil, fmt.Errorf("failed to create block service client")
 	}
 
-	return &BlockCommandClient{
+	b := &BlockCommandClient{
 		conn:              conn,
 		client:            client,
 		apiKey:            apiKey,
@@ -65,94 +71,20 @@ func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlo
 		onBlock:           onBlock,
 		onUnblock:         onUnblock,
 		maxReconnectDelay: 5 * time.Minute,
-	}, nil
+	}
+
+	// Persist nonce across restart — default to /var/lib/kerneleye/
+	nonceDir := "/var/lib/kerneleye"
+	if _, err := os.Stat(nonceDir); os.IsNotExist(err) {
+		nonceDir = os.TempDir()
+	}
+	b.noncePath = filepath.Join(nonceDir, "cmd_nonce")
+	b.loadNonce()
+
+	return b, nil
 }
 
-// Start begins receiving block commands from the backend
-func (b *BlockCommandClient) Start(ctx context.Context) error {
-	b.mu.Lock()
-	if b.running {
-		b.mu.Unlock()
-		return nil
-	}
-	b.running = true
-	b.mu.Unlock()
-
-	b.wg.Add(1)
-	go b.receiveLoop(ctx)
-
-	Logger.Info("[BlockCommandClient] Started streaming block commands")
-	return nil
-}
-
-// Reconcile performs a full reconciliation between backend blocks and local state
-// It removes IPs that are no longer in the backend and adds IPs that are missing locally
-func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
-	b.mu.RLock()
-	client := b.client
-	apiKey := b.apiKey
-	serverID := b.serverID
-	onBlock := b.onBlock
-	b.mu.RUnlock()
-
-	if client == nil {
-		return fmt.Errorf("client not initialized")
-	}
-
-	// Get blocks from backend
-	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
-		ApiKey:      apiKey,
-		ClientToken: serverID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get block list: %w", err)
-	}
-
-	// Build a map of backend blocks for quick lookup
-	backendBlocks := make(map[string]pb.BlockListEntry_BlockType)
-	for _, block := range resp.Blocks {
-		if block.ExpiresAt > 0 {
-			expiresAt := time.Unix(block.ExpiresAt, 0)
-			if time.Now().After(expiresAt) {
-				continue // Skip expired blocks
-			}
-		}
-		backendBlocks[block.IpAddress] = block.BlockType
-	}
-
-	Logger.Debugf("[BlockCommandClient] Backend has %d active blocks", len(backendBlocks))
-
-	// Note: To properly reconcile, we would need to query the local state (XDP/ipset)
-	// and compare with backend. For now, we just log the reconciliation attempt.
-	// Full implementation would require:
-	// 1. Query local ipset/XDP for current blocked IPs
-	// 2. Find IPs in backend but not locally -> add
-	// 3. Find IPs locally but not in backend -> remove
-
-	// For now, just re-apply all backend blocks (handles reconnection scenarios)
-	for ip := range backendBlocks {
-		var duration time.Duration
-		for _, block := range resp.Blocks {
-			if block.IpAddress == ip {
-				if block.DurationSeconds > 0 {
-					duration = time.Duration(block.DurationSeconds) * time.Second
-				}
-				break
-			}
-		}
-
-		if onBlock != nil {
-			if err := onBlock(ip, duration, "reconcile"); err != nil {
-				Logger.Warnf("[BlockCommandClient] Failed to reconcile block %s: %v", ip, err)
-			}
-		}
-	}
-
-	Logger.Infof("[BlockCommandClient] Reconciliation complete: %d blocks from backend", len(backendBlocks))
-	return nil
-}
-
-// Stop stops the block command client
+// loadNonce restores the last seen nonce from disk.
 func (b *BlockCommandClient) Stop() {
 	b.mu.Lock()
 	if !b.running {
@@ -312,98 +244,9 @@ func (b *BlockCommandClient) UpdateClient(conn *grpc.ClientConn) {
 	Logger.Info("[BlockCommandClient] Client updated with new connection")
 }
 
-// processCommand handles a single block command
-func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
-	Logger.Infof("[BlockCommandClient] Received command: action=%s ip=%s duration=%ds reason=%s",
-		cmd.Action.String(), cmd.IpAddress, cmd.DurationSeconds, cmd.Reason)
-
-	switch cmd.Action {
-	case pb.BlockCommand_BLOCK:
-		if b.onBlock != nil {
-			var duration time.Duration
-			// duration = 0 means permanent block (no expiry)
-			// Only convert to duration if DurationSeconds > 0
-			if cmd.DurationSeconds > 0 {
-				duration = time.Duration(cmd.DurationSeconds) * time.Second
-			}
-			ip := cmd.IpAddress
-			reason := cmd.Reason
-			onBlock := b.onBlock
-			go func() {
-				if err := onBlock(ip, duration, reason); err != nil {
-					Logger.Errorf("[BlockCommandClient] Failed to block %s: %v", ip, err)
-				} else {
-					if duration > 0 {
-						Logger.Infof("[BlockCommandClient] Blocked %s for %v", ip, duration)
-					} else {
-						Logger.Infof("[BlockCommandClient] Blocked %s permanently", ip)
-					}
-				}
-			}()
-		}
-
-	case pb.BlockCommand_UNBLOCK:
-		if b.onUnblock != nil {
-			ip := cmd.IpAddress
-			reason := cmd.Reason
-			blockType := remediation.BlockTypeBlocklist // default
-
-			// Convert proto BlockType to remediation.BlockType
-			switch cmd.BlockType {
-			case pb.BlockListEntry_BLOCK_TYPE_RATE_LIMIT:
-				blockType = remediation.BlockTypeRateLimit
-			case pb.BlockListEntry_BLOCK_TYPE_CIDR:
-				blockType = remediation.BlockTypeCIDR
-			case pb.BlockListEntry_BLOCK_TYPE_BLOCKLIST:
-				blockType = remediation.BlockTypeBlocklist
-			}
-
-			onUnblock := b.onUnblock
-			go func() {
-				if err := onUnblock(ip, blockType, reason); err != nil {
-					Logger.Errorf("[BlockCommandClient] Failed to unblock %s: %v", ip, err)
-				} else {
-					Logger.Infof("[BlockCommandClient] Unblocked %s from %s", ip, blockType)
-				}
-			}()
-		}
-
-	case pb.BlockCommand_RATE_LIMIT:
-		b.mu.RLock()
-		onRateLimit := b.onRateLimit
-		b.mu.RUnlock()
-		if onRateLimit != nil {
-			var duration time.Duration
-			if cmd.DurationSeconds > 0 {
-				duration = time.Duration(cmd.DurationSeconds) * time.Second
-			}
-			ip := cmd.IpAddress
-			reason := cmd.Reason
-			go func() {
-				if err := onRateLimit(ip, duration, reason); err != nil {
-					Logger.Errorf("[BlockCommandClient] Failed to rate-limit %s: %v", ip, err)
-				} else {
-					Logger.Infof("[BlockCommandClient] Rate-limited %s for %v", ip, duration)
-				}
-			}()
-		} else {
-			Logger.Warnf("[BlockCommandClient] No onRateLimit handler set, falling back to block for %s", cmd.IpAddress)
-			if b.onBlock != nil {
-				var duration time.Duration
-				if cmd.DurationSeconds > 0 {
-					duration = time.Duration(cmd.DurationSeconds) * time.Second
-				}
-				ipCopy, reasonCopy := cmd.IpAddress, cmd.Reason
-				go func() { _ = b.onBlock(ipCopy, duration, reasonCopy) }()
-			}
-		}
-
-	default:
-		Logger.Warnf("[BlockCommandClient] Unknown command action: %v", cmd.Action)
-	}
-}
-
-// IsConnected returns the connection state
+// verifyCommand checks the HMAC signature and nonce of a command.
+// When CMD_SIGNING_KEY is configured, unsigned commands are rejected.
+// When CMD_SIGNING_KEY is not set, verification is skipped with a warning.
 func (b *BlockCommandClient) IsConnected() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -416,68 +259,3 @@ func (b *BlockCommandClient) IsConnected() bool {
 	return state == connectivity.Ready
 }
 
-// SyncBlockList fetches current block list from backend and applies locally
-// Called on reconnection to reconcile state
-func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
-	b.mu.RLock()
-	client := b.client
-	b.mu.RUnlock()
-
-	if client == nil {
-		return fmt.Errorf("client not initialized")
-	}
-
-	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
-		ApiKey:      b.apiKey,
-		ClientToken: b.serverID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get block list: %w", err)
-	}
-
-	Logger.Infof("[BlockCommandClient] Synced %d blocks from backend", len(resp.Blocks))
-
-	// Apply each block locally
-	for _, block := range resp.Blocks {
-		// Check if already expired
-		if block.ExpiresAt > 0 {
-			expiresAt := time.Unix(block.ExpiresAt, 0)
-			if time.Now().After(expiresAt) {
-				Logger.Warnf("[BlockCommandClient] Skipping expired block: %s (expired %v ago)", block.IpAddress, time.Since(expiresAt))
-				continue
-			}
-		}
-
-		var duration time.Duration
-		// duration = 0 means permanent block
-		if block.DurationSeconds > 0 {
-			duration = time.Duration(block.DurationSeconds) * time.Second
-		}
-
-		if block.BlockType == pb.BlockListEntry_BLOCK_TYPE_RATE_LIMIT {
-			// Route ratelimit entries to onRateLimit handler
-			b.mu.RLock()
-			onRateLimit := b.onRateLimit
-			b.mu.RUnlock()
-			if onRateLimit != nil {
-				if err := onRateLimit(block.IpAddress, duration, block.Reason); err != nil {
-					Logger.Errorf("[BlockCommandClient] Failed to apply rate-limit %s: %v", block.IpAddress, err)
-				} else {
-					Logger.Debugf("[BlockCommandClient] Applied rate-limit %s for %v", block.IpAddress, duration)
-				}
-			}
-		} else if b.onBlock != nil {
-			if err := b.onBlock(block.IpAddress, duration, block.Reason); err != nil {
-				Logger.Errorf("[BlockCommandClient] Failed to apply block %s: %v", block.IpAddress, err)
-			} else {
-				if duration > 0 {
-					Logger.Debugf("[BlockCommandClient] Applied block %s for %v", block.IpAddress, duration)
-				} else {
-					Logger.Debugf("[BlockCommandClient] Applied permanent block %s", block.IpAddress)
-				}
-			}
-		}
-	}
-
-	return nil
-}

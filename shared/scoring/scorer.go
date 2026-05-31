@@ -92,7 +92,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	synComponent := ts.calculateSYNScore(synRate, metrics)
 	portComponent := ts.calculatePortScore(metrics, connectionRate, windowDuration)
 	failedComponent := ts.calculateFailedScore(failedRate, metrics)
-	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration, metrics.TotalConnections)
+	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration, metrics.TotalConnections, metrics.SYNCount)
 	serviceComponent := ts.calculateServiceAbuseScore(metrics, effectiveWindow)
 
 	if metrics.RSTCount > 5 {
@@ -200,16 +200,21 @@ func (ts *ThreatScorer) calculateConfidence(duration float64) float64 {
 }
 
 func (ts *ThreatScorer) calculateSYNScore(synRate float64, metrics IPMetrics) float64 {
-	totalPackets := metrics.SYNCount + metrics.ACKCount
-	if totalPackets > 10 {
-		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
-		if synRatio < 0.65 && metrics.FailedHandshakes < 3 {
-			return 0
-		}
-	}
-
 	if synRate <= ts.NormalSYNRate {
 		return 0
+	}
+
+	// SYN/ACK ratio check: suppress scoring only when SYN rate is moderate
+	// AND SYN is a small fraction of total TCP traffic. This avoids false
+	// positives from busy servers with many established connections (high ACK,
+	// low SYN) while still catching SYN floods that mix with ACK traffic —
+	// a high SYN rate remains suspicious regardless of ACK volume.
+	totalPackets := metrics.SYNCount + metrics.ACKCount
+	if totalPackets > 10 && synRate <= ts.SuspiciousSYNRate {
+		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
+		if synRatio < 0.5 {
+			return 0
+		}
 	}
 
 	if synRate > ts.SuspiciousSYNRate {
@@ -375,7 +380,7 @@ func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics, windowDura
 	return severity
 }
 
-func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, totalConnections int) float64 {
+func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, totalConnections int, synCount int) float64 {
 	// Check both rate AND absolute volume
 	// High rate with low volume = less concerning
 	// Moderate rate with high volume = sustained attack
@@ -385,14 +390,19 @@ func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, tota
 		return 5.0
 	}
 
-	// Volume-based detection - sustained high volume is suspicious
-	// 500+ connections in any window is notable
+	// Volume-based detection — use SYN-only count to avoid false positives
+	// from high legitimate ACK traffic (established connections).
+	// SYN count represents connection initiation attempts.
+	initiationCount := synCount
+	if initiationCount == 0 {
+		initiationCount = totalConnections
+	}
 	volumeScore := 0.0
-	if totalConnections > 1000 {
+	if initiationCount > 1000 {
 		volumeScore = 3.0
-	} else if totalConnections > 500 {
+	} else if initiationCount > 500 {
 		volumeScore = 2.0
-	} else if totalConnections > 200 {
+	} else if initiationCount > 200 {
 		volumeScore = 1.0
 	}
 
@@ -481,10 +491,17 @@ func (ts *ThreatScorer) generateReasons(metrics IPMetrics, synRate, failedRate, 
 	totalPackets := metrics.SYNCount + metrics.ACKCount
 	if totalPackets > 10 {
 		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
-		if synRatio > 0.75 && synRate > ts.SuspiciousSYNRate {
+		// Mirror calculateSYNScore suppression: suppress SYN reason only when
+		// synRate is moderate AND SYN is a small fraction of total TCP traffic.
+		// Emit reason whenever scoring would actually count SYN as a threat.
+		suppressed := synRate <= ts.SuspiciousSYNRate && synRatio < 0.5
+		if !suppressed && synRate > ts.NormalSYNRate {
 			reasons = append(reasons, fmt.Sprintf("SYN flood: %.1f SYN/sec (%.0f%% SYN ratio)",
 				synRate, synRatio*100))
 		}
+	} else if synRate > ts.SuspiciousSYNRate {
+		// Low total packet count but high SYN rate — still a threat
+		reasons = append(reasons, fmt.Sprintf("SYN flood: %.1f SYN/sec", synRate))
 	}
 
 	if failedRate > ts.FailedHandshakeRate {

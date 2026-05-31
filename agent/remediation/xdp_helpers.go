@@ -74,6 +74,28 @@ type xdpObjects struct {
 	XdpBlockEvents   *ebpf.Map     `ebpf:"xdp_block_events"`
 }
 
+// MapStateSnapshot captures the identity and integrity state of a loaded eBPF map.
+type MapStateSnapshot struct {
+	Name        string          // Map name (e.g., "xdp_blocklist")
+	MapID       ebpf.MapID      // Kernel BPF map ID (from MapInfo.ID())
+	PinnedPath  string          // Expected pinned path
+	Frozen      bool            // True if Map.Freeze() was called
+	TrustLevel  MapTrustLevel   // Sensitivity classification
+	ContentHash string          // SHA-256 of all entries (blank for Low trust maps)
+	EntryCount  int             // Number of entries at snapshot time
+	CapturedAt  time.Time       // When the snapshot was taken
+}
+
+// WriteAuditEntry records a single write operation to a high-trust map.
+type WriteAuditEntry struct {
+	MapName        string
+	Action         string // "insert", "delete", "update"
+	Key            string
+	Source         string // "backend_command", "local_auto_block", "manual"
+	SignatureValid bool
+	Timestamp      time.Time
+}
+
 // XDPConfig options for XDP remediator
 type XDPConfig struct {
 	InterfaceName string

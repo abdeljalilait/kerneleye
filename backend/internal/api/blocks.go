@@ -288,21 +288,13 @@ func HandleUnblockIP(queries *database.Queries, hub *Hub, blockManager BlockMana
 			// Don't fail the unblock if this errors
 		}
 
-		// Update BlockManager's activeBlocks to prevent re-block until restart
+		// Update BlockManager's activeBlocks to prevent re-block until restart.
+		// BlockManager.Unblock sends a signed command to the agent via the Hub.
 		if blockManager != nil {
 			if err := blockManager.Unblock(c.Context(), ip, req.Reason); err != nil {
 				log.Printf("[Unblock] Warning: failed to update block manager: %v", err)
 			}
 		}
-
-		// Send unblock command to agent via agent channel
-		serverIDStr := block.ServerID.String()
-		hub.SendCommandToAgent(serverIDStr, map[string]interface{}{
-			"action":   "unblock",
-			"ip":       ip,
-			"reason":   req.Reason,
-			"block_id": block.ID.String(),
-		})
 
 		// Also send to dashboard via WebSocket for UI update
 		hub.BroadcastToUser(userID, "unblock_ip", map[string]interface{}{

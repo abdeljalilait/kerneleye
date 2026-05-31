@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,8 +13,10 @@ import (
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/geoip"
 	kerneleyev1 "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/cmdsigning"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // BlockHandler implements the BlockService gRPC interface
@@ -193,16 +197,30 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 	if whitelisted, err := h.queries.GetWhitelistedIPs(stream.Context(), server.UserID); err != nil {
 		log.Printf("[BlockHandler] Failed to load whitelist for agent %s: %v", clientID, err)
 	} else {
+		signingKey := cmdsigning.Key()
 		for _, ip := range whitelisted {
 			for _, bt := range []kerneleyev1.BlockListEntry_BlockType{
 				kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST,
 				kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT,
 			} {
+				nonce := time.Now().UnixNano()
+				issuedAt := time.Now()
+				payload := cmdsigning.BuildCanonicalPayload(
+					int32(kerneleyev1.BlockCommand_UNBLOCK),
+					ip.String(), 0, "whitelisted", "", int32(bt), issuedAt.UnixNano(),
+				)
+				var signature []byte
+				if signingKey != "" {
+					signature = cmdsigning.Sign(signingKey, nonce, payload)
+				}
 				if err := stream.Send(&kerneleyev1.BlockCommand{
 					Action:    kerneleyev1.BlockCommand_UNBLOCK,
 					IpAddress: ip.String(),
 					Reason:    "whitelisted",
 					BlockType: bt,
+					IssuedAt:  timestamppb.New(issuedAt),
+					Signature: signature,
+					Nonce:     nonce,
 				}); err != nil {
 					log.Printf("[BlockHandler] Failed to send whitelist snapshot command: %v", err)
 					return err
@@ -253,6 +271,28 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 			reason, _ := cmd["reason"].(string)
 			blockID, _ := cmd["block_id"].(string)
 
+			// Propagate command signature and nonce for agent-side verification
+			var signature []byte
+			var nonce int64
+			if sig, ok := cmd["signature"].([]byte); ok {
+				signature = sig
+			}
+			if nStr, ok := cmd["nonce"].(string); ok {
+				if n, err := strconv.ParseInt(nStr, 10, 64); err == nil {
+					nonce = n
+				}
+			}
+
+			// Use the signed issued_at timestamp so the agent can verify the
+			// signature against the same bytes that were signed. Fall back to
+			// timestamppb.Now() for unsigned commands or missing field.
+			issuedAt := timestamppb.Now()
+			if issuedStr, ok := cmd["issued_at_unix_nano"].(string); ok {
+				if issuedNano, err := strconv.ParseInt(issuedStr, 10, 64); err == nil {
+					issuedAt = timestamppb.New(time.Unix(0, issuedNano))
+				}
+			}
+
 			pbCmd := &kerneleyev1.BlockCommand{
 				Action:          action,
 				IpAddress:       ip,
@@ -260,6 +300,9 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				Reason:          reason,
 				BlockId:         blockID,
 				BlockType:       blockType,
+				IssuedAt:        issuedAt,
+				Signature:       signature,
+				Nonce:           nonce,
 			}
 			if err := stream.Send(pbCmd); err != nil {
 				log.Printf("[BlockHandler] Failed to send command: %v", err)
@@ -356,8 +399,84 @@ func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlo
 
 	log.Printf("[GetBlockList] Returning %d active blocks for server %s", len(result), server.Hostname)
 
+	// Sign the response blob for integrity verification by agent
+	var sig []byte
+	var nonce int64
+	key := cmdsigning.Key()
+	if key != "" {
+		nonce = time.Now().UnixNano()
+		entries := make([]cmdsigning.BlockListEntry, 0, len(result))
+		for _, b := range result {
+			entries = append(entries, cmdsigning.BlockListEntry{
+				IPAddress:       b.IpAddress,
+				DurationSeconds: b.DurationSeconds,
+				Reason:          b.Reason,
+				BlockType:       int32(b.BlockType),
+				ExpiresAt:       b.ExpiresAt,
+			})
+		}
+		payload := cmdsigning.BuildBlockListPayload(entries)
+		sig = cmdsigning.Sign(key, nonce, payload)
+	} else {
+		log.Printf("[GetBlockList] CMD_SIGNING_KEY not set — block list response is unsigned")
+	}
+
 	return &kerneleyev1.GetBlockListResponse{
 		Blocks:          result,
 		ServerTimestamp: time.Now().Unix(),
+		Signature:       sig,
+		Nonce:           nonce,
 	}, nil
+}
+
+// signHubCommand signs a command map with HMAC-SHA256 and sends it to an agent
+// via the Hub. When CMD_SIGNING_KEY is not set, the command is sent unsigned
+// (the agent will reject it if hardened — dev environments only).
+func signHubCommand(hub *Hub, agentID, action, ip, reason, blockType string, duration int64) {
+	cmd := map[string]interface{}{
+		"action":     action,
+		"ip":         ip,
+		"reason":     reason,
+		"block_type": blockType,
+	}
+	if duration > 0 {
+		cmd["duration"] = duration
+	}
+
+	key := cmdsigning.Key()
+	if key == "" {
+		log.Printf("[signHubCommand] CMD_SIGNING_KEY not set — sending unsigned command to %s (agent will reject if hardened)", agentID)
+	} else {
+		nonce := time.Now().UnixNano()
+		issuedAt := time.Now()
+
+		var actionCode int32
+		switch action {
+		case "block":
+			actionCode = 0
+		case "unblock":
+			actionCode = 1
+		case "ratelimit":
+			actionCode = 2
+		}
+
+		var blockTypeCode int32
+		switch blockType {
+		case "ratelimit":
+			blockTypeCode = 1
+		case "cidr":
+			blockTypeCode = 2
+		default:
+			blockTypeCode = 0
+		}
+
+		payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, "", blockTypeCode, issuedAt.UnixNano())
+		sig := cmdsigning.Sign(key, nonce, payload)
+
+		cmd["signature"] = sig
+		cmd["nonce"] = fmt.Sprintf("%d", nonce)
+		cmd["issued_at_unix_nano"] = fmt.Sprintf("%d", issuedAt.UnixNano())
+	}
+
+	hub.SendCommandToAgent(agentID, cmd)
 }

@@ -30,6 +30,9 @@ service IngestService {
   
   // Agent reports XDP blocked packet events (real-time)
   rpc ReportBlockedPacket(BlockedPacketEvent) returns (BlockedPacketResponse);
+
+  // Agent sends periodic integrity attestation report
+  rpc ReportIntegrity(IntegrityReport) returns (IntegrityReportResponse);
 }
 
 message RegisterRequest {
@@ -293,4 +296,62 @@ enum BlockReason {
 
 message BlockedPacketResponse {
   bool success = 1;
+}
+
+// ============================================
+// Integrity Attestation (Phase 4)
+// ============================================
+
+// IntegrityReport is sent periodically by the agent to report on the health
+// and integrity of its eBPF runtime state. The backend validates this against
+// expected values and alerts on mismatches.
+message IntegrityReport {
+  string api_key = 1;
+  string agent_id = 2;
+  string agent_version = 3;
+  string agent_binary_hash = 4;  // SHA-256 of the agent binary
+
+  repeated LoadedProgram programs = 5;
+  repeated LoadedMap maps = 6;
+
+  IntegrityStatus status = 7;
+  int64 timestamp = 8;  // Unix nano
+}
+
+message LoadedProgram {
+  string name = 1;
+  uint32 id = 2;          // BPF program ID from the kernel
+  string expected_hash = 3; // SHA-256 of expected bytecode (embedded)
+  string actual_hash = 4;   // SHA-256 computed from the loaded program
+  bool hash_matches = 5;
+}
+
+message LoadedMap {
+  string name = 1;
+  uint32 id = 2;                  // BPF map ID from the kernel
+  string pinned_path = 3;         // e.g., /sys/fs/bpf/kerneleye/xdp_blocklist
+  bool frozen = 4;                // Config maps should be frozen after init
+  TrustLevel trust_level = 5;     // Sensitivity classification
+  bool unexpected_writer_detected = 6;  // A write was detected from an unexpected source
+  bool pinned_path_changed = 7;         // The pinned file was moved or replaced
+  bool config_hash_changed = 8;         // For frozen maps: immutable content was modified
+}
+
+enum TrustLevel {
+  TRUST_LEVEL_LOW = 0;       // Telemetry/debug — no security impact
+  TRUST_LEVEL_MEDIUM = 1;    // Event/stats — impacts observability
+  TRUST_LEVEL_HIGH = 2;      // Blocking/policy — impacts security posture
+  TRUST_LEVEL_VERY_HIGH = 3; // Configuration — must be frozen, any mutation is a security event
+}
+
+message IntegrityStatus {
+  bool healthy = 1;
+  repeated string warnings = 2;
+  repeated string errors = 3;
+}
+
+message IntegrityReportResponse {
+  bool success = 1;
+  string message = 2;
+  bool acknowledged = 3;
 }

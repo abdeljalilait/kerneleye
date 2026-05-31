@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"log"
 	"net"
 	"os"
@@ -24,6 +26,7 @@ import (
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 var AppVersion = "dev"
@@ -139,7 +142,7 @@ func main() {
 		return c.JSON(fiber.Map{
 			"version":      AppVersion,
 			"agent":        "kerneleye-agent",
-			"agentVersion": "0.4.0",
+			"agentVersion": AppVersion,
 		})
 	})
 
@@ -276,7 +279,7 @@ func main() {
 	protected.Delete("/whitelist/:ip", api.RequireDashboardAuth(), api.HandleRemoveFromWhitelist(queries, hub))
 	protected.Get("/whitelist/check", api.HandleCheckWhitelist(queries))
 
-	// gRPC Server setup
+	// gRPC Server setup with optional TLS/mTLS
 	grpcPort := os.Getenv("GRPC_PORT")
 	if grpcPort == "" {
 		grpcPort = "9091"
@@ -287,12 +290,22 @@ func main() {
 		log.Fatalf("Failed to listen for gRPC: %v", err)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(buildGRPCServerOptions()...)
 	pb.RegisterIngestServiceServer(grpcServer, api.NewGrpcIngestHandler(queries, scorer, hub, geoIP))
 	pb.RegisterBlockServiceServer(grpcServer, api.NewBlockHandler(queries, hub, geoIP))
 
 	go func() {
-		log.Printf("📡 KernelEye gRPC Ingestion listening on port %s\n", grpcPort)
+		tlsStatus := "plaintext"
+		if grpcHasTLS() {
+			tlsStatus = "TLS"
+			if os.Getenv("GRPC_MTLS_CA_FILE") != "" {
+				tlsStatus = "mTLS"
+			}
+		}
+		log.Printf("📡 KernelEye gRPC Ingestion listening on port %s (%s)\n", grpcPort, tlsStatus)
+		if !grpcHasTLS() {
+			log.Printf("⚠️  WARNING: gRPC server running without TLS. Set GRPC_TLS_CERT_FILE and GRPC_TLS_KEY_FILE for production.")
+		}
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Printf("gRPC server error: %v", err)
 		}
@@ -308,4 +321,56 @@ func main() {
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// grpcHasTLS reports whether the gRPC server is configured for TLS.
+func grpcHasTLS() bool {
+	return os.Getenv("GRPC_TLS_CERT_FILE") != "" && os.Getenv("GRPC_TLS_KEY_FILE") != ""
+}
+
+// buildGRPCServerOptions returns gRPC server options with TLS/mTLS if configured.
+func buildGRPCServerOptions() []grpc.ServerOption {
+	certFile := os.Getenv("GRPC_TLS_CERT_FILE")
+	keyFile := os.Getenv("GRPC_TLS_KEY_FILE")
+
+	if certFile == "" && keyFile == "" {
+		// No TLS configured — plaintext (dev mode, or behind TLS-terminating proxy).
+		// The agent should use the --insecure flag to connect when this is the case.
+		return nil
+	}
+
+	if certFile == "" || keyFile == "" {
+		log.Fatalf("Incomplete gRPC TLS configuration: both GRPC_TLS_CERT_FILE and GRPC_TLS_KEY_FILE must be set (got cert=%q key=%q)",
+			certFile, keyFile)
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		log.Fatalf("Failed to load gRPC TLS certificate (cert=%s, key=%s): %v", certFile, keyFile, err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS13,
+	}
+
+	// mTLS: verify client certificates against a custom CA
+	caFile := os.Getenv("GRPC_MTLS_CA_FILE")
+	if caFile != "" {
+		caPEM, err := os.ReadFile(caFile)
+		if err != nil {
+			log.Fatalf("Failed to read mTLS CA certificate from %s: %v", caFile, err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caPEM) {
+			log.Fatalf("Failed to parse mTLS CA certificate from %s", caFile)
+		}
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		tlsConfig.ClientCAs = caCertPool
+		log.Printf("🔐 gRPC mTLS enabled: client certificates required (CA: %s)", caFile)
+	} else {
+		log.Printf("🔐 gRPC TLS enabled (server cert only, no client cert verification)")
+	}
+
+	return []grpc.ServerOption{grpc.Creds(credentials.NewTLS(tlsConfig))}
 }

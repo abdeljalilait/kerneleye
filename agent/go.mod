@@ -6,6 +6,7 @@ require (
 	github.com/cilium/ebpf v0.20.0
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
+	github.com/kerneleye/shared/cmdsigning v0.0.0
 	github.com/kerneleye/shared/scoring v0.1.0
 	github.com/vishvananda/netlink v1.3.1
 	go.uber.org/zap v1.27.1
@@ -33,5 +34,7 @@ require (
 )
 
 replace github.com/kerneleye/proto => ../proto/gen/go
+
+replace github.com/kerneleye/shared/cmdsigning => ../shared/cmdsigning
 
 replace github.com/kerneleye/shared/scoring => ../shared/scoring

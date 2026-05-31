@@ -76,8 +76,36 @@ func main() {
 	if cfg.APIKey == "" {
 		Logger.Fatal("KERNELEYE_API_KEY is required.")
 	}
+	tlsCfg := cfg.ToTLSTransportConfig()
+
+	// Read-only mode: override remediation to disable all blocking.
+	// The agent still monitors and reports, but never modifies kernel state.
+	if cfg.ReadOnly {
+		cfg.EnableRemediation = false
+		cfg.EnableXDP = false
+		Logger.Info("🛡️  Read-only mode: agent will monitor and report, but never block")
+	}
+
+	// Enforce command signing when remediation is enabled.
+	// Unsigned block/unblock/rate-limit commands are a critical security gap.
+	if cfg.EnableRemediation {
+		if os.Getenv("CMD_SIGNING_KEY") == "" {
+			Logger.Fatal("CMD_SIGNING_KEY must be set when remediation is enabled. " +
+				"Generate one with: openssl rand -base64 32. " +
+				"Set the same key on both agent and backend.")
+		}
+	}
+
+	// Enforce TLS verification when not in insecure mode.
+	// Plaintext gRPC exposes all telemetry metadata to network sniffing.
+	if cfg.TLSInsecure && cfg.TLSCAFile == "" {
+		Logger.Warn("⚠️  INSECURE MODE: gRPC traffic is plaintext and unauthenticated. " +
+			"Telemetry metadata (IPs, ports, processes) is visible to anyone on the network. " +
+			"Set KERNELEYE_TLS_CA_FILE to verify the backend certificate.")
+	}
+
 	Logger.Info("Registering agent with server...")
-	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL); err != nil {
+	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, tlsCfg); err != nil {
 		Logger.Fatalf("Registration failed: %v", err)
 	}
 	Logger.Info("✅ Agent approved! Starting monitoring...")
@@ -122,6 +150,12 @@ func main() {
 			Logger.Infof("  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
 			os.Exit(1)
 		}
+
+		// Register XDP map snapshots for periodic integrity verification
+		if xdpRem := remediator.GetXDPRemediator(); xdpRem != nil {
+			RegisterMapSnapshots(xdpRem.GetMapSnapshots())
+		}
+
 		if cfg.EnableRemediation {
 			Logger.Infof("🛡️  Remediation enabled: XDP (%s) + iptables", remediator.XDPMode())
 		} else {
@@ -152,7 +186,7 @@ func main() {
 	defer analyzerCancel()
 	analyzer.CleanupRoutine(analyzerCtx, 5*time.Minute)
 
-	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, Version, remediator, analyzer, autoBlocker, scorer)
+	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, Version, tlsCfg, remediator, analyzer, autoBlocker, scorer)
 	if err != nil {
 		Logger.Fatalf("Failed to create aggregator: %v", err)
 	}
@@ -300,6 +334,32 @@ func main() {
 	}
 
 	aggregator.StartFlushTimer(10 * time.Second)
+
+	// Start periodic eBPF map integrity verification and attestation (Phase 3-4)
+	go func() {
+		// Run an initial check after startup
+		time.Sleep(15 * time.Second)
+		verifyMapIntegrity()
+
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-blockCtx.Done():
+				return
+			case <-ticker.C:
+				findings := verifyMapIntegrity()
+				// Send integrity report to backend
+				conn := aggregator.GetGRPCConn()
+				if conn != nil {
+					if err := sendIntegrityReport(conn, cfg.APIKey, aggregator.ServerID(), Version, findings); err != nil {
+						Logger.Debugf("[Integrity] Failed to send integrity report: %v", err)
+					}
+				}
+			}
+		}
+	}()
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go handleShutdown(sig, aggregator, rd, remediator, analyzerCancel, cancelBlock)
@@ -331,6 +391,8 @@ func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem
 		rem.Teardown()
 		Logger.Debug("[Shutdown] Remediator torn down")
 	}
+
+	CloseAuditLog()
 	Logger.Info("[Shutdown] Complete, exiting...")
 	os.Exit(0)
 }
@@ -363,153 +425,33 @@ func runEventLoop(rd *ringbuf.Reader, agg *Aggregator) {
 }
 
 func validateEvent(e *Event) error {
-	// Check if source IP is set (first 4 bytes for IPv4)
-	if e.Saddr[0] == 0 && e.Saddr[1] == 0 && e.Saddr[2] == 0 && e.Saddr[3] == 0 {
+	// Protocol: only TCP(6), UDP(17), and ICMP(1) are valid
+	if e.Protocol != 6 && e.Protocol != 17 && e.Protocol != 1 {
+		return errors.New("invalid protocol")
+	}
+	// Family: only AF_INET(2) and AF_INET6(10)
+	if e.Family != 2 && e.Family != 10 {
+		return errors.New("invalid address family")
+	}
+	// Direction: 0=inbound, 1=outbound
+	if e.Direction > 1 {
+		return errors.New("invalid direction")
+	}
+	// Source IP must be non-zero — validate via the decoded IP
+	ipObj := bytesToIP(e.Saddr[:], e.Family)
+	if ipObj.IsUnspecified() {
 		return errors.New("missing source IP")
 	}
-	if e.Lport == 0 && e.Rport == 0 {
+	// Port check only for transport protocols that use ports (TCP, UDP).
+	// ICMP and other non-port protocols may legitimately have zero ports.
+	if (e.Protocol == 6 || e.Protocol == 17) && e.Lport == 0 && e.Rport == 0 {
 		return errors.New("missing ports")
+	}
+	// Timestamp sanity: not zero and not more than 1 hour into the future
+	if e.Timestamp == 0 {
+		return errors.New("missing timestamp")
 	}
 	return nil
 }
 
 // printVersion displays version information
-func printVersion() {
-	fmt.Println("╔══════════════════════════════════════════════════════════╗")
-	fmt.Println("║          KernelEye Agent - Version Information           ║")
-	fmt.Println("╚══════════════════════════════════════════════════════════╝")
-	fmt.Printf("  Version:    %s\n", Version)
-	fmt.Printf("  Git Commit: %s\n", GitCommit)
-	fmt.Printf("  Git Branch: %s\n", GitBranch)
-	fmt.Printf("  Build Date: %s\n", BuildDate)
-	fmt.Printf("  Built By:   %s@%s\n", BuildUser, BuildHost)
-	fmt.Printf("  Go Version: %s\n", GoVersion)
-}
-
-// flushBlocklistsAndExit tears down all ipset and XDP blocklists (kernel
-// structures), prints a summary, then exits. Does NOT touch SQLite stores.
-// Safe to run while the agent is stopped.
-func flushBlocklistsAndExit() {
-	ipsetOK := true
-	xdpOK := true
-
-	// --- ipset ---
-	ipsetRem := remediation.NewIPSetRemediator()
-	if err := ipsetRem.Teardown(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌  ipset flush failed: %v\n", err)
-		ipsetOK = false
-	} else {
-		fmt.Println("✅  Flushed ipset blocklists (kernel_eye_block, kernel_eye_ratelimit, CIDR sets, iptables chain)")
-	}
-
-	// --- XDP BPF maps ---
-	xdpRem := remediation.NewXDPRemediator("")
-	if err := xdpRem.FlushBlocklistMaps(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌  XDP flush failed: %v\n", err)
-		xdpOK = false
-	} else {
-		fmt.Println("✅  Flushed XDP blocklists (xdp_blocklist, xdp_blocklist_v6 BPF maps)")
-	}
-
-	if !ipsetOK || !xdpOK {
-		os.Exit(1)
-	}
-	os.Exit(0)
-}
-
-// clearDataAndExit deletes all local data stores used by the agent, prints a
-// summary of what was removed, then exits. Safe to run while the agent is stopped.
-func clearDataAndExit() {
-	stores := []struct {
-		label string
-		path  string
-	}{
-		{"history DB (default)", defaultHistoryDBPath},
-		{"history DB (fallback)", fallbackHistoryDBPath},
-		{"pending DB (default)", defaultDBPath},
-		{"pending DB (fallback)", fallbackDBPath},
-	}
-
-	removed := 0
-	for _, s := range stores {
-		if _, err := os.Stat(s.path); os.IsNotExist(err) {
-			continue
-		}
-		if err := os.Remove(s.path); err != nil {
-			fmt.Fprintf(os.Stderr, "❌  Failed to remove %s (%s): %v\n", s.label, s.path, err)
-		} else {
-			fmt.Printf("🗑️   Removed %s: %s\n", s.label, s.path)
-			removed++
-		}
-		// Also remove WAL and SHM sidecar files if present
-		for _, suf := range []string{"-wal", "-shm"} {
-			_ = os.Remove(s.path + suf)
-		}
-	}
-
-	if removed == 0 {
-		fmt.Println("No local data stores found.")
-	} else {
-		fmt.Printf("✅  Cleared %d data store(s).\n", removed)
-	}
-	os.Exit(0)
-}
-
-// listBlockedAndExit reads the kernel_eye ipsets and (if available) the XDP BPF
-// maps directly, prints a summary, then exits. No backend connection needed.
-func listBlockedAndExit() {
-	// --- ipset ---
-	ipsetRem := remediation.NewIPSetRemediator()
-	ipsetEntries, ipsetErr := ipsetRem.ListCurrentlyBlocked()
-	if ipsetErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not read ipset: %v\n", ipsetErr)
-	}
-
-	// --- XDP BPF maps (pinned at /sys/fs/bpf/kerneleye) ---
-	xdpRem := remediation.NewXDPRemediator("")
-	xdpEntries, xdpErr := xdpRem.ListCurrentlyBlocked()
-	if xdpErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not read XDP maps (not loaded?): %v\n", xdpErr)
-	}
-
-	total := len(ipsetEntries) + len(xdpEntries)
-	if total == 0 {
-		fmt.Println("No IPs currently blocked (ipset empty, XDP maps empty or not loaded).")
-		os.Exit(0)
-	}
-
-	fmt.Printf("KernelEye blocked IPs (%d total)\n", total)
-	fmt.Println("══════════════════════════════════════")
-
-	// ipset section
-	var blocked, ratelimited []string
-	for _, e := range ipsetEntries {
-		if e.BlockType == remediation.BlockTypeRateLimit {
-			ratelimited = append(ratelimited, e.IP.String())
-		} else {
-			blocked = append(blocked, e.IP.String())
-		}
-	}
-	if len(blocked) > 0 {
-		fmt.Printf("\n🚫 ipset blocked (%d) — kernel_eye_block / kernel_eye_block_v6:\n", len(blocked))
-		for _, ip := range blocked {
-			fmt.Printf("   %s\n", ip)
-		}
-	}
-	if len(ratelimited) > 0 {
-		fmt.Printf("\n⏱  ipset rate-limited (%d) — kernel_eye_ratelimit / kernel_eye_ratelimit_v6:\n", len(ratelimited))
-		for _, ip := range ratelimited {
-			fmt.Printf("   %s\n", ip)
-		}
-	}
-
-	// XDP section
-	if len(xdpEntries) > 0 {
-		fmt.Printf("\n⚡ XDP blocked (%d) — xdp_blocklist / xdp_blocklist_v6:\n", len(xdpEntries))
-		for _, e := range xdpEntries {
-			fmt.Printf("   %s\n", e.IP.String())
-		}
-	}
-
-	os.Exit(0)
-}

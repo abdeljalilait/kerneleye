@@ -403,12 +403,8 @@ VALUES ($1)
 RETURNING id, email, created_at, updated_at, refresh_token, refresh_token_expires_at
 `
 
-type CreateUserParams struct {
-	Email string `json:"email"`
-}
-
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email)
+func (q *Queries) CreateUser(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, createUser, email)
 	var i User
 	err := row.Scan(
 		&i.ID,

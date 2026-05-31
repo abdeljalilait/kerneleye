@@ -122,3 +122,78 @@ func (bt BlockType) String() string {
 		return "unspecified"
 	}
 }
+
+// MapTrustLevel classifies eBPF maps by their security sensitivity.
+// Higher levels require stricter access controls and integrity checking.
+type MapTrustLevel uint8
+
+const (
+	// TrustLevelLow — telemetry/debug maps. No security impact if tampered.
+	TrustLevelLow MapTrustLevel = 0
+
+	// TrustLevelMedium — event/stat maps. Tampering degrades observability but
+	// does not directly alter security posture.
+	TrustLevelMedium MapTrustLevel = 1
+
+	// TrustLevelHigh — blocking/policy maps. Tampering could allow/deny traffic
+	// incorrectly. All writes must be audited.
+	TrustLevelHigh MapTrustLevel = 2
+
+	// TrustLevelVeryHigh — configuration maps. Must be frozen after initial
+	// configuration. Any mutation is a security event.
+	TrustLevelVeryHigh MapTrustLevel = 3
+)
+
+func (tl MapTrustLevel) String() string {
+	switch tl {
+	case TrustLevelLow:
+		return "low"
+	case TrustLevelMedium:
+		return "medium"
+	case TrustLevelHigh:
+		return "high"
+	case TrustLevelVeryHigh:
+		return "very_high"
+	default:
+		return "unknown"
+	}
+}
+
+// MapClassification describes the security posture of a single eBPF map.
+type MapClassification struct {
+	Name       string
+	TrustLevel MapTrustLevel
+	Frozen     bool // If true, the map should be read-only after initialization
+	AuditWrites bool // If true, all writes to this map should be logged
+}
+
+// ClassifyMaps returns the security classification for all known KernelEye maps.
+func ClassifyMaps() []MapClassification {
+	return []MapClassification{
+		// Traffic probe maps
+		{Name: "events", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
+		{Name: "rate_limiter", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "syn_tracker", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "debug_counters", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "ip_stats", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
+
+		// XDP firewall maps
+		{Name: "xdp_blocklist", TrustLevel: TrustLevelHigh, Frozen: false, AuditWrites: true},
+		{Name: "xdp_blocklist_v6", TrustLevel: TrustLevelHigh, Frozen: false, AuditWrites: true},
+		{Name: "xdp_cidr_blocklist", TrustLevel: TrustLevelHigh, Frozen: false, AuditWrites: true},
+		{Name: "xdp_rate_limit", TrustLevel: TrustLevelHigh, Frozen: false, AuditWrites: true},
+		{Name: "xdp_stats", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
+		{Name: "xdp_block_events", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
+		{Name: "xdp_rate_config", TrustLevel: TrustLevelVeryHigh, Frozen: true, AuditWrites: true},
+	}
+}
+
+// MapClassificationByName returns the classification for a given map name.
+func MapClassificationByName(name string) (MapClassification, bool) {
+	for _, c := range ClassifyMaps() {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return MapClassification{}, false
+}

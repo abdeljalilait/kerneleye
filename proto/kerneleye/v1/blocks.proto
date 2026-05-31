@@ -132,9 +132,16 @@ message BlockListEntry {
 message GetBlockListResponse {
   repeated BlockListEntry blocks = 1;
   int64 server_timestamp = 2;
+
+  // HMAC-SHA256 signature over the canonical serialization of the blocks list.
+  // Signed with CMD_SIGNING_KEY to prove authenticity.
+  bytes signature = 3;
+  int64 nonce = 4;
 }
 
-// BlockCommand - Backend sends command to agent
+// BlockCommand - Backend sends command to agent.
+// Commands are HMAC-signed by the backend to prove authenticity.
+// Agents MUST verify the signature before executing any action.
 message BlockCommand {
   enum Action {
     BLOCK = 0;
@@ -151,4 +158,12 @@ message BlockCommand {
   
   // Block type - which list to add/remove from
   BlockListEntry.BlockType block_type = 7;
+
+  // HMAC-SHA256 signature over the canonical serialization of fields 1-10
+  // (excluding this field). The signing key is shared via CMD_SIGNING_KEY.
+  bytes signature = 8;
+
+  // Monotonic nonce to prevent replay attacks. Agents reject any command
+  // with a nonce less than or equal to the last observed nonce.
+  int64 nonce = 9;
 }

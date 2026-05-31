@@ -74,18 +74,8 @@ func HandleAddToWhitelist(queries *database.Queries, hub *Hub) fiber.Handler {
 					if agentID == "" {
 						continue
 					}
-					hub.SendCommandToAgent(agentID, map[string]interface{}{
-						"action":     "unblock",
-						"ip":         req.IPAddress,
-						"reason":     "whitelisted",
-						"block_type": "blocklist",
-					})
-					hub.SendCommandToAgent(agentID, map[string]interface{}{
-						"action":     "unblock",
-						"ip":         req.IPAddress,
-						"reason":     "whitelisted",
-						"block_type": "ratelimit",
-					})
+					signHubCommand(hub, agentID, "unblock", req.IPAddress, "whitelisted", "blocklist", 0)
+					signHubCommand(hub, agentID, "unblock", req.IPAddress, "whitelisted", "ratelimit", 0)
 				}
 				log.Printf("[Whitelist] Sent unblock fanout for %s to %d agents", req.IPAddress, len(servers))
 			}
@@ -143,18 +133,8 @@ func HandleRemoveFromWhitelist(queries *database.Queries, hub *Hub) fiber.Handle
 					if agentID == "" {
 						continue
 					}
-					hub.SendCommandToAgent(agentID, map[string]interface{}{
-						"action":     "unblock",
-						"ip":         ipStr,
-						"reason":     "whitelist_removed",
-						"block_type": "blocklist",
-					})
-					hub.SendCommandToAgent(agentID, map[string]interface{}{
-						"action":     "unblock",
-						"ip":         ipStr,
-						"reason":     "whitelist_removed",
-						"block_type": "ratelimit",
-					})
+					signHubCommand(hub, agentID, "unblock", ipStr, "whitelist_removed", "blocklist", 0)
+					signHubCommand(hub, agentID, "unblock", ipStr, "whitelist_removed", "ratelimit", 0)
 				}
 				log.Printf("[Whitelist] Sent whitelist removal fanout for %s to %d agents", ipStr, len(servers))
 			}

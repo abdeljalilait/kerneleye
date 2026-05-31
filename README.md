@@ -16,7 +16,9 @@ KernelEye is a self-hosted security monitoring platform for Linux servers. It us
 - Agent-side analysis and optional automatic remediation.
 - XDP fast-path packet blocking and ipset/iptables fallback.
 - Backend-side analysis workers, block management, data retention, and monthly reports.
-- gRPC ingestion and block command streaming between agent and backend.
+- gRPC ingestion and block command streaming between agent and backend with TLS/mTLS encryption and HMAC command signing.
+- Monotonic nonce replay protection and structured audit logging for all remediation actions.
+- Periodic eBPF map integrity verification and state attestation reports.
 - React dashboard with WebSocket updates, server detail views, blocked IP management, whitelisting, reports, and analytics.
 - GeoIP enrichment when MaxMind databases are configured.
 - OAuth support for GitHub and Google (single-owner self-hosted access).
@@ -28,14 +30,15 @@ KernelEye is a self-hosted security monitoring platform for Linux servers. It us
 Monitored Linux host
   eBPF traffic probe + TC bandwidth hooks
   XDP firewall and ipset/iptables remediation
-  Go agent
+  Go agent (HMAC command verification, audit log)
       |
-      | gRPC ingestion and block commands
+      | gRPC (TLS/mTLS) + HMAC-signed block commands
       v
 Go backend API
   Fiber HTTP API
-  gRPC ingest/block services
+  gRPC ingest/block services (TLS/mTLS, command signing)
   analysis worker, block manager, retention, reports
+  integrity report handler
       |
       v
 PostgreSQL
@@ -93,6 +96,7 @@ The public marketing site lives in `kerneleye-landing-page/`. The production fro
 ### Shared Code and Protocols
 
 - `shared/scoring/` contains the shared threat scoring module used by both agent and backend.
+- `shared/cmdsigning/` contains the HMAC-SHA256 command signing and nonce replay protection module.
 - `proto/kerneleye/v1/` contains protobuf definitions for ingest and block services.
 - `proto/gen/go/` contains generated Go protobuf code.
 
@@ -216,11 +220,19 @@ Useful agent flags:
 -enable-remediation     enable active blocking and auto-blocking
 -xdp                    enable XDP fast-path blocking
 -interface <name>       select XDP network interface
+--read-only             monitor and report only, never block
+--insecure              disable TLS (dev only)
+--tls-ca-file <path>    backend CA certificate for TLS verification
+--tls-cert-file <path>  agent client certificate for mTLS
+--tls-key-file <path>   agent client private key for mTLS
 -list-blocked           print current ipset state and exit
 -flush-blocklists       flush ipset and XDP blocklists and exit
 -clear-data             remove local agent SQLite stores and exit
 -version                print build version
 ```
+
+When `--enable-remediation` is set, `CMD_SIGNING_KEY` must be configured on
+both agent and backend. Generate with `openssl rand -base64 32`.
 
 ## Project Structure
 
@@ -242,7 +254,9 @@ kerneleye/
 ├── dashboard/                 React dashboard app
 ├── kerneleye-landing-page/    React landing page app
 ├── proto/                     protobuf definitions and generated Go code
-├── shared/scoring/            shared threat scoring Go module
+├── shared/
+│   ├── scoring/            shared threat scoring Go module
+│   └── cmdsigning/         HMAC command signing and nonce tracking
 ├── docs/                      additional project documentation
 ├── tests/                     traffic simulation shell scripts
 ├── docker/                    frontend nginx and install script templates
@@ -283,14 +297,14 @@ The frontend Docker image builds the landing page, dashboard, and a downloadable
 
 - [Getting Started](docs/getting-started.md)
 - [Development Guide](docs/development.md)
+- [Codebase Index](docs/codebase-index.md)
+- [Security Architecture](docs/SECURITY_ARCHITECTURE.md)
+- [Threat Model](docs/THREAT_MODEL.md)
+- [Trust Model](docs/TRUST_MODEL.md)
+- [Scoring System Analysis](docs/scoring-system-analysis.md)
 - [Agent Architecture](agent/README.md)
 - [Remediation](agent/remediation/README.md)
-- [Scoring System Analysis](docs/scoring-system-analysis.md)
-- [Codebase Index](docs/codebase-index.md)
-- [Security Audit Middleware](docs/security-audit-middleware.md)
 - [Database Migrations](backend/migrations/)
-
-Some older docs still describe earlier MVP assumptions; the top-level README reflects the current repository layout and runtime behavior.
 
 ## Contact
 

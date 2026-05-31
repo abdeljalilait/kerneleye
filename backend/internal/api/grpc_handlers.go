@@ -228,6 +228,12 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		return nil, status.Errorf(codes.PermissionDenied, "Server not active")
 	}
 
+	const maxBatchSize = 10000
+	if len(req.Events) > maxBatchSize {
+		log.Printf("[gRPC Traffic] Rejecting oversized batch from %s: %d events (max %d)", server.Hostname, len(req.Events), maxBatchSize)
+		return nil, status.Errorf(codes.InvalidArgument, "Batch too large: %d events (max %d)", len(req.Events), maxBatchSize)
+	}
+
 	// Update last_seen
 	_ = h.queries.UpdateServerHeartbeat(ctx, database.UpdateServerHeartbeatParams{
 		ApiKey:       server.ApiKey,
@@ -265,7 +271,8 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		direction := directionLabel(event.Direction)
 
 		protocol := protocolToString(event.Protocol)
-		serviceName := resolveServiceName(event.ProcessName, int(event.DestinationPort), event.Protocol)
+		processName := sanitizeProcessName(event.ProcessName)
+		serviceName := resolveServiceName(processName, int(event.DestinationPort), event.Protocol)
 
 		_, err = h.queries.UpsertTrafficEvent(ctx, database.UpsertTrafficEventParams{
 			ServerID:             server.ID,
@@ -504,6 +511,21 @@ func getServiceFromPort(port int) string {
 //  1. Process name from eBPF comm field (works for custom ports, e.g. sshd on 2222)
 //  2. Well-known port number lookup (fallback when process name is unavailable)
 //  3. L4 protocol string as last resort
+// sanitizeProcessName strips non-printable characters and truncates to 15 chars
+// (TASK_COMM_LEN-1). The eBPF comm field is max 16 bytes including null terminator.
+func sanitizeProcessName(name string) string {
+	var buf []byte
+	for _, r := range name {
+		if r >= 0x20 && r < 0x7F {
+			buf = append(buf, byte(r))
+		}
+		if len(buf) >= 15 {
+			break
+		}
+	}
+	return string(buf)
+}
+
 func resolveServiceName(processName string, port int, proto pb.Protocol) string {
 	return services.ResolveService(processName, port, protocolToString(proto))
 }
@@ -868,5 +890,75 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 
 	return &pb.BlockedIPResponse{
 		Success: true,
+	}, nil
+}
+
+// ReportIntegrity handles periodic integrity attestation reports from agents.
+// It validates agent-reported state against expected values and broadcasts
+// integrity alerts to the dashboard via WebSocket.
+func (h *GrpcIngestHandler) ReportIntegrity(ctx context.Context, req *pb.IntegrityReport) (*pb.IntegrityReportResponse, error) {
+	// Authenticate the agent
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "invalid API key")
+	}
+
+	if server.Status != "active" {
+		return nil, status.Errorf(codes.PermissionDenied, "server not active")
+	}
+
+	if req.Status == nil {
+		return nil, status.Error(codes.InvalidArgument, "integrity report is missing Status field")
+	}
+
+	log.Printf("[Integrity] Received report from %s (agent=%s): healthy=%v programs=%d maps=%d",
+		server.Hostname, req.AgentVersion, req.Status.Healthy,
+		len(req.Programs), len(req.Maps))
+
+	// Broadcast integrity status to dashboard
+	integrityData := map[string]interface{}{
+		"server_id":          server.ID.String(),
+		"server_name":        server.Hostname,
+		"agent_version":      req.AgentVersion,
+		"agent_binary_hash":  req.AgentBinaryHash,
+		"healthy":            req.Status.Healthy,
+		"warnings":           req.Status.Warnings,
+		"errors":             req.Status.Errors,
+		"program_count":      len(req.Programs),
+		"map_count":          len(req.Maps),
+		"timestamp":          time.Now(),
+	}
+
+	eventType := "integrity_report"
+
+	// Escalate to alert if integrity check fails
+	if !req.Status.Healthy {
+		eventType = "integrity_alert"
+		log.Printf("[Integrity] ALERT: agent %s reports unhealthy state — errors: %v",
+			server.Hostname, req.Status.Errors)
+	}
+
+	h.hub.BroadcastToUser(database.FromPgUUID(server.UserID), eventType, integrityData)
+
+	// Check for high-severity map issues
+	for _, m := range req.Maps {
+		if m.PinnedPathChanged || m.ConfigHashChanged || m.UnexpectedWriterDetected {
+			log.Printf("[Integrity] Map integrity violation on %s: map=%s pinned_changed=%v hash_changed=%v unexpected_writer=%v",
+				server.Hostname, m.Name, m.PinnedPathChanged, m.ConfigHashChanged, m.UnexpectedWriterDetected)
+		}
+	}
+
+	// Check for program hash mismatches
+	for _, p := range req.Programs {
+		if !p.HashMatches && p.ExpectedHash != "" {
+			log.Printf("[Integrity] Program hash mismatch on %s: %s (expected=%s actual=%s)",
+				server.Hostname, p.Name, p.ExpectedHash, p.ActualHash)
+		}
+	}
+
+	return &pb.IntegrityReportResponse{
+		Success:      true,
+		Message:      "integrity report acknowledged",
+		Acknowledged: true,
 	}, nil
 }
