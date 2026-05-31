@@ -50,7 +50,8 @@ func buildGRPCTarget(serverHost, grpcURL string) string {
 	return normalizeGRPCTarget(target)
 }
 
-// normalizeGRPCTarget applies port defaults and scheme-aware remapping.
+// normalizeGRPCTarget applies port defaults. Plain hostnames default to 443
+// (standard TLS port). Explicit ports are preserved as-is.
 func normalizeGRPCTarget(raw string) string {
 	target := strings.TrimSpace(raw)
 	if target == "" {
@@ -58,19 +59,16 @@ func normalizeGRPCTarget(raw string) string {
 	}
 
 	parsed, err := url.Parse(target)
-	hasSecureScheme := err == nil && (parsed.Scheme == "grpcs" || parsed.Scheme == "https")
+	hasPlainScheme := err == nil && (parsed.Scheme == "grpc" || parsed.Scheme == "http" || parsed.Scheme == "h2c")
 
 	if !strings.Contains(target, ":") {
-		if hasSecureScheme {
-			return target + ":443"
+		if hasPlainScheme {
+			return target + ":80"
 		}
-		return target + ":9091"
+		return target + ":443"
 	}
 
-	if !hasSecureScheme {
-		// Legacy: plain host:443 → gRPC port 9091
-		target = strings.Replace(target, ":443", ":9091", 1)
-	}
+	// Explicit port — preserve as-is. No more :443→:9091 remapping.
 	return target
 }
 
