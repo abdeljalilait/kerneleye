@@ -200,16 +200,21 @@ func (ts *ThreatScorer) calculateConfidence(duration float64) float64 {
 }
 
 func (ts *ThreatScorer) calculateSYNScore(synRate float64, metrics IPMetrics) float64 {
-	totalPackets := metrics.SYNCount + metrics.ACKCount
-	if totalPackets > 10 {
-		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
-		if synRatio < 0.65 && metrics.FailedHandshakes < 3 {
-			return 0
-		}
-	}
-
 	if synRate <= ts.NormalSYNRate {
 		return 0
+	}
+
+	// SYN/ACK ratio check: suppress scoring only when SYN rate is moderate
+	// AND SYN is a small fraction of total TCP traffic. This avoids false
+	// positives from busy servers with many established connections (high ACK,
+	// low SYN) while still catching SYN floods that mix with ACK traffic —
+	// a high SYN rate remains suspicious regardless of ACK volume.
+	totalPackets := metrics.SYNCount + metrics.ACKCount
+	if totalPackets > 10 && synRate <= ts.SuspiciousSYNRate {
+		synRatio := float64(metrics.SYNCount) / float64(totalPackets)
+		if synRatio < 0.5 {
+			return 0
+		}
 	}
 
 	if synRate > ts.SuspiciousSYNRate {

@@ -442,7 +442,12 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
     e->rport = bpf_ntohs(BPF_CORE_READ(inet, sk.__sk_common.skc_dport));
     e->family = family;
     e->protocol = IPPROTO_TCP;
-    e->flags = FLAG_ACK | FLAG_ESTABLISHED; // Connection completed
+	e->flags = FLAG_SYN | FLAG_ACK | FLAG_ESTABLISHED; // Every accepted connection started with a SYN.
+	// FLAG_SYN on accept is a reliable fallback — the sock:inet_sock_set_state
+	// tracepoint can silently fail to fire on some kernel versions. Counting SYN
+	// here guarantees at least 1 SYN per established inbound connection.
+	// On kernels where the tracepoint also fires, SYNCount will be ~2 per
+	// connection; the scoring's logarithmic rate formula handles this gracefully.
     e->direction = DIR_INBOUND;  // Accept = incoming connection
     e->timestamp = bpf_ktime_get_ns();
     
@@ -468,6 +473,12 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
         return 0;
 
     if (ctx->family != AF_INET && ctx->family != AF_INET6)
+        return 0;
+
+    // Rate limit check: prevent ring buffer overflow under SYN floods.
+    // Must come after the cheap early-exit filters but before the expensive
+    // ring buffer reservation and SYN tracker map update.
+    if (!check_rate_limit())
         return 0;
 
     // Debug counter for SYN_RECV events

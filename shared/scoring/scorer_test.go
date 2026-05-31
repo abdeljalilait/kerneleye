@@ -205,3 +205,36 @@ func TestCalculateServiceAbuseScore_RespectsConfiguredThreshold(t *testing.T) {
 		t.Logf("Low rate service abuse should not score high: got %.2f", scoreLowRate)
 	}
 }
+
+// TestCalculateSYNScore_BypassMitigated ensures that SYN floods mixed with
+// ACK traffic are still scored. The old gate returned 0 when SYN ratio < 65%
+// and failed handshakes < 3, allowing attackers to bypass detection by
+// interleaving legitimate ACK traffic with SYN floods.
+func TestCalculateSYNScore_BypassMitigated(t *testing.T) {
+	ts := NewThreatScorer()
+	now := time.Now()
+
+	// Scenario: slow SYN flood (5 SYN/sec) mixed with decoy ACK traffic (10 ACK/sec)
+	// 10s window: 50 SYN, 100 ACK → synRate=5.0 > SuspiciousSYNRate(1.0)
+	metrics := IPMetrics{
+		SYNCount:         50,
+		ACKCount:         100,
+		FailedHandshakes: 0,
+		UniquePorts:      1,
+		TotalConnections: 150,
+		WindowStart:      now.Add(-10 * time.Second),
+		WindowEnd:        now,
+		Direction:        DirectionInbound,
+	}
+
+	score := ts.CalculateScore(metrics)
+	synComponent := score.RawMetrics.SYNComponent
+
+	// SYN component must not be zero — the old code would return 0 here
+	if synComponent <= 0 {
+		t.Fatalf("SYN flood mixed with ACK traffic bypassed detection: SYN component is %.2f (should be > 0)", synComponent)
+	}
+
+	t.Logf("Mixed SYN/ACK flood: SYN component=%.2f, Total score=%d, Level=%s, Reasons=%v",
+		synComponent, score.Score, score.Level, score.Reasons)
+}
