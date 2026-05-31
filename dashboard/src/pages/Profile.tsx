@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 import {
   Card,
   Button,
@@ -15,7 +14,6 @@ import {
   Badge,
   Alert,
   message,
-  Spin,
 } from 'antd';
 import {
   User,
@@ -28,25 +26,19 @@ import {
   Trash2,
   Save,
   Palette,
-  Check,
-  CreditCard,
   Settings,
   Key,
-  LogOut,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { useSubscriptionStatus } from '../hooks/useQueries';
 
 const { Title, Text } = Typography;
 
 export default function Profile() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { theme, setTheme, resolvedTheme } = useTheme();
-  const { data: subscription, isLoading: subLoading } = useSubscriptionStatus();
   
   const [profileForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -82,15 +74,6 @@ export default function Profile() {
     { key: 'notifications', label: 'Notifications', icon: Bell },
   ];
 
-  const getPlanStatus = () => {
-    if (subLoading) return { text: 'Loading...', color: '#6b7280' };
-    if (subscription?.is_trialing) return { text: 'Trial', color: '#f59e0b' };
-    if (subscription?.status === 'active') return { text: 'Active', color: '#10b981' };
-    return { text: 'No Plan', color: '#6b7280' };
-  };
-
-  const planStatus = getPlanStatus();
-
   return (
     <div>
       {/* Header */}
@@ -122,23 +105,16 @@ export default function Profile() {
             bodyStyle={{ padding: 24 }}
           >
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <Badge
-                dot
-                color={planStatus.color}
-                offset={[-8, 80]}
-                style={{ transform: 'scale(1.5)' }}
+              <Avatar
+                size={80}
+                style={{
+                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  fontSize: 28,
+                  fontWeight: 600,
+                }}
               >
-                <Avatar
-                  size={80}
-                  style={{
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                    fontSize: 28,
-                    fontWeight: 600,
-                  }}
-                >
-                  {user?.email ? getInitials(user.email) : 'U'}
-                </Avatar>
-              </Badge>
+                {user?.email ? getInitials(user.email) : 'U'}
+              </Avatar>
             </div>
 
             <div style={{ textAlign: 'center' }}>
@@ -158,33 +134,9 @@ export default function Profile() {
               </Text>
             </div>
 
-            <div style={{ marginTop: 16, textAlign: 'center' }}>
-              {subLoading ? (
-                <Spin size="small" />
-              ) : (
-                <Badge
-                  count={subscription?.plan_display_name || 'No Plan'}
-                  style={{
-                    background: planStatus.color,
-                    fontSize: 11,
-                    padding: '2px 10px',
-                    fontWeight: 600,
-                  }}
-                />
-              )}
-            </div>
-
             <Divider style={{ borderColor: 'var(--kerneleye-colorBorderSecondary)', margin: '20px 0' }} />
 
             <Space direction="vertical" style={{ width: '100%' }} size={8}>
-              <Button
-                block
-                type="primary"
-                icon={<CreditCard size={16} />}
-                onClick={() => navigate({ to: '/dashboard/subscription' })}
-              >
-                Manage Subscription
-              </Button>
               <Button
                 block
                 danger
@@ -392,20 +344,6 @@ export default function Profile() {
                       </Text>
                     </Space>
                     <Badge status="default" text="Disabled" style={{ color: 'var(--kerneleye-colorTextSecondary)' }} />
-                  </Row>
-                  <Divider style={{ borderColor: 'var(--kerneleye-colorBorderSecondary)', margin: '8px 0' }} />
-                  <Row justify="space-between" align="middle">
-                    <Space direction="vertical" size={4}>
-                      <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
-                        Change Password
-                      </Text>
-                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
-                        Update your password regularly for better security
-                      </Text>
-                    </Space>
-                    <Button type="primary" ghost icon={<Key size={16} />}>
-                      Update
-                    </Button>
                   </Row>
                 </Space>
               </Card>

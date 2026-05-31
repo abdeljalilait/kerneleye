@@ -60,14 +60,14 @@ export const featuresSEO: SEOConfig = {
 
 // Pricing page SEO
 export const pricingSEO: SEOConfig = {
-  title: 'Pricing - KernelEye Security Plans',
-  description: 'Simple, transparent pricing for kernel security. Start free for 14 days. Plans for teams of all sizes.',
+  title: 'Self-hosted - KernelEye Security Platform',
+  description: 'Free self-hosted kernel security monitoring for Linux servers. Run KernelEye on your own infrastructure.',
   keywords: [
-    'kernel security pricing',
-    'linux security cost',
-    'ebpf pricing',
-    'security software pricing',
-    'enterprise security',
+    'self hosted kernel security',
+    'linux security monitoring',
+    'ebpf monitoring',
+    'open source security',
+    'server security',
   ],
   ogImage: 'https://kerneleye.net/og-pricing.png',
   canonical: 'https://kerneleye.net/pricing',
@@ -139,7 +139,7 @@ export const softwareApplicationSchema = {
   operatingSystem: 'Linux',
   offers: {
     '@type': 'Offer',
-    price: '49.00',
+    price: '0.00',
     priceCurrency: 'USD',
   },
   aggregateRating: {

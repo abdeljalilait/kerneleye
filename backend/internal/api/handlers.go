@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"math"
 	"strconv"
@@ -985,51 +984,6 @@ func HandleGenerateAPIKey(queries *database.Queries) fiber.Handler {
 
 		userIDStr := userID.(string)
 		log.Printf("[API] GET /servers/generate-api-key - User: %s", userIDStr)
-
-		// Get user's subscription details
-		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userIDStr))
-		if err != nil {
-			log.Printf("[API] GET /servers/generate-api-key - ERROR: Failed to get user %s: %v", userIDStr, err)
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to verify subscription")
-		}
-		log.Printf("[API] GET /servers/generate-api-key - User plan: %s, status: %s, max_servers: %d",
-			user.Plan, user.SubscriptionStatus.String, user.MaxServers)
-
-		// Check if user has an active subscription, trial, or cancel-at-period-end access
-		now := time.Now()
-		isTrialing := user.TrialEndsAt.Valid && user.TrialEndsAt.Time.After(now)
-		hasActiveSub := hasSubscriptionEntitlement(user, now)
-
-		if !hasActiveSub {
-			log.Printf("[API] GET /servers/generate-api-key - ERROR: User %s has no active subscription (status: %s, trialing: %v)",
-				userIDStr, user.SubscriptionStatus.String, isTrialing)
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":         "No active subscription",
-				"message":       "You need an active subscription or trial to add servers.",
-				"code":          "NO_SUBSCRIPTION",
-				"subscribe_url": "/subscription",
-			})
-		}
-
-		// Count current servers
-		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userIDStr))
-		if err != nil {
-			log.Printf("[API] GET /servers/generate-api-key - ERROR: Failed to count servers for user %s: %v", userIDStr, err)
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to count servers")
-		}
-		log.Printf("[API] GET /servers/generate-api-key - Current servers: %d/%d", serverCount, user.MaxServers)
-
-		// Check if user has reached their server limit
-		if int32(serverCount) >= user.MaxServers {
-			log.Printf("[API] GET /servers/generate-api-key - ERROR: User %s has reached server limit (%d/%d)", userIDStr, serverCount, user.MaxServers)
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":       "Server limit reached",
-				"message":     fmt.Sprintf("Your %s plan allows up to %d servers. Please upgrade to add more.", user.Plan, user.MaxServers),
-				"current":     serverCount,
-				"limit":       user.MaxServers,
-				"upgrade_url": "/subscription",
-			})
-		}
 
 		// Generate a placeholder server ID for the API key
 		// The actual server will be created when the agent registers

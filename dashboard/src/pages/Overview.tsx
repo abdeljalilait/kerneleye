@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
-import { Server as ServerIcon, Shield, AlertTriangle, Crown, Sparkles } from 'lucide-react'
-import { Row, Col, Typography, Card, Space, Tag, theme } from 'antd'
-import { useNavigate } from '@tanstack/react-router'
+import { Server as ServerIcon, Shield, AlertTriangle, Ban } from 'lucide-react'
+import { Row, Col, Typography, Space, Tag, theme } from 'antd'
 import StatCard from '../components/StatCard'
 import TrafficChart from '../components/TrafficChart'
 import ThreatsList from '../components/ThreatsList'
@@ -9,61 +8,10 @@ import ServersList from '../components/ServersList'
 import LiveStream from '../components/LiveStream'
 import { Threat, StatsOverview } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
-import { useServers, useThreats, useStats, useSubscriptionStatus } from '../hooks/useQueries'
+import { useServers, useThreats, useStats } from '../hooks/useQueries'
 import { queryClient } from '../lib/queryClient'
 
 const { Title, Text } = Typography
-
-function SubscriptionCard() {
-  const { data: subscription } = useSubscriptionStatus()
-  const navigate = useNavigate()
-  const { token } = theme.useToken()
-
-  const noSubscription = subscription && subscription.plan === 'none'
-  const hasActiveTrial = subscription && subscription.is_trialing
-  const isClickable = noSubscription
-
-  const accentColor = noSubscription ? token.colorPrimary : hasActiveTrial ? token.colorWarning : token.colorSuccess
-  const bgAlpha = noSubscription ? 0.1 : 0.06
-  const Icon = noSubscription ? Crown : hasActiveTrial ? Sparkles : Crown
-
-  return (
-    <Card
-      hoverable={!!isClickable}
-      onClick={isClickable ? () => navigate({ to: '/dashboard/subscription' }) : undefined}
-      styles={{ body: { padding: token.paddingMD, display: 'flex', alignItems: 'center', gap: 16 } }}
-    >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          background: `rgba(99, 102, 241, ${bgAlpha})`,
-          borderRadius: token.borderRadius,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Icon size={24} color={accentColor} />
-      </div>
-      <div>
-        <Text style={{ color: token.colorTextTertiary, fontSize: 12, display: 'block' }}>
-          Current Plan
-        </Text>
-        <Title level={5} style={{ margin: 0, color: accentColor }}>
-          {subscription?.plan_display_name || 'Loading...'}
-        </Title>
-        {noSubscription && (
-          <Text style={{ color: token.colorPrimary, fontSize: 12 }}>Click to start trial</Text>
-        )}
-        {hasActiveTrial && (
-          <Tag color="gold" style={{ marginTop: 4, fontSize: 10 }}>Trial Active</Tag>
-        )}
-      </div>
-    </Card>
-  )
-}
 
 export default function Overview() {
   const { data: statsData } = useStats()
@@ -153,7 +101,14 @@ export default function Overview() {
           />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <SubscriptionCard />
+          <StatCard
+            title="Blocked IPs"
+            value={stats.blocked_ips.toLocaleString()}
+            subtext="Active remediation entries"
+            icon={Ban}
+            trend={stats.blocked_ips > 0 ? 'up' : 'neutral'}
+            color="success"
+          />
         </Col>
       </Row>
 

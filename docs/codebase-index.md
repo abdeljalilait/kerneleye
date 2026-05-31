@@ -34,14 +34,13 @@ This index maps the first-party code in `kerneleye` (excluding `node_modules`, `
 
 ### API Layer
 
-- `backend/internal/api/auth.go`: JWT login/register/me and auth middleware.
+- `backend/internal/api/auth.go`: JWT auth, refresh tokens, owner-only access middleware.
 - `backend/internal/api/oauth.go`: GitHub/Google OAuth handlers.
 - `backend/internal/api/handlers.go`: server CRUD, traffic, alerts, stats, API key generation.
 - `backend/internal/api/apikey.go`: HMAC API key generation/validation.
 - `backend/internal/api/apikey_builder.go`: deployment modes/features, server creation with config, install command builder.
 - `backend/internal/api/grpc_handlers.go`: agent register/status/heartbeat/traffic ingestion.
 - `backend/internal/api/block_grpc.go`, `backend/internal/api/blocks.go`: block reporting/listing/unblock paths.
-- `backend/internal/api/subscription.go`: Polar subscription integration.
 - `backend/internal/api/analytics.go`: reports/visualizer endpoints.
 - `backend/internal/api/websocket.go`: hub and websocket streaming.
 
@@ -63,7 +62,6 @@ This index maps the first-party code in `kerneleye` (excluding `node_modules`, `
 - `backend/internal/scoring/scorer.go`: normalized threat scoring.
 - `backend/internal/geoip/geoip.go`: GeoIP lookup service.
 - `backend/internal/email/service.go`: email notifications.
-- `backend/internal/payments/polar/client.go`: Polar API client.
 
 ## Agent Index (`agent/`)
 
@@ -105,7 +103,6 @@ This index maps the first-party code in `kerneleye` (excluding `node_modules`, `
 5. `dashboard/src/pages/Alerts.tsx`
 6. `dashboard/src/pages/Reports.tsx`
 7. `dashboard/src/pages/Visualizer.tsx`
-8. `dashboard/src/pages/Subscription.tsx`
 
 ## `apikey_builder.go` Analysis
 
@@ -114,21 +111,14 @@ Target: `backend/internal/api/apikey_builder.go`
 ### What it does
 
 1. Exposes available deployment modes (`/deployment-modes`) and feature metadata (`/agent-features`).
-2. Creates servers with subscription/server-limit enforcement.
-3. Generates API key + client token + install commands (docker/systemd/binary).
-4. Persists and returns agent config defaults/fallbacks.
-
-### Key dependencies
-
-- API key primitives from `backend/internal/api/apikey.go`
-- DB contract in `backend/internal/database/queries.sql.go`
-- Subscription fields on `users` table (`subscription_status`, `trial_ends_at`, `max_servers`)
+2. Generates API key + client token + install commands (docker/systemd/binary).
+3. Persists and returns agent config defaults/fallbacks.
 
 ### Observed design notes
 
 - It supports a pending registration model (`CreateServerWithAPIKey` with pending status) then activation via heartbeat/update flow.
 - It hardcodes backend host in `getServerHost()` (`api.kerneleye.net:443`), which is convenient for SaaS but reduces deploy-time flexibility.
-- It duplicates some logic present in `HandleGenerateAPIKey` in `handlers.go` (subscription + server limit checks), suggesting future consolidation potential.
+- It duplicates some logic present in `HandleGenerateAPIKey` in `handlers.go`, suggesting future consolidation potential.
 
 ## Notable Maintenance Hotspots
 
@@ -156,4 +146,3 @@ sed -n '1,320p' backend/internal/api/grpc_handlers.go
 sed -n '1,320p' backend/internal/database/queries/queries.sql
 sed -n '1,280p' backend/internal/database/queries/blocks.sql
 ```
-

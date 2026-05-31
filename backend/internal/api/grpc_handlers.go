@@ -42,9 +42,6 @@ func (h *GrpcIngestHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequ
 	if err != nil {
 		log.Printf("[gRPC Heartbeat] API key validation failed: %v", err)
 		msg := "invalid_key"
-		if err.Error() == "subscription_inactive" {
-			msg = "subscription_inactive"
-		}
 		return &pb.HeartbeatResponse{
 			Success: false,
 			Message: msg,
@@ -165,24 +162,6 @@ func (h *GrpcIngestHandler) Register(ctx context.Context, req *pb.RegisterReques
 				}, nil
 			}
 		}
-	}
-
-	// Check user's server limit before creating new server
-	user, err := h.queries.GetUserByID(ctx, database.ToPgUUID(userID))
-	if err != nil {
-		log.Printf("[gRPC Register] Failed to get user: %v", err)
-		return nil, status.Errorf(codes.Internal, "Failed to verify user")
-	}
-
-	serverCount, err := h.queries.CountServersByUser(ctx, database.ToPgUUID(userID))
-	if err != nil {
-		log.Printf("[gRPC Register] Failed to count servers: %v", err)
-		return nil, status.Errorf(codes.Internal, "Failed to verify server limit")
-	}
-
-	if int32(serverCount) >= user.MaxServers {
-		log.Printf("[gRPC Register] User %s has reached server limit (%d/%d)", userID, serverCount, user.MaxServers)
-		return nil, status.Errorf(codes.ResourceExhausted, "Server limit reached. Your %s plan allows up to %d servers. Please upgrade at https://polar.sh/kerneleye", user.Plan, user.MaxServers)
 	}
 
 	// No existing server - create pending server using the server ID embedded in API key.

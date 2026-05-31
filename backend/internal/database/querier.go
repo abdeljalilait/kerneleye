@@ -42,7 +42,6 @@ type Querier interface {
 	CreateServer(ctx context.Context, arg CreateServerParams) (Server, error)
 	CreateServerPending(ctx context.Context, arg CreateServerPendingParams) (Server, error)
 	CreateServerWithAPIKey(ctx context.Context, arg CreateServerWithAPIKeyParams) (Server, error)
-	CreateSubscriptionEvent(ctx context.Context, arg CreateSubscriptionEventParams) (SubscriptionEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteServer(ctx context.Context, id pgtype.UUID) error
 	GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIPParams) (Block, error)
@@ -99,8 +98,6 @@ type Querier interface {
 	GetMonthlyTrafficStats(ctx context.Context, arg GetMonthlyTrafficStatsParams) (int64, error)
 	// Gets count of unique threat IPs for a user in a date range
 	GetMonthlyUniqueThreatIPs(ctx context.Context, arg GetMonthlyUniqueThreatIPsParams) (int64, error)
-	GetPlanByName(ctx context.Context, name string) (SubscriptionPlan, error)
-	GetPlanByPolarProductID(ctx context.Context, polarProductID pgtype.Text) (SubscriptionPlan, error)
 	GetRecentBlocks(ctx context.Context, arg GetRecentBlocksParams) ([]GetRecentBlocksRow, error)
 	// Gets IPs that have been active within the time window
 	GetRecentlyActiveIPs(ctx context.Context, arg GetRecentlyActiveIPsParams) ([]GetRecentlyActiveIPsRow, error)
@@ -108,7 +105,7 @@ type Querier interface {
 	GetServerByClientToken(ctx context.Context, clientToken pgtype.Text) (Server, error)
 	GetServerByID(ctx context.Context, id pgtype.UUID) (Server, error)
 	GetServerByUserAndIP(ctx context.Context, arg GetServerByUserAndIPParams) (Server, error)
-	// Gets the data retention days for a server's user
+	// Gets the data retention days for a server.
 	GetServerDataRetentionDays(ctx context.Context, id pgtype.UUID) (int32, error)
 	GetServerStats(ctx context.Context, serverID pgtype.UUID) (GetServerStatsRow, error)
 	GetSourceIPBlockTimes(ctx context.Context, arg GetSourceIPBlockTimesParams) ([]pgtype.Timestamptz, error)
@@ -131,21 +128,15 @@ type Querier interface {
 	GetTrafficAggregationByIP(ctx context.Context, arg GetTrafficAggregationByIPParams) ([]GetTrafficAggregationByIPRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
-	// ============================================
-	// User Polar Integration Queries
-	// ============================================
-	GetUserByPolarCustomerID(ctx context.Context, polarCustomerID pgtype.Text) (User, error)
 	GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error)
 	// Gets high score traffic for all servers owned by user
 	GetUserHighScoreTraffic(ctx context.Context, arg GetUserHighScoreTrafficParams) ([]GetUserHighScoreTrafficRow, error)
-	GetUserSubscriptionStatus(ctx context.Context, id pgtype.UUID) (GetUserSubscriptionStatusRow, error)
 	GetWhitelistByUser(ctx context.Context, userID pgtype.UUID) ([]Whitelist, error)
 	GetWhitelistedIPs(ctx context.Context, userID pgtype.UUID) ([]netip.Addr, error)
 	// Check if an IP has attacked any of the user's servers
 	IsIPAttackingUserServer(ctx context.Context, arg IsIPAttackingUserServerParams) (bool, error)
 	IsIPBlocked(ctx context.Context, arg IsIPBlockedParams) (bool, error)
 	IsIPWhitelisted(ctx context.Context, arg IsIPWhitelistedParams) (bool, error)
-	ListActivePlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
 	ListAllActiveServers(ctx context.Context) ([]ListAllActiveServersRow, error)
 	ListBlocks(ctx context.Context, arg ListBlocksParams) ([]ListBlocksRow, error)
@@ -178,13 +169,9 @@ type Querier interface {
 	UpdateServerForReenrollment(ctx context.Context, arg UpdateServerForReenrollmentParams) (Server, error)
 	UpdateServerHeartbeat(ctx context.Context, arg UpdateServerHeartbeatParams) error
 	UpdateServerMetadata(ctx context.Context, arg UpdateServerMetadataParams) error
-	MarkStaleServersOffline(ctx context.Context, thresholdSeconds int) (int64, error)
 	UpdateServerStatus(ctx context.Context, arg UpdateServerStatusParams) error
 	UpdateTrafficScore(ctx context.Context, arg UpdateTrafficScoreParams) error
-	UpdateUserPolarCustomerID(ctx context.Context, arg UpdateUserPolarCustomerIDParams) error
 	UpdateUserRefreshToken(ctx context.Context, arg UpdateUserRefreshTokenParams) (User, error)
-	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
-	UpdateUserTrial(ctx context.Context, arg UpdateUserTrialParams) error
 	UpsertTrafficEvent(ctx context.Context, arg UpsertTrafficEventParams) (TrafficEvent, error)
 	UpsertTrafficTimeline(ctx context.Context, arg UpsertTrafficTimelineParams) error
 }

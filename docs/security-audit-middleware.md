@@ -81,7 +81,6 @@ else:
 - `/health` (health check)
 - `/login`, `/auth/*` (authentication)
 - `/oauth/*` (OAuth callbacks)
-- `/subscription/webhook` (Polar webhooks)
 
 ### Enhanced Middleware: `EnhancedAuthMiddleware` (Optional Upgrade)
 
@@ -142,13 +141,11 @@ func GenerateAPIKey(userID, serverID string) string {
 | `/api/v1/alerts` | ✅ | JWT | Protected |
 | `/api/v1/ws` | ✅ | JWT (token param) | Protected |
 | `/api/v1/analytics/*` | ✅ | JWT | Protected |
-| `/api/v1/subscription/*` | ✅ | JWT | Protected |
 | gRPC IngestService | ✅ | API Key | Protected |
 | gRPC BlockService | ✅ | API Key | Protected |
 | `/health` | ❌ | None | Public |
 | `/api/login` | ❌ | None | Public |
 | `/api/oauth/*` | ❌ | None | Public |
-| `/webhooks/polar` | ❌ | None | Public (signed) |
 
 ## Security Recommendations
 
@@ -238,7 +235,6 @@ curl -H "Authorization: Bearer expired_token" https://api.kerneleye.net/v1/serve
 - [x] Public routes accessible without auth
 - [x] gRPC endpoints require API key
 - [x] HMAC signature on API keys prevents forgery
-- [x] Subscription limits enforced before key generation
 
 ## Summary
 
@@ -248,8 +244,6 @@ curl -H "Authorization: Bearer expired_token" https://api.kerneleye.net/v1/serve
 2. ✅ JWT tokens are properly validated
 3. ✅ All protected routes require authentication
 4. ✅ Server status is verified on each request
-5. ✅ Subscription validation prevents unauthorized key generation
-
 **Minor Improvements Needed**:
 1. Set production secrets in environment
 2. Add rate limiting

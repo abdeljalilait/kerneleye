@@ -42,8 +42,6 @@ api.interceptors.request.use((config) => {
 // API methods
 export const authAPI = {
   // Public endpoints (no auth required)
-  login: (email: string, password: string) => publicApi.post('/auth/login', { email, password }),
-  register: (email: string, password: string) => publicApi.post('/auth/register', { email, password }),
   getProviders: () => publicApi.get('/auth/providers'),
   
   // Protected endpoints (requires auth)
@@ -144,16 +142,6 @@ export const alertsAPI = {
 
 export const statsAPI = {
   overview: () => api.get('/stats/overview'),
-};
-
-export const subscriptionAPI = {
-  getPlans: () => api.get('/subscription/plans'),
-  getStatus: () => api.get('/subscription/status'),
-  createCheckout: (planName: string, embedOrigin?: string) => api.post('/subscription/checkout', { 
-    plan_name: planName,
-    embed_origin: embedOrigin,
-  }),
-  createCustomerPortal: () => api.post('/subscription/portal', {}),
 };
 
 export const analyticsAPI = {

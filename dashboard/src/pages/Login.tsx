@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router'
 import { Github, Chrome } from 'lucide-react'
 import { Button, Card, Typography, Space } from 'antd'
 import { useOAuthProviders } from '../hooks/useQueries'
@@ -68,8 +67,8 @@ export default function Login() {
         >
           <Space direction="vertical" size={24} style={{ width: '100%' }}>
             <div style={{ textAlign: 'center' }}>
-              <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>Welcome back</Title>
-              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>Sign in with your account to continue</Text>
+              <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>Sign in</Title>
+              <Text style={{ color: 'var(--kerneleye-colorTextTertiary)' }}>Self-hosted instance — owner access only</Text>
             </div>
 
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -85,23 +84,13 @@ export default function Login() {
                   Continue with {provider.name}
                 </Button>
               )) : (
-                <>
-                  <Button block size="large" icon={<Github size={20} />} onClick={() => handleOAuthLogin('github')} style={{ height: 48, background: 'var(--kerneleye-colorFillAlter)', border: '1px solid var(--kerneleye-colorBorderSecondary)', color: 'var(--kerneleye-colorText)', fontWeight: 500 }}>
-                    Continue with GitHub
-                  </Button>
-                  <Button block size="large" icon={<Chrome size={20} />} onClick={() => handleOAuthLogin('google')} style={{ height: 48, background: 'var(--kerneleye-colorFillAlter)', border: '1px solid var(--kerneleye-colorBorderSecondary)', color: 'var(--kerneleye-colorText)', fontWeight: 500 }}>
-                    Continue with Google
-                  </Button>
-                </>
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
+                    OAuth providers are not configured. Set AUTH_OWNER_EMAIL and OAuth credentials in your environment.
+                  </Text>
+                </div>
               )}
             </Space>
-
-            <div style={{ textAlign: 'center' }}>
-              <Text type="secondary">
-                Don't have an account?{' '}
-                <Link to="/register" style={{ fontWeight: 600 }}>Sign up</Link>
-              </Text>
-            </div>
           </Space>
         </Card>
 

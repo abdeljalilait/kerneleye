@@ -589,13 +589,6 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
           type="error"
           showIcon
           style={{ marginTop: 16 }}
-          action={
-            (createServerMutation.error as any)?.response?.data?.code === 'NO_SUBSCRIPTION' ? (
-              <Button size="small" type="primary" danger href="/subscription">
-                Subscribe
-              </Button>
-            ) : undefined
-          }
         />
       )}
     </div>

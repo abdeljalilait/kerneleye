@@ -14,7 +14,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var jwtSecret []byte
@@ -75,19 +74,30 @@ func ValidateJWT(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// HashPassword hashes a password using bcrypt
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
+
+// getOwnerEmail returns the configured AUTH_OWNER_EMAIL, trimmed and lowercased.
+// Returns empty string if not configured.
+func getOwnerEmail() string {
+	return strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_OWNER_EMAIL")))
 }
 
-// CheckPassword compares a password with a hash
-func CheckPassword(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+// isOwnerEmail checks whether an email matches the configured owner.
+// Normalizes both sides with trim and lowercase before comparison.
+func isOwnerEmail(email string) bool {
+	owner := getOwnerEmail()
+	if owner == "" {
+		return false
+	}
+	return strings.ToLower(strings.TrimSpace(email)) == owner
 }
 
-// AuthMiddleware validates API keys or JWT tokens
+// ownerNotConfigured returns true when AUTH_OWNER_EMAIL is not set.
+func ownerNotConfigured() bool {
+	return getOwnerEmail() == ""
+}
+
+// AuthMiddleware validates API keys or JWT tokens.
+// Dashboard (JWT) auth also verifies the user is the configured owner.
 func AuthMiddleware(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Check for API key in header (agent authentication)
@@ -160,6 +170,13 @@ func AuthMiddleware(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusUnauthorized, "Invalid or expired token")
 		}
 
+		// Verify the JWT subject is the configured owner.
+		// This prevents old non-owner sessions from keeping access.
+		if !isOwnerEmail(claims.Email) {
+			log.Printf("[Auth] JWT rejected: %s is not the configured owner", claims.Email)
+			return fiber.NewError(fiber.StatusForbidden, "Access restricted to instance owner")
+		}
+
 		c.Locals("user_id", claims.UserID)
 		c.Locals("email", claims.Email)
 		c.Locals("auth_type", "dashboard")
@@ -203,55 +220,11 @@ func HandleRegister(queries *database.Queries) fiber.Handler {
 	}
 }
 
-// HandleLogin authenticates a user
+
+// HandleLogin is DISABLED — OAuth-only authentication with owner email restriction.
 func HandleLogin(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		type LoginRequest struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
-		}
-
-		var req LoginRequest
-		if err := c.BodyParser(&req); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
-		}
-
-		user, err := queries.GetUserByEmail(c.Context(), req.Email)
-		if err != nil {
-			return fiber.NewError(fiber.StatusUnauthorized, "Invalid credentials")
-		}
-
-		// Verify password
-		if !CheckPassword(req.Password, user.PasswordHash) {
-			return fiber.NewError(fiber.StatusUnauthorized, "Invalid credentials")
-		}
-
-		// Generate JWT token
-		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
-		}
-
-		// Generate and store refresh token
-		refreshToken, err := GenerateRefreshToken()
-		if err != nil {
-			log.Printf("[Auth] Warning: Failed to generate refresh token: %v", err)
-		} else {
-			if err := StoreRefreshToken(queries, c.Context(), user.ID, refreshToken); err != nil {
-				log.Printf("[Auth] Warning: Failed to store refresh token: %v", err)
-			} else {
-				SetRefreshTokenCookie(c, refreshToken)
-			}
-		}
-
-		return c.JSON(fiber.Map{
-			"user": fiber.Map{
-				"id":    database.FromPgUUID(user.ID),
-				"email": user.Email,
-				"plan":  user.Plan,
-			},
-			"token": token,
-		})
+		return fiber.NewError(fiber.StatusForbidden, "Password login is disabled. Please sign in via OAuth.")
 	}
 }
 
@@ -271,7 +244,6 @@ func HandleMe(queries *database.Queries) fiber.Handler {
 		return c.JSON(fiber.Map{
 			"id":    database.FromPgUUID(user.ID),
 			"email": user.Email,
-			"plan":  user.Plan,
 		})
 	}
 }
@@ -358,6 +330,13 @@ func HandleRefreshToken(queries *database.Queries) fiber.Handler {
 		if err != nil {
 			ClearRefreshTokenCookie(c)
 			return fiber.NewError(fiber.StatusUnauthorized, "Invalid or expired refresh token")
+		}
+
+		// Verify the user is still the configured owner before issuing a new token.
+		if !isOwnerEmail(user.Email) {
+			log.Printf("[Auth] Refresh token rejected: %s is not the configured owner", user.Email)
+			ClearRefreshTokenCookie(c)
+			return fiber.NewError(fiber.StatusForbidden, "Access restricted to instance owner")
 		}
 
 		// Generate new access token

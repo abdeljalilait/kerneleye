@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
-  CreditCard,
   FileText,
   BarChart3,
   Ban,
@@ -84,13 +83,6 @@ export default function Dashboard() {
       icon: <User size={14} />,
       onClick: () => navigate({ to: '/dashboard/profile' }),
     },
-    {
-      key: 'subscription',
-      label: 'Subscription',
-      icon: <CreditCard size={14} />,
-      onClick: () => navigate({ to: '/dashboard/subscription' }),
-    },
-    { type: 'divider' },
     {
       key: 'logout',
       label: 'Logout',

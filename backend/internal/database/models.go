@@ -108,39 +108,6 @@ type Server struct {
 	Config       []byte             `json:"config"`
 }
 
-// Webhook events from Polar for audit trail
-type SubscriptionEvent struct {
-	ID           pgtype.UUID        `json:"id"`
-	UserID       pgtype.UUID        `json:"user_id"`
-	PolarEventID pgtype.Text        `json:"polar_event_id"`
-	EventType    string             `json:"event_type"`
-	Payload      []byte             `json:"payload"`
-	Processed    pgtype.Bool        `json:"processed"`
-	ProcessedAt  pgtype.Timestamptz `json:"processed_at"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-}
-
-// Available subscription plans with Polar integration. Set polar_price_id after creating products in Polar dashboard
-type SubscriptionPlan struct {
-	ID                pgtype.UUID        `json:"id"`
-	Name              string             `json:"name"`
-	DisplayName       string             `json:"display_name"`
-	Description       pgtype.Text        `json:"description"`
-	PriceCents        int32              `json:"price_cents"`
-	Currency          pgtype.Text        `json:"currency"`
-	BillingInterval   string             `json:"billing_interval"`
-	MaxServers        int32              `json:"max_servers"`
-	DataRetentionDays int32              `json:"data_retention_days"`
-	Features          []byte             `json:"features"`
-	PolarProductID    pgtype.Text        `json:"polar_product_id"`
-	PolarPriceID      pgtype.Text        `json:"polar_price_id"`
-	IsActive          pgtype.Bool        `json:"is_active"`
-	IsDefault         pgtype.Bool        `json:"is_default"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
 // Aggregated network traffic events from agents
 type TrafficEvent struct {
 	ID                   pgtype.UUID        `json:"id"`
@@ -221,43 +188,14 @@ type TrafficTimeline struct {
 	ThreatScore      int32              `json:"threat_score"`
 }
 
-// KernelEye customer accounts
+// KernelEye user accounts
 type User struct {
-	ID                             pgtype.UUID        `json:"id"`
-	Email                          string             `json:"email"`
-	PasswordHash                   string             `json:"password_hash"`
-	Plan                           string             `json:"plan"`
-	MaxServers                     int32              `json:"max_servers"`
-	CreatedAt                      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt                      pgtype.Timestamptz `json:"updated_at"`
-	PolarCustomerID                pgtype.Text        `json:"polar_customer_id"`
-	PolarSubscriptionID            pgtype.Text        `json:"polar_subscription_id"`
-	SubscriptionStatus             pgtype.Text        `json:"subscription_status"`
-	SubscriptionCurrentPeriodStart pgtype.Timestamptz `json:"subscription_current_period_start"`
-	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
-	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
-	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
-	HasUsedTrial                   pgtype.Bool        `json:"has_used_trial"`
-	RefreshToken                   pgtype.Text        `json:"refresh_token"`
-	RefreshTokenExpiresAt          pgtype.Timestamptz `json:"refresh_token_expires_at"`
-}
-
-// Convenience view of user subscription status
-type UserSubscription struct {
-	UserID                         pgtype.UUID        `json:"user_id"`
-	Email                          string             `json:"email"`
-	Plan                           string             `json:"plan"`
-	SubscriptionStatus             pgtype.Text        `json:"subscription_status"`
-	MaxServers                     int32              `json:"max_servers"`
-	SubscriptionCurrentPeriodStart pgtype.Timestamptz `json:"subscription_current_period_start"`
-	SubscriptionCurrentPeriodEnd   pgtype.Timestamptz `json:"subscription_current_period_end"`
-	SubscriptionCancelAtPeriodEnd  pgtype.Bool        `json:"subscription_cancel_at_period_end"`
-	TrialEndsAt                    pgtype.Timestamptz `json:"trial_ends_at"`
-	PlanDisplayName                pgtype.Text        `json:"plan_display_name"`
-	PriceCents                     pgtype.Int4        `json:"price_cents"`
-	DataRetentionDays              pgtype.Int4        `json:"data_retention_days"`
-	Features                       []byte             `json:"features"`
-	CurrentServerCount             int64              `json:"current_server_count"`
+	ID                    pgtype.UUID        `json:"id"`
+	Email                 string             `json:"email"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	RefreshToken          pgtype.Text        `json:"refresh_token"`
+	RefreshTokenExpiresAt pgtype.Timestamptz `json:"refresh_token_expires_at"`
 }
 
 // Whitelisted IPs that should never be blocked

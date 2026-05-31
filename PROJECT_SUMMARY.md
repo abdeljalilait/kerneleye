@@ -104,7 +104,7 @@ kerneleye/
 - ✅ Dark theme (slate palette)
 
 ### 4. **Database Schema**
-- ✅ Users table (with plan tiers)
+- ✅ Users table
 - ✅ Servers table (monitored hosts)
 - ✅ Traffic events table (aggregated data)
 - ✅ Alerts table
@@ -157,7 +157,7 @@ docker-compose up -d
 ## 📊 Architecture Summary
 
 ```
-Customer Server (Linux)
+Monitored Server (Linux)
     ↓ eBPF hooks
   Agent (Go)
     ↓ gRPC (10s batches)
@@ -196,14 +196,9 @@ Levels:
 - ✅ Connection flags
 - ✅ Packet counts
 
-## 💰 Pricing Tiers (Ready to Implement)
+## 💰 Pricing
 
-| Plan | Price | Servers |
-|------|-------|---------|
-| Free Trial | $0 | 1 (7 days) |
-| Starter | $5/mo | 3 |
-| Pro | $15/mo | 10 |
-| Team | $29/mo | 50 |
+KernelEye is free self-hosted software with no server limits.
 
 ## 📝 What's NOT in MVP (Phase 2+)
 
@@ -259,7 +254,7 @@ All ✅ Complete:
 | Logs Required | Yes | No (eBPF) |
 | Trust System | Yes | No |
 | Target Users | Enterprise | SMEs/Indie |
-| Pricing | Complex | $5-29/mo |
+| Pricing | Complex | Free self-hosted |
 | UX | Technical | Friendly |
 
 ---
@@ -270,6 +265,6 @@ The architecture is clean, the code is organized, and everything is ready to:
 1. Deploy locally for testing
 2. Deploy to production (add env vars)
 3. Extend with Phase 2 features
-4. Onboard customers
+4. Onboard users
 
 All the "next steps" you listed are ready to be implemented on this solid foundation.

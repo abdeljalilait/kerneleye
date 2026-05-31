@@ -7,21 +7,17 @@ import GlobalNotifications from './components/GlobalNotifications'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Login = lazy(() => import('./pages/Login'))
-const Register = lazy(() => import('./pages/Register'))
 const Overview = lazy(() => import('./pages/Overview'))
 const Servers = lazy(() => import('./pages/Servers'))
 const Threats = lazy(() => import('./pages/Threats'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const ServerDetail = lazy(() => import('./pages/ServerDetail'))
-const Subscription = lazy(() => import('./pages/Subscription'))
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Visualizer = lazy(() => import('./pages/Visualizer'))
 const BlockedIPs = lazy(() => import('./pages/BlockedIPs'))
 const Whitelist = lazy(() => import('./pages/Whitelist'))
-const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'))
 
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -65,12 +61,6 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: withSuspense(Login),
-})
-
-const registerRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/register',
-  component: withSuspense(Register),
 })
 
 const indexRoute = createRoute({
@@ -137,28 +127,10 @@ const whitelistRoute = createRoute({
   component: withSuspense(Whitelist),
 })
 
-const subscriptionRoute = createRoute({
-  getParentRoute: () => dashboardRoute,
-  path: 'subscription',
-  component: withSuspense(Subscription),
-})
-
-const checkoutSuccessRoute = createRoute({
-  getParentRoute: () => dashboardRoute,
-  path: 'subscription/success',
-  component: withSuspense(CheckoutSuccess),
-})
-
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth/callback',
   component: withSuspense(OAuthCallback),
-})
-
-const forgotPasswordRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/forgot-password',
-  component: withSuspense(ForgotPassword),
 })
 
 const profileRoute = createRoute({
@@ -182,8 +154,6 @@ const visualizerRoute = createRoute({
 // 3. Register the route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  registerRoute,
-  forgotPasswordRoute,
   oauthCallbackRoute,
   dashboardRoute.addChildren([
     overviewRoute,
@@ -193,8 +163,6 @@ const routeTree = rootRoute.addChildren([
     alertsRoute,
     blockedIPsRoute,
     whitelistRoute,
-    subscriptionRoute,
-    checkoutSuccessRoute,
     profileRoute,
     reportsRoute,
     visualizerRoute,

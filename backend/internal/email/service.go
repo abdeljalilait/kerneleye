@@ -127,8 +127,8 @@ func (s *Service) sendEmail(toEmail, toName, subject, htmlContent, category stri
 	return nil
 }
 
-// SendWelcomeEmail sends a welcome email with dashboard access after subscription
-func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
+// SendWelcomeEmail sends a welcome email with dashboard access.
+func (s *Service) SendWelcomeEmail(toEmail, toName string) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
 		dashboardURL = "https://app.kerneleye.net"
@@ -149,7 +149,6 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
         .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
         .button { display: inline-block; background: #6366f1; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #6b7280; }
-        .plan-badge { background: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -159,9 +158,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
     <div class="content">
         <p>Hi %s,</p>
         
-        <p>Thank you for subscribing to KernelEye! Your account has been successfully created.</p>
-        
-        <p><strong>Plan:</strong> <span class="plan-badge">%s</span></p>
+        <p>Thank you for using KernelEye. Your self-hosted account has been successfully created.</p>
         
         <p>You can now access your dashboard and start monitoring your servers:</p>
         
@@ -185,11 +182,11 @@ func (s *Service) SendWelcomeEmail(toEmail, toName, plan string) error {
     </div>
     <div class="footer">
         <p>&copy; 2025 KernelEye. All rights reserved.</p>
-        <p>You received this email because you subscribed to KernelEye.</p>
+        <p>You received this email because your KernelEye account was created.</p>
     </div>
 </body>
 </html>
-`, toName, plan, dashboardURL, dashboardURL, dashboardURL)
+`, toName, dashboardURL, dashboardURL, dashboardURL)
 
 	return s.sendEmail(toEmail, toName, subject, htmlContent, "welcome")
 }
@@ -249,63 +246,6 @@ func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) err
 `, toName, resetURL, resetURL, resetURL)
 
 	return s.sendEmail(toEmail, toName, subject, htmlContent, "password_reset")
-}
-
-// SendTrialEndingEmail sends a reminder when trial is about to end
-func (s *Service) SendTrialEndingEmail(toEmail, toName string, daysLeft int) error {
-	dashboardURL := os.Getenv("DASHBOARD_URL")
-	if dashboardURL == "" {
-		dashboardURL = "https://app.kerneleye.net"
-	}
-
-	billingURL := fmt.Sprintf("%s/billing", dashboardURL)
-	subject := fmt.Sprintf("Your KernelEye Trial Ends in %d Days", daysLeft)
-
-	htmlContent := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Trial Ending Soon</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #f59e0b 0%%, #d97706 100%%); padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-        .header h1 { color: white; margin: 0; font-size: 24px; }
-        .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-        .button { display: inline-block; background: #f59e0b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-        .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #6b7280; }
-        .alert { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 20px 0; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Trial Ending Soon</h1>
-    </div>
-    <div class="content">
-        <p>Hi %s,</p>
-        
-        <div class="alert">
-            Your KernelEye free trial ends in <strong>%d days</strong>.
-        </div>
-        
-        <p>To continue monitoring your servers without interruption, please upgrade to a paid plan:</p>
-        
-        <center>
-            <a href="%s" class="button">Upgrade Now</a>
-        </center>
-        
-        <p><strong>Questions?</strong> Reply to this email or contact support@kerneleye.net</p>
-        
-        <p>Best regards,<br>The KernelEye Team</p>
-    </div>
-    <div class="footer">
-        <p>&copy; 2025 KernelEye. All rights reserved.</p>
-    </div>
-</body>
-</html>
-`, toName, daysLeft, billingURL)
-
-	return s.sendEmail(toEmail, toName, subject, htmlContent, "trial_reminder")
 }
 
 // SendMonthlyReport sends a monthly security report email

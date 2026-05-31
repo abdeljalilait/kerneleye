@@ -22,7 +22,7 @@ const Footer = () => {
             <h4 className="footer-title">Product</h4>
             <ul className="footer-links">
               <li><a href="#features" className="footer-link">Features</a></li>
-              <li><a href="#pricing" className="footer-link">Pricing</a></li>
+              <li><a href="#pricing" className="footer-link">Self-hosted</a></li>
             </ul>
           </div>
 
