@@ -588,10 +588,7 @@ func (a *Aggregator) scheduleReconnect() {
 	}
 
 	// Calculate delay with exponential backoff
-	delay := time.Duration(1<<uint(a.reconnectCount)) * time.Second
-	if delay > a.maxReconnectDelay {
-		delay = a.maxReconnectDelay
-	}
+	delay := min(time.Duration(1<<uint(a.reconnectCount))*time.Second, a.maxReconnectDelay)
 
 	a.reconnectCount++
 	attempt := a.reconnectCount

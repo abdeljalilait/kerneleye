@@ -150,6 +150,12 @@ func main() {
 			Logger.Infof("  sudo kerneleye-agent -server \"%s\" -apikey \"...\"", cfg.ServerHost)
 			os.Exit(1)
 		}
+
+		// Register XDP map snapshots for periodic integrity verification
+		if xdpRem := remediator.GetXDPRemediator(); xdpRem != nil {
+			RegisterMapSnapshots(xdpRem.GetMapSnapshots())
+		}
+
 		if cfg.EnableRemediation {
 			Logger.Infof("🛡️  Remediation enabled: XDP (%s) + iptables", remediator.XDPMode())
 		} else {

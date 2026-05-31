@@ -2,12 +2,16 @@ package remediation
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -42,6 +46,8 @@ type XDPRemediator struct {
 	objectPath        string                // Path to the eBPF object file
 	OnBlock           BlockCallback         // Called when an IP is blocked
 	OnBlockedPacket   BlockedPacketCallback // Called when XDP logs a blocked packet
+
+	mapSnapshots map[string]*MapStateSnapshot // Load-time map identity snapshots
 
 	ringbufReader *ringbuf.Reader
 	ringbufCancel chan struct{}
@@ -108,6 +114,9 @@ func (r *XDPRemediator) Setup() error {
 		return fmt.Errorf("failed to load XDP objects: %w", err)
 	}
 
+	// Capture map identity snapshots for later integrity verification
+	r.captureMapSnapshots()
+
 	// Try DRV mode first, fallback to SKB
 	r.xdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program: r.objs.XdpFirewall, Interface: iface.Index, Flags: link.XDPDriverMode,
@@ -129,6 +138,167 @@ func (r *XDPRemediator) Setup() error {
 	r.attached = true
 	logger.Infof("✅ XDP attached to %s (%s)", r.interfaceName, r.mode)
 	return nil
+}
+
+// captureMapSnapshots records the identity of all loaded maps for later
+// integrity verification. Takes snapshots of map IDs, content hashes, and
+// metadata right after LoadAndAssign succeeds.
+func (r *XDPRemediator) captureMapSnapshots() {
+	maps := []struct {
+		m    *ebpf.Map
+		name string
+	}{
+		{r.objs.XdpBlocklist, "xdp_blocklist"},
+		{r.objs.XdpBlocklistV6, "xdp_blocklist_v6"},
+		{r.objs.XdpStats, "xdp_stats"},
+		{r.objs.XdpCidrBlocklist, "xdp_cidr_blocklist"},
+		{r.objs.XdpRateLimit, "xdp_rate_limit"},
+		{r.objs.XdpRateConfig, "xdp_rate_config"},
+		{r.objs.XdpBlockEvents, "xdp_block_events"},
+	}
+
+	r.mapSnapshots = make(map[string]*MapStateSnapshot)
+
+	for _, entry := range maps {
+		if entry.m == nil {
+			continue
+		}
+		info, err := entry.m.Info()
+		if err != nil {
+			logger.Warnf("Failed to get map info for %s: %v", entry.name, err)
+			continue
+		}
+
+		cls, _ := MapClassificationByName(entry.name)
+		mapID, hasID := info.ID()
+		if !hasID {
+			mapID = 0
+		}
+		snap := &MapStateSnapshot{
+			Name:       entry.name,
+			MapID:      mapID,
+			PinnedPath: filepath.Join(r.pinPath, entry.name),
+			Frozen:     info.Frozen(),
+			TrustLevel: cls.TrustLevel,
+			CapturedAt: time.Now(),
+		}
+
+		// Compute content hash for High/VeryHigh maps
+		if cls.TrustLevel >= TrustLevelHigh {
+			snap.ContentHash, snap.EntryCount = r.hashMapContents(entry.m)
+		}
+
+		r.mapSnapshots[entry.name] = snap
+		logger.Debugf("Map snapshot: %s id=%d frozen=%v trust=%s entries=%d hash=%s",
+			snap.Name, snap.MapID, snap.Frozen, snap.TrustLevel, snap.EntryCount,
+			snap.ContentHash[:12]+"...")
+	}
+}
+
+// hashMapContents computes a deterministic SHA-256 hash of all entries in a map.
+func (r *XDPRemediator) hashMapContents(m *ebpf.Map) (hash string, count int) {
+	h := sha256.New()
+	iter := m.Iterate()
+	var key, val []byte
+
+	// Collect and sort keys for deterministic hashing
+	type entry struct {
+		key []byte
+		val []byte
+	}
+	var entries []entry
+	for iter.Next(&key, &val) {
+		k := make([]byte, len(key))
+		v := make([]byte, len(val))
+		copy(k, key)
+		copy(v, val)
+		entries = append(entries, entry{k, v})
+	}
+	if err := iter.Err(); err != nil {
+		logger.Warnf("Map iteration error for %s: %v", m.String(), err)
+		return "", 0
+	}
+
+	// Sort by key for deterministic output
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i].key, entries[j].key) < 0
+	})
+
+	for _, e := range entries {
+		h.Write(e.key)
+		h.Write(e.val)
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), len(entries)
+}
+
+// GetMapSnapshots returns the load-time map identity snapshots for integrity verification.
+func (r *XDPRemediator) GetMapSnapshots() map[string]*MapStateSnapshot {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.mapSnapshots
+}
+
+// verifyMapSnapshot compares the current state of a pinned map against its load-time snapshot.
+// Returns warnings if the map ID, frozen status, or content hash has changed unexpectedly.
+func (r *XDPRemediator) verifyMapSnapshot(name string, snap *MapStateSnapshot) (warnings []string) {
+	pinnedPath := filepath.Join(r.pinPath, name)
+
+	// Open pinned map read-only for verification
+	m, err := ebpf.LoadPinnedMap(pinnedPath, &ebpf.LoadPinOptions{ReadOnly: true})
+	if err != nil {
+		if snap.TrustLevel >= TrustLevelHigh {
+			warnings = append(warnings,
+				fmt.Sprintf("map %s: pinned file %s not accessible — possible tampering: %v", name, pinnedPath, err))
+		}
+		return
+	}
+	defer m.Close()
+
+	info, err := m.Info()
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("map %s: cannot get info: %v", name, err))
+		return
+	}
+
+	// Check map ID unchanged (detect replacement)
+	currentID, hasID := info.ID()
+	if hasID && snap.MapID != 0 && currentID != snap.MapID {
+		warnings = append(warnings,
+			fmt.Sprintf("map %s: ID changed %d → %d — map was replaced", name, snap.MapID, currentID))
+	}
+
+	// Check frozen status matches expectation
+	cls, _ := MapClassificationByName(name)
+	if cls.Frozen && !info.Frozen() {
+		warnings = append(warnings,
+			fmt.Sprintf("map %s: classified as frozen but BPF_MAP_FREEZE not applied", name))
+	}
+
+	// For High/VeryHigh maps, verify content hash
+	if snap.TrustLevel >= TrustLevelHigh && snap.ContentHash != "" {
+		currentHash, _ := r.hashMapContents(m)
+		if currentHash != snap.ContentHash {
+			warnings = append(warnings,
+				fmt.Sprintf("map %s: content hash changed — integrity violation suspected: unexpected writer detected", name))
+		}
+	}
+
+	return warnings
+}
+
+// auditMapWrite logs a write operation to a high-trust map.
+func auditMapWrite(r *XDPRemediator, mapName, action, key, source string, signatureValid bool) {
+	entry := WriteAuditEntry{
+		MapName:        mapName,
+		Action:         action,
+		Key:            key,
+		Source:         source,
+		SignatureValid: signatureValid,
+		Timestamp:      time.Now(),
+	}
+	data, _ := json.Marshal(entry)
+	logger.Infof("[AUDIT] map_write %s", string(data))
 }
 
 // loadXDPFirewallSpec loads the XDP program spec.
@@ -212,19 +382,19 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 		if err := blockIPv4(r.objs.XdpBlocklist, ip, expiresNs); err != nil {
 			return fmt.Errorf("block IPv4: %w", err)
 		}
+		auditMapWrite(r, "xdp_blocklist", "insert", ip.String(), "block_command", false)
 	} else {
 		if err := blockIPv6(r.objs.XdpBlocklistV6, ip, expiresNs); err != nil {
 			return fmt.Errorf("block IPv6: %w", err)
 		}
+		auditMapWrite(r, "xdp_blocklist_v6", "insert", ip.String(), "block_command", false)
 	}
-	if duration == 0 {
-		logger.Infof("🚫 XDP blocked %s permanently", ip)
-	} else {
-		logger.Infof("🚫 XDP blocked %s for %v", ip, duration)
-	}
+
+	// Notify callback if set
 	if r.OnBlock != nil {
-		r.OnBlock(ip, ActionBlock, "XDP_BLOCK", duration)
+		r.OnBlock(ip, ActionBlock, "manual", duration)
 	}
+
 	return nil
 }
 
@@ -264,7 +434,9 @@ type rateLimitState struct {
 	ByteCount   uint64 // Bytes in current window
 }
 
-// SetRateLimit configures global rate limiting
+// SetRateLimit configures global rate limiting.
+// The xdp_rate_config map is frozen after the first write, making subsequent
+// calls to SetRateLimit no-ops (rate limit config is immutable after init).
 func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.Duration) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -276,10 +448,26 @@ func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.D
 		return errRLDisabled
 	}
 
+	// Check if map is already frozen (irreversible)
+	if info, err := r.objs.XdpRateConfig.Info(); err == nil && info != nil {
+		if info.Frozen() {
+			logger.Warn("xdp_rate_config is frozen — rate limit cannot be changed without restart")
+			return nil
+		}
+	}
+
 	cfg := rateLimitConfig{maxPPS, maxBPS, uint64(blockDuration.Nanoseconds())}
 	if err := r.objs.XdpRateConfig.Put(uint32(0), cfg); err != nil {
 		return fmt.Errorf("set rate limit: %w", err)
 	}
+
+	// Freeze the map — irreversible, prevents future userspace writes
+	if err := r.objs.XdpRateConfig.Freeze(); err != nil {
+		logger.Warnf("Failed to freeze xdp_rate_config (kernel may not support BPF_MAP_FREEZE): %v", err)
+	} else {
+		logger.Infof("🔒 Frozen xdp_rate_config — rate limit config is now immutable")
+	}
+	auditMapWrite(r, "xdp_rate_config", "update", "rate_config", "local_setup", true)
 
 	// Clear existing state (holding mutex prevents races with Block/Unblock)
 	if r.objs.XdpRateLimit != nil {
@@ -503,10 +691,12 @@ func (r *XDPRemediator) Unblock(ip net.IP, blockType BlockType) error {
 		if err := unblockIPv4(r.objs.XdpBlocklist, ip); err != nil {
 			return err
 		}
+		auditMapWrite(r, "xdp_blocklist", "delete", ip.String(), "block_command", false)
 	} else {
 		if err := unblockIPv6(r.objs.XdpBlocklistV6, ip); err != nil {
 			return err
 		}
+		auditMapWrite(r, "xdp_blocklist_v6", "delete", ip.String(), "block_command", false)
 	}
 	logger.Infof("✅ XDP unblocked %s", ip)
 	return nil
@@ -530,6 +720,7 @@ func (r *XDPRemediator) UnblockCIDR(cidr string) error {
 	if err := r.objs.XdpCidrBlocklist.Delete(key); err != nil && !isNotExist(err) {
 		return err
 	}
+	auditMapWrite(r, "xdp_cidr_blocklist", "delete", cidr, "block_command", false)
 	logger.Infof("✅ XDP unblocked CIDR %s", cidr)
 	return nil
 }
@@ -820,11 +1011,12 @@ func (r *XDPRemediator) openBlocklistMaps() (v4Map, v6Map *ebpf.Map, cleanup fun
 	pinPath := r.pinPath
 	r.mu.RUnlock()
 
-	v4, err2 := ebpf.LoadPinnedMap(filepath.Join(pinPath, "xdp_blocklist"), nil)
+	readOnly := &ebpf.LoadPinOptions{ReadOnly: true}
+	v4, err2 := ebpf.LoadPinnedMap(filepath.Join(pinPath, "xdp_blocklist"), readOnly)
 	if err2 != nil {
 		return nil, nil, func() {}, fmt.Errorf("open pinned xdp_blocklist: %w", err2)
 	}
-	v6, err2 := ebpf.LoadPinnedMap(filepath.Join(pinPath, "xdp_blocklist_v6"), nil)
+	v6, err2 := ebpf.LoadPinnedMap(filepath.Join(pinPath, "xdp_blocklist_v6"), readOnly)
 	if err2 != nil {
 		v4.Close()
 		return nil, nil, func() {}, fmt.Errorf("open pinned xdp_blocklist_v6: %w", err2)
