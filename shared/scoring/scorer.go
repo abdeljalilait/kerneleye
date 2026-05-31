@@ -92,7 +92,7 @@ func (ts *ThreatScorer) CalculateScore(metrics IPMetrics) ThreatScore {
 	synComponent := ts.calculateSYNScore(synRate, metrics)
 	portComponent := ts.calculatePortScore(metrics, connectionRate, windowDuration)
 	failedComponent := ts.calculateFailedScore(failedRate, metrics)
-	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration, metrics.TotalConnections)
+	burstComponent := ts.calculateBurstScore(connectionRate, windowDuration, metrics.TotalConnections, metrics.SYNCount)
 	serviceComponent := ts.calculateServiceAbuseScore(metrics, effectiveWindow)
 
 	if metrics.RSTCount > 5 {
@@ -375,7 +375,7 @@ func (ts *ThreatScorer) calculateServiceAbuseScore(metrics IPMetrics, windowDura
 	return severity
 }
 
-func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, totalConnections int) float64 {
+func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, totalConnections int, synCount int) float64 {
 	// Check both rate AND absolute volume
 	// High rate with low volume = less concerning
 	// Moderate rate with high volume = sustained attack
@@ -385,14 +385,19 @@ func (ts *ThreatScorer) calculateBurstScore(rate float64, duration float64, tota
 		return 5.0
 	}
 
-	// Volume-based detection - sustained high volume is suspicious
-	// 500+ connections in any window is notable
+	// Volume-based detection — use SYN-only count to avoid false positives
+	// from high legitimate ACK traffic (established connections).
+	// SYN count represents connection initiation attempts.
+	initiationCount := synCount
+	if initiationCount == 0 {
+		initiationCount = totalConnections
+	}
 	volumeScore := 0.0
-	if totalConnections > 1000 {
+	if initiationCount > 1000 {
 		volumeScore = 3.0
-	} else if totalConnections > 500 {
+	} else if initiationCount > 500 {
 		volumeScore = 2.0
-	} else if totalConnections > 200 {
+	} else if initiationCount > 200 {
 		volumeScore = 1.0
 	}
 
