@@ -12,8 +12,9 @@ ARG VERSION=0.0.0
 # Copy proto module first (dependency of backend)
 COPY proto/gen/go /proto/gen/go
 
-# Copy shared scoring module
+# Copy shared modules
 COPY shared/scoring /shared/scoring
+COPY shared/cmdsigning /shared/cmdsigning
 
 # Copy go mod files from backend directory
 COPY backend/go.mod backend/go.sum ./
@@ -21,6 +22,7 @@ COPY backend/go.mod backend/go.sum ./
 # Update go.mod to use the copied proto and shared modules
 RUN go mod edit -replace github.com/kerneleye/proto=/proto/gen/go && \
     go mod edit -replace github.com/kerneleye/shared/scoring=/shared/scoring && \
+    go mod edit -replace github.com/kerneleye/shared/cmdsigning=/shared/cmdsigning && \
     go mod download
 
 # Copy source code from backend directory

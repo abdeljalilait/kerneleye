@@ -42,7 +42,7 @@ type Querier interface {
 	CreateServer(ctx context.Context, arg CreateServerParams) (Server, error)
 	CreateServerPending(ctx context.Context, arg CreateServerPendingParams) (Server, error)
 	CreateServerWithAPIKey(ctx context.Context, arg CreateServerWithAPIKeyParams) (Server, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateUser(ctx context.Context, email string) (User, error)
 	DeleteServer(ctx context.Context, id pgtype.UUID) error
 	GetActiveBlockByIP(ctx context.Context, arg GetActiveBlockByIPParams) (Block, error)
 	// Gets active blocks for a specific server (for state reconciliation)

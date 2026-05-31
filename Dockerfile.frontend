@@ -62,8 +62,9 @@ ARG BUILD_DATE=unknown
 # Copy proto module first (dependency of agent)
 COPY proto/gen/go /proto/gen/go
 
-# Copy shared scoring module
+# Copy shared modules
 COPY shared/scoring /shared/scoring
+COPY shared/cmdsigning /shared/cmdsigning
 
 # Copy agent source (includes pre-compiled bpf_bpfel_x86.o and bpf_bpfel_x86.go)
 COPY agent/ ./agent/
@@ -73,6 +74,7 @@ WORKDIR /app/agent
 # Update go.mod replace directive for Docker context
 RUN go mod edit -replace github.com/kerneleye/proto=/proto/gen/go && \
     go mod edit -replace github.com/kerneleye/shared/scoring=/shared/scoring && \
+    go mod edit -replace github.com/kerneleye/shared/cmdsigning=/shared/cmdsigning && \
     go mod download
 
 # Build static release binary (eBPF objects are pre-compiled in the repo)
