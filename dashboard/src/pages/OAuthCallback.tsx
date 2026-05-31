@@ -6,12 +6,32 @@ import { useAuth } from '../context/AuthContext'
 
 const { Title, Text } = Typography
 
+function getErrorMessage(code: string): { title: string; message: string } {
+  switch (code) {
+    case 'owner_not_configured':
+      return {
+        title: 'Instance not configured',
+        message: 'AUTH_OWNER_EMAIL is not set. Configure the owner email in your environment variables before signing in.',
+      }
+    case 'unauthorized_owner':
+      return {
+        title: 'Access denied',
+        message: 'Your account is not the configured instance owner. Only the owner email set in AUTH_OWNER_EMAIL can sign in.',
+      }
+    default:
+      return {
+        title: 'Sign in failed',
+        message: code || 'Authentication failed',
+      }
+  }
+}
+
 export default function OAuthCallback() {
   const navigate = useNavigate()
   const { login } = useAuth()
   const search = useSearch({ from: '/oauth/callback' })
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [errorCode, setErrorCode] = useState('')
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -21,7 +41,7 @@ export default function OAuthCallback() {
 
       if (error) {
         setStatus('error')
-        setErrorMessage(error)
+        setErrorCode(error)
         return
       }
 
@@ -36,16 +56,18 @@ export default function OAuthCallback() {
           }, 1000)
         } catch (err: any) {
           setStatus('error')
-          setErrorMessage(err?.message || 'Failed to complete authentication')
+          setErrorCode(err?.message || 'Failed to complete authentication')
         }
       } else {
         setStatus('error')
-        setErrorMessage('No authentication token received')
+        setErrorCode('No authentication token received')
       }
     }
 
     handleOAuthCallback()
   }, [search, login, navigate])
+
+  const errorDetails = getErrorMessage(errorCode)
 
   return (
     <div 
@@ -114,10 +136,10 @@ export default function OAuthCallback() {
           <>
             <XCircle size={48} style={{ color: '#ef4444', marginBottom: 16 }} />
             <Title level={4} style={{ margin: 0, marginBottom: 8, color: 'var(--kerneleye-colorText)' }}>
-              Sign in failed
+              {errorDetails.title}
             </Title>
             <Alert
-              message={errorMessage || 'Authentication failed'}
+              message={errorDetails.message}
               type="error"
               showIcon
               style={{ 

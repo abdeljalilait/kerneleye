@@ -93,7 +93,7 @@ UPDATE users
 SET refresh_token = NULL,
     refresh_token_expires_at = NULL
 WHERE id = $1
-RETURNING id, email, password_hash, created_at, updated_at, refresh_token, refresh_token_expires_at
+RETURNING id, email, created_at, updated_at, refresh_token, refresh_token_expires_at
 `
 
 func (q *Queries) ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -102,7 +102,6 @@ func (q *Queries) ClearUserRefreshToken(ctx context.Context, id pgtype.UUID) (Us
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RefreshToken,
@@ -399,23 +398,21 @@ func (q *Queries) CreateServerWithAPIKey(ctx context.Context, arg CreateServerWi
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, password_hash)
-VALUES ($1, $2)
-RETURNING id, email, password_hash, created_at, updated_at, refresh_token, refresh_token_expires_at
+INSERT INTO users (email)
+VALUES ($1)
+RETURNING id, email, created_at, updated_at, refresh_token, refresh_token_expires_at
 `
 
 type CreateUserParams struct {
-	Email        string `json:"email"`
-	PasswordHash string `json:"password_hash"`
+	Email string `json:"email"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PasswordHash)
+	row := q.db.QueryRow(ctx, createUser, arg.Email)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RefreshToken,
@@ -2307,7 +2304,7 @@ func (q *Queries) GetTrafficAggregationByIP(ctx context.Context, arg GetTrafficA
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, created_at, updated_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, created_at, updated_at, refresh_token, refresh_token_expires_at FROM users
 WHERE email = $1
 `
 
@@ -2317,7 +2314,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RefreshToken,
@@ -2327,7 +2323,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, created_at, updated_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, created_at, updated_at, refresh_token, refresh_token_expires_at FROM users
 WHERE id = $1
 `
 
@@ -2337,7 +2333,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RefreshToken,
@@ -2347,7 +2342,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 }
 
 const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
-SELECT id, email, password_hash, created_at, updated_at, refresh_token, refresh_token_expires_at FROM users
+SELECT id, email, created_at, updated_at, refresh_token, refresh_token_expires_at FROM users
 WHERE refresh_token = $1
 `
 
@@ -2357,7 +2352,6 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RefreshToken,
@@ -3460,7 +3454,7 @@ UPDATE users
 SET refresh_token = $2,
     refresh_token_expires_at = $3
 WHERE id = $1
-RETURNING id, email, password_hash, created_at, updated_at, refresh_token, refresh_token_expires_at
+RETURNING id, email, created_at, updated_at, refresh_token, refresh_token_expires_at
 `
 
 type UpdateUserRefreshTokenParams struct {
@@ -3475,7 +3469,6 @@ func (q *Queries) UpdateUserRefreshToken(ctx context.Context, arg UpdateUserRefr
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RefreshToken,

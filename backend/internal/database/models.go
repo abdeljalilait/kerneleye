@@ -192,7 +192,6 @@ type TrafficTimeline struct {
 type User struct {
 	ID                    pgtype.UUID        `json:"id"`
 	Email                 string             `json:"email"`
-	PasswordHash          string             `json:"password_hash"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 	RefreshToken          pgtype.Text        `json:"refresh_token"`

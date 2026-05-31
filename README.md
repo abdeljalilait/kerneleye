@@ -19,7 +19,7 @@ KernelEye is a self-hosted security monitoring platform for Linux servers. It us
 - gRPC ingestion and block command streaming between agent and backend.
 - React dashboard with WebSocket updates, server detail views, blocked IP management, whitelisting, reports, and analytics.
 - GeoIP enrichment when MaxMind databases are configured.
-- OAuth support for GitHub and Google, plus password login for existing users.
+- OAuth support for GitHub and Google (single-owner self-hosted access).
 - Privacy-first collection: metadata only, no packet payloads.
 
 ## Architecture
@@ -66,7 +66,7 @@ The agent requires Linux and elevated privileges for eBPF/XDP operations.
 The backend lives in `backend/`.
 
 - `backend/cmd/api/main.go` starts the Fiber HTTP API and gRPC services.
-- `backend/internal/api/` contains auth, dashboard handlers, gRPC handlers, block APIs, whitelist APIs, WebSocket handling, rate limiting, and self-hosted compatibility endpoints.
+- `backend/internal/api/` contains auth, dashboard handlers, gRPC handlers, block APIs, whitelist APIs, WebSocket handling, and rate limiting.
 - `backend/internal/analysis/` contains scoring workers, block management, data retention, and monthly report logic.
 - `backend/internal/database/` contains sqlc-generated database access code.
 - `backend/internal/geoip/` handles GeoIP enrichment.
@@ -195,7 +195,7 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-Registration is OAuth-first in the current backend. Configure GitHub or Google OAuth for self-service sign-in, or use password login only for users that already exist in the database.
+Sign-in is OAuth-only. Set `AUTH_OWNER_EMAIL` and configure at least one OAuth provider (GitHub or Google) for dashboard access. Only the configured owner email is permitted to sign in.
 
 ### Build and Run Agent
 

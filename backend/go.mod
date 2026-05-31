@@ -13,7 +13,7 @@ require (
 	github.com/kerneleye/shared/scoring v0.1.0
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/redis/go-redis/v9 v9.18.0
-	golang.org/x/crypto v0.46.0
+	golang.org/x/crypto v0.46.0 // indirect
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.11
 )

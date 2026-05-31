@@ -147,8 +147,6 @@ func main() {
 	v1 := app.Group("/api/v1")
 
 	// Public routes
-	v1.Post("/auth/register", api.HandleRegister(queries))
-	v1.Post("/auth/login", api.HandleLogin(queries))
 	v1.Post("/auth/refresh", api.HandleRefreshToken(queries))
 	v1.Get("/auth/providers", api.HandleGetAuthProviders())
 

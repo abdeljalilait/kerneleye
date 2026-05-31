@@ -345,20 +345,6 @@ export default function Profile() {
                     </Space>
                     <Badge status="default" text="Disabled" style={{ color: 'var(--kerneleye-colorTextSecondary)' }} />
                   </Row>
-                  <Divider style={{ borderColor: 'var(--kerneleye-colorBorderSecondary)', margin: '8px 0' }} />
-                  <Row justify="space-between" align="middle">
-                    <Space direction="vertical" size={4}>
-                      <Text strong style={{ color: 'var(--kerneleye-colorText)' }}>
-                        Change Password
-                      </Text>
-                      <Text style={{ color: 'var(--kerneleye-colorTextSecondary)', fontSize: 13 }}>
-                        Update your password regularly for better security
-                      </Text>
-                    </Space>
-                    <Button type="primary" ghost icon={<Key size={16} />}>
-                      Update
-                    </Button>
-                  </Row>
                 </Space>
               </Card>
             </>

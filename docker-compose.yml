@@ -52,6 +52,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       OAUTH_REDIRECT_URL: ${OAUTH_REDIRECT_URL}
+      AUTH_OWNER_EMAIL: ${AUTH_OWNER_EMAIL}
     depends_on:
       kerneleye-db:
         condition: service_healthy

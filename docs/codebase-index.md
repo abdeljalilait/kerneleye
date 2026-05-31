@@ -34,7 +34,7 @@ This index maps the first-party code in `kerneleye` (excluding `node_modules`, `
 
 ### API Layer
 
-- `backend/internal/api/auth.go`: JWT login/register/me and auth middleware.
+- `backend/internal/api/auth.go`: JWT auth, refresh tokens, owner-only access middleware.
 - `backend/internal/api/oauth.go`: GitHub/Google OAuth handlers.
 - `backend/internal/api/handlers.go`: server CRUD, traffic, alerts, stats, API key generation.
 - `backend/internal/api/apikey.go`: HMAC API key generation/validation.

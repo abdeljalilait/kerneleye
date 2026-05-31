@@ -86,6 +86,14 @@ func HandleGetAuthProviders() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		config := GetOAuthConfig()
 
+		// If AUTH_OWNER_EMAIL is not configured, hide all providers.
+		if ownerNotConfigured() {
+			return c.JSON(fiber.Map{
+				"providers":        []map[string]interface{}{},
+				"owner_configured": false,
+			})
+		}
+
 		providers := []map[string]interface{}{}
 
 		if config.GitHubClientID != "" {
@@ -105,7 +113,8 @@ func HandleGetAuthProviders() fiber.Handler {
 		}
 
 		return c.JSON(fiber.Map{
-			"providers": providers,
+			"providers":        providers,
+			"owner_configured": true,
 		})
 	}
 }
@@ -193,13 +202,23 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 			}
 		}
 
+		// Enforce owner email restriction for self-hosted single-owner access.
+		if ownerNotConfigured() {
+			redirectURL := fmt.Sprintf("%s/oauth/callback?error=owner_not_configured", config.DashboardURL)
+			return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
+		}
+		if !isOwnerEmail(githubUser.Email) {
+			log.Printf("[OAuth] GitHub login rejected: %s is not the configured owner", githubUser.Email)
+			redirectURL := fmt.Sprintf("%s/oauth/callback?error=unauthorized_owner", config.DashboardURL)
+			return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
+		}
+
 		// Find or create user
 		user, err := queries.GetUserByEmail(c.Context(), githubUser.Email)
 		if err != nil {
 			// Create new user
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
-				Email:        githubUser.Email,
-				PasswordHash: "!oauth-no-password-login", // Unusable hash — OAuth users cannot log in with password
+				Email: githubUser.Email,
 			})
 			if err != nil {
 				log.Printf("[OAuth] Failed to create user: %v", err)
@@ -425,13 +444,23 @@ func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
 			return fiber.NewError(fiber.StatusBadRequest, "Email is required")
 		}
 
+		// Enforce owner email restriction for self-hosted single-owner access.
+		if ownerNotConfigured() {
+			redirectURL := fmt.Sprintf("%s/oauth/callback?error=owner_not_configured", config.DashboardURL)
+			return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
+		}
+		if !isOwnerEmail(googleUser.Email) {
+			log.Printf("[OAuth] Google login rejected: %s is not the configured owner", googleUser.Email)
+			redirectURL := fmt.Sprintf("%s/oauth/callback?error=unauthorized_owner", config.DashboardURL)
+			return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
+		}
+
 		// Find or create user
 		user, err := queries.GetUserByEmail(c.Context(), googleUser.Email)
 		if err != nil {
 			// Create new user
 			user, err = queries.CreateUser(c.Context(), database.CreateUserParams{
-				Email:        googleUser.Email,
-				PasswordHash: "!oauth-no-password-login", // Unusable hash — OAuth users cannot log in with password
+				Email: googleUser.Email,
 			})
 			if err != nil {
 				log.Printf("[OAuth] Failed to create user: %v", err)

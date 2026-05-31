@@ -42,8 +42,6 @@ api.interceptors.request.use((config) => {
 // API methods
 export const authAPI = {
   // Public endpoints (no auth required)
-  login: (email: string, password: string) => publicApi.post('/auth/login', { email, password }),
-  register: (email: string, password: string) => publicApi.post('/auth/register', { email, password }),
   getProviders: () => publicApi.get('/auth/providers'),
   
   // Protected endpoints (requires auth)
