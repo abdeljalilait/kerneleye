@@ -39,6 +39,10 @@ func (a *Aggregator) runBufferMaintenance() {
 
 // getServerIPs retrieves all local IP addresses for the server
 func (a *Aggregator) StartFlushTimer(interval time.Duration) {
+	if a.flushTicker != nil {
+		return // Already running
+	}
+
 	a.flushTicker = time.NewTicker(interval)
 	a.heartbeatTicker = time.NewTicker(30 * time.Second)
 
@@ -64,16 +68,18 @@ func (a *Aggregator) SendHeartbeat() {
 
 	a.grpcMu.RLock()
 	client := a.grpcClient
+	apiKey := a.apiKey
+	publicIP := a.cachedPublicIP
+	a.grpcMu.RUnlock()
+
 	if client == nil {
-		a.grpcMu.RUnlock()
 		Logger.Warn("⚠️  gRPC client not initialized, skipping heartbeat")
 		a.scheduleReconnect()
 		return
 	}
 	resp, err := client.Heartbeat(ctx, &pb.HeartbeatRequest{
-		ApiKey: a.apiKey, Hostname: hostname, AgentVersion: Version, IpAddress: a.cachedPublicIP,
+		ApiKey: apiKey, Hostname: hostname, AgentVersion: Version, IpAddress: publicIP,
 	})
-	a.grpcMu.RUnlock()
 	if err != nil {
 		Logger.Errorf("❌ gRPC heartbeat error: %v", err)
 		a.scheduleReconnect()

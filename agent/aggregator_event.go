@@ -275,15 +275,17 @@ func (a *Aggregator) ProcessEvent(event Event) {
 			case remediation.ActionBlock:
 				if err := a.remediator.Block(decision.IP, decision.Duration); err != nil {
 					Logger.Errorf("❌ Failed to block IP %s: %v", decision.IP, err)
+				} else {
+					svcName := resolveAgentService(processName, decision.DestPort, decision.Protocol)
+					a.ReportBlockedIPWithContext(decision.IP, remediation.ActionBlock, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol, svcName)
 				}
-				svcName := resolveAgentService(processName, decision.DestPort, decision.Protocol)
-				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionBlock, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol, svcName)
 			case remediation.ActionRateLimit:
 				if err := a.remediator.RateLimit(decision.IP, decision.Duration); err != nil {
 					Logger.Errorf("❌ Failed to rate-limit IP %s: %v", decision.IP, err)
+				} else {
+					svcName := resolveAgentService(processName, decision.DestPort, decision.Protocol)
+					a.ReportBlockedIPWithContext(decision.IP, remediation.ActionRateLimit, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol, svcName)
 				}
-				svcName := resolveAgentService(processName, decision.DestPort, decision.Protocol)
-				a.ReportBlockedIPWithContext(decision.IP, remediation.ActionRateLimit, decision.Reason, decision.Duration, decision.DestPort, decision.Protocol, svcName)
 			}
 		}
 	}

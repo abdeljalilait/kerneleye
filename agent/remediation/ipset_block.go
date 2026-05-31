@@ -96,7 +96,7 @@ func (r *IPSetRemediator) Unblock(ip net.IP, blockType BlockType) error {
 	delete(r.blockedIPs, ip.String())
 	r.mu.Unlock()
 
-	logger.Info("✅ Unblocked %s from %s", ip, set)
+	logger.Infof("✅ Unblocked %s from %s", ip, set)
 	return nil
 }
 
@@ -119,21 +119,27 @@ func (r *IPSetRemediator) BlockCIDR(cidr string, duration time.Duration) error {
 	if isIPv6 {
 		args = append(args, "family", "inet6")
 	}
-	r.Runner("ipset", args...)
+	if err := r.Runner("ipset", args...); err != nil {
+		return fmt.Errorf("ipset create %s failed: %w", setName, err)
+	}
 
 	// Add rule to iptables chain if not exists
 	if !r.setRuleExists(chainName, setName) {
-		r.Runner("iptables", "-I", chainName, "1",
+		if err := r.Runner("iptables", "-I", chainName, "1",
 			"-m", "set", "--match-set", setName, "src",
-			"-j", "DROP")
+			"-j", "DROP"); err != nil {
+			return fmt.Errorf("iptables insert for %s failed: %w", setName, err)
+		}
 	}
 
 	// Add rule to ip6tables chain for IPv6 if not exists
 	if isIPv6 {
 		if !r.setRuleExistsIP6(chainName, setName) {
-			r.Runner("ip6tables", "-I", chainName, "1",
+			if err := r.Runner("ip6tables", "-I", chainName, "1",
 				"-m", "set", "--match-set", setName, "src",
-				"-j", "DROP")
+				"-j", "DROP"); err != nil {
+				return fmt.Errorf("ip6tables insert for %s failed: %w", setName, err)
+			}
 		}
 	}
 

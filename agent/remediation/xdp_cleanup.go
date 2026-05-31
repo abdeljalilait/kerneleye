@@ -10,6 +10,11 @@ import (
 // Runs in a background goroutine to prevent map memory leaks.
 
 func (r *XDPRemediator) StartCleanup(interval time.Duration) {
+	if interval <= 0 {
+		logger.Errorf("StartCleanup: interval must be positive (got %v)", interval)
+		return
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

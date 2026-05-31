@@ -94,8 +94,10 @@ func (r *XDPRemediator) readBlockedPackets() {
 			}
 		}
 
-		// Parse the blocked packet event
-		if len(record.RawSample) < 32 {
+	// Parse the blocked packet event
+	// C struct layout: src_ip (4) + src_ip6 (16) + ip_version (1) +
+	// dest_port (2) + protocol (1) + reason (1) + timestamp (8) = 33 bytes
+	if len(record.RawSample) < 33 {
 			continue // Invalid sample size
 		}
 

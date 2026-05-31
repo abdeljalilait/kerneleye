@@ -131,6 +131,12 @@ func (b *BlockCommandClient) fetchBlockList(ctx context.Context) (*pb.GetBlockLi
 		if len(resp.Signature) == 0 || resp.Nonce <= 0 {
 			return nil, fmt.Errorf("block list response is unsigned — rejecting (CMD_SIGNING_KEY is configured)")
 		}
+
+		// Nonce replay protection — same as verifyCommand
+		if !b.nonceTracker.Check(resp.Nonce) {
+			return nil, fmt.Errorf("replayed block list nonce %d (last seen: %d)", resp.Nonce, b.nonceTracker.Last())
+		}
+
 		entries := make([]cmdsigning.BlockListEntry, 0, len(resp.Blocks))
 		for _, b := range resp.Blocks {
 			entries = append(entries, cmdsigning.BlockListEntry{
@@ -144,6 +150,9 @@ func (b *BlockCommandClient) fetchBlockList(ctx context.Context) (*pb.GetBlockLi
 		if err := cmdsigning.Verify(key, resp.Nonce, payload, resp.Signature); err != nil {
 			return nil, fmt.Errorf("block list signature verification failed: %w", err)
 		}
+
+		b.nonceTracker.Record(resp.Nonce)
+		b.persistNonce(resp.Nonce)
 	}
 
 	return resp, nil

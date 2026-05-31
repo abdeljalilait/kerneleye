@@ -41,9 +41,11 @@ type TLSTransportConfig struct {
 }
 
 // buildGRPCTarget converts server host to gRPC target address.
-// Secure schemes (grpcs://, https://) keep their port; plain hosts remap 443→9091.
+// Secure schemes (grpcs://, https://) preserve their port; non-secure schemes
+// and plain hosts default to 443 (no more :443→:9091 remapping).
+// See normalizeGRPCTarget and buildGRPCDialTarget for port default logic.
 func buildGRPCTarget(serverHost, grpcURL string) string {
-	target := grpcURL
+	target := strings.TrimSpace(grpcURL)
 	if target == "" {
 		target = serverHost
 	}
@@ -61,7 +63,10 @@ func normalizeGRPCTarget(raw string) string {
 	parsed, err := url.Parse(target)
 	hasPlainScheme := err == nil && (parsed.Scheme == "grpc" || parsed.Scheme == "http" || parsed.Scheme == "h2c")
 
-	if !strings.Contains(target, ":") {
+	// Use parsed.Port() to detect explicit ports — handles IPv6 brackets correctly.
+	// strings.Contains(target, ":") would match IPv6 addresses like [::1].
+	hasPort := err == nil && parsed.Port() != ""
+	if !hasPort {
 		if hasPlainScheme {
 			return target + ":80"
 		}

@@ -63,10 +63,15 @@ func (r *XDPRemediator) captureMapSnapshots() {
 			snap.ContentHash, snap.EntryCount = r.hashMapContents(entry.m)
 		}
 
-		r.mapSnapshots[entry.name] = snap
-		logger.Debugf("Map snapshot: %s id=%d frozen=%v trust=%s entries=%d hash=%s",
-			snap.Name, snap.MapID, snap.Frozen, snap.TrustLevel, snap.EntryCount,
-			snap.ContentHash[:12]+"...")
+	r.mapSnapshots[entry.name] = snap
+	// Only slice ContentHash when long enough (can be empty for low-trust maps)
+	hashPreview := "<no-hash>"
+	if len(snap.ContentHash) >= 12 {
+		hashPreview = snap.ContentHash[:12] + "..."
+	}
+	logger.Debugf("Map snapshot: %s id=%d frozen=%v trust=%s entries=%d hash=%s",
+		snap.Name, snap.MapID, snap.Frozen, snap.TrustLevel, snap.EntryCount,
+		hashPreview)
 	}
 }
 

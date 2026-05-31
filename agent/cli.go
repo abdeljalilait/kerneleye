@@ -68,6 +68,11 @@ func clearDataAndExit() {
 
 	removed := 0
 	for _, s := range stores {
+		// Clean WAL/SHM sidecars regardless of main DB file presence
+		for _, suf := range []string{"-wal", "-shm"} {
+			_ = os.Remove(s.path + suf)
+		}
+
 		if _, err := os.Stat(s.path); os.IsNotExist(err) {
 			continue
 		}
@@ -76,10 +81,6 @@ func clearDataAndExit() {
 		} else {
 			fmt.Printf("🗑️   Removed %s: %s\n", s.label, s.path)
 			removed++
-		}
-		// Also remove WAL and SHM sidecar files if present
-		for _, suf := range []string{"-wal", "-shm"} {
-			_ = os.Remove(s.path + suf)
 		}
 	}
 

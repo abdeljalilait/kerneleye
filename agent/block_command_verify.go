@@ -30,8 +30,12 @@ func (b *BlockCommandClient) verifyCommand(cmd *pb.BlockCommand) error {
 
 	const maxCommandAge = 5 * time.Minute
 	if cmd.IssuedAt != nil {
-		if age := time.Since(cmd.IssuedAt.AsTime()); age > maxCommandAge {
+		age := time.Since(cmd.IssuedAt.AsTime())
+		if age > maxCommandAge {
 			return fmt.Errorf("command expired: issued %v ago (max %v)", age.Round(time.Second), maxCommandAge)
+		}
+		if age < -maxCommandAge {
+			return fmt.Errorf("command issued in the future: %v ahead (max clock skew %v)", (-age).Round(time.Second), maxCommandAge)
 		}
 	}
 
