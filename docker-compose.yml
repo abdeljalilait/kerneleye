@@ -77,7 +77,7 @@ services:
       - "traefik.http.routers.kernelgrpc.tls.certresolver=letsencrypt"
       - "traefik.http.routers.kernelgrpc.service=kernelgrpc"
       - "traefik.http.services.kernelgrpc.loadbalancer.server.port=9091"
-      - "traefik.http.services.kernelgrpc.loadbalancer.server.scheme=h2"
+      - "traefik.http.services.kernelgrpc.loadbalancer.server.scheme=h2c"
 
   # Frontend (Landing + Dashboard)
   # Serves static files only - API calls go directly to backend
