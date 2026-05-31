@@ -89,7 +89,7 @@ func buildGRPCDialTarget(target string) string {
 // When tlsCfg.Insecure is true, returns plaintext credentials (insecure).
 // When CertFile+KeyFile are provided, sets up mTLS client certificate.
 // When CAFile is provided, uses a custom CA pool instead of the system pool.
-func buildTLSTransport(target string, tlsCfg *TLSTransportConfig) (credentials.TransportCredentials, error) {
+func buildTLSTransport(tlsCfg *TLSTransportConfig) (credentials.TransportCredentials, error) {
 	if tlsCfg != nil && tlsCfg.Insecure {
 		if Logger != nil {
 			Logger.Warn("⚠️  TLS DISABLED: agent is running in insecure mode. " +
@@ -135,8 +135,8 @@ func buildTLSTransport(target string, tlsCfg *TLSTransportConfig) (credentials.T
 
 // buildGRPCOpts builds gRPC dial options with TLS by default.
 // Plaintext is only allowed when tlsCfg.Insecure is explicitly true.
-func buildGRPCOpts(target string, tlsCfg *TLSTransportConfig) []grpc.DialOption {
-	creds, err := buildTLSTransport(target, tlsCfg)
+func buildGRPCOpts(tlsCfg *TLSTransportConfig) []grpc.DialOption {
+	creds, err := buildTLSTransport(tlsCfg)
 	if err != nil {
 		Logger.Fatalf("Failed to build TLS transport: %v", err)
 	}
@@ -181,7 +181,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string, tlsCfg *TLST
 	var lastErr error
 	const maxAttempts = 5
 
-	opts := buildGRPCOpts(grpcTarget, tlsCfg)
+	opts := buildGRPCOpts(tlsCfg)
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {

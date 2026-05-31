@@ -83,7 +83,7 @@ func (a *Aggregator) ServerID() string {
 func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, tlsCfg *TLSTransportConfig, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 	controlPlaneHost, controlPlanePort, controlPlaneIPs := resolveControlPlaneEndpoint(grpcTarget)
-	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(grpcTarget), buildGRPCOpts(grpcTarget, tlsCfg)...)
+	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(grpcTarget), buildGRPCOpts(tlsCfg)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
@@ -616,7 +616,7 @@ func (a *Aggregator) attemptReconnect(attempt int) {
 	Logger.Infof("🔄 Attempting to reconnect to gRPC server %s (attempt %d)...", a.grpcURL, attempt)
 
 	// Create new connection
-	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(a.grpcURL), buildGRPCOpts(a.grpcURL, a.tlsCfg)...)
+	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(a.grpcURL), buildGRPCOpts(a.tlsCfg)...)
 	if err != nil {
 		Logger.Errorf("❌ Failed to create new gRPC connection: %v", err)
 		a.reconnectMu.Lock()

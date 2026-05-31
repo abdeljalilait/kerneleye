@@ -27,7 +27,7 @@ func TestBuildGRPCDialTarget(t *testing.T) {
 }
 
 func TestBuildTLSTransportInsecure(t *testing.T) {
-	creds, err := buildTLSTransport("localhost:9091", &TLSTransportConfig{Insecure: true})
+	creds, err := buildTLSTransport(&TLSTransportConfig{Insecure: true})
 	if err != nil {
 		t.Fatalf("buildTLSTransport insecure should not error: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestBuildTLSTransportInsecure(t *testing.T) {
 
 func TestBuildTLSTransportSecure(t *testing.T) {
 	// TLS (no mTLS) uses system CA pool — no error expected.
-	creds, err := buildTLSTransport("grpc.example.com:443", &TLSTransportConfig{})
+	creds, err := buildTLSTransport(&TLSTransportConfig{})
 	if err != nil {
 		t.Fatalf("buildTLSTransport secure should not error: %v", err)
 	}
@@ -56,19 +56,14 @@ func TestBuildTLSTransportSecure(t *testing.T) {
 }
 
 func TestBuildTLSTransportMissingCAFile(t *testing.T) {
-	_, err := buildTLSTransport("grpc.example.com:443", &TLSTransportConfig{
-		CAFile: "/nonexistent/ca.pem",
-	})
+	_, err := buildTLSTransport(&TLSTransportConfig{CAFile: "/nonexistent/ca.pem"})
 	if err == nil {
 		t.Fatal("expected error for missing CA file")
 	}
 }
 
 func TestBuildTLSTransportMissingCert(t *testing.T) {
-	_, err := buildTLSTransport("grpc.example.com:443", &TLSTransportConfig{
-		CertFile: "/nonexistent/cert.pem",
-		KeyFile:  "/nonexistent/key.pem",
-	})
+	_, err := buildTLSTransport(&TLSTransportConfig{CertFile: "/nonexistent/cert.pem", KeyFile: "/nonexistent/key.pem"})
 	if err == nil {
 		t.Fatal("expected error for missing client cert/key")
 	}
