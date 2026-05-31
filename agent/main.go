@@ -96,6 +96,14 @@ func main() {
 		}
 	}
 
+	// Enforce TLS verification when not in insecure mode.
+	// Plaintext gRPC exposes all telemetry metadata to network sniffing.
+	if cfg.TLSInsecure && cfg.TLSCAFile == "" {
+		Logger.Warn("⚠️  INSECURE MODE: gRPC traffic is plaintext and unauthenticated. " +
+			"Telemetry metadata (IPs, ports, processes) is visible to anyone on the network. " +
+			"Set KERNELEYE_TLS_CA_FILE to verify the backend certificate.")
+	}
+
 	Logger.Info("Registering agent with server...")
 	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, tlsCfg); err != nil {
 		Logger.Fatalf("Registration failed: %v", err)
