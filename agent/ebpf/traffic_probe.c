@@ -497,6 +497,20 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
 
     fill_process_info(e);
 
+    // Populate SYN tracker for inbound connections so detect_tcp_close can
+    // detect failed handshakes. Key: (server_ip, server_port, client_ip, client_port)
+    // matching what the accepted socket will have at close time.
+    u64 ts = e->timestamp;
+    if (ctx->family == AF_INET) {
+        struct conn_key key = {};
+        make_conn_key(&key, e->daddr.addr4, e->lport, e->saddr.addr4, e->rport);
+        bpf_map_update_elem(&tcp_syn_tracker, &key, &ts, BPF_ANY);
+    } else {
+        struct conn_key_v6 key = {};
+        make_conn_key_v6(&key, &e->daddr.addr6, e->lport, &e->saddr.addr6, e->rport);
+        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &ts, BPF_ANY);
+    }
+
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
