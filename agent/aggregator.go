@@ -426,7 +426,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	trackedPort := trackedPortForEvent(event)
 
 	// GetOrCreate atomically gets or creates stats entry
-	stats, isNew := a.stats.GetOrCreate(ip, func() *IPStats {
+	stats, _ := a.stats.GetOrCreate(ip, func() *IPStats {
 		return &IPStats{
 			Protocol:     event.Protocol,
 			UniquePorts:  make(map[uint16]bool),
@@ -445,24 +445,17 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	stats.LastSeen = eventTime
 	stats.Protocol = event.Protocol
 
-	// SYN detection: If this is the first time we've seen this IP, it's a SYN
-	// (Every TCP connection starts with SYN, so first event = SYN)
-	if isNew {
+	// Count flags from actual event data.
+	// TCP connections always start with a SYN event (detect_inbound_syn or
+	// detect_tcp_connect both set FLAG_SYN), so no first-event inference is needed.
+	if event.Flags&0x01 != 0 {
 		stats.SYNCount++
-		if Logger != nil {
-			Logger.Debugf("First event for IP %s - marking as SYN (syn detection via first-event inference)", ip)
-		}
-	} else {
-		// For subsequent events, use actual flags
-		if event.Flags&0x01 != 0 {
-			stats.SYNCount++
-			if Logger != nil {
-				Logger.Debugf("Event from existing IP %s has SYN flag set", ip)
-			}
-		}
 	}
 	if event.Flags&0x02 != 0 {
 		stats.ACKCount++
+	}
+	if event.Flags&0x08 != 0 {
+		stats.FailedHandshakes++
 	}
 	stats.UniquePorts[trackedPort] = true
 	stats.PortCounts[trackedPort]++
