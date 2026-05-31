@@ -41,16 +41,28 @@ type TLSTransportConfig struct {
 }
 
 // buildGRPCTarget converts server host to gRPC target address.
+// When grpcURL is provided with grpcs:// or https:// scheme, the port is
+// respected as-is (e.g., grpcs://host:443 stays :443 — for Traefik-proxied setups).
+// Without an explicit scheme, port 443 is remapped to 9091 (legacy direct backend).
 func buildGRPCTarget(serverHost, grpcURL string) string {
 	if grpcURL != "" {
 		grpcTarget := strings.TrimSpace(grpcURL)
+		parsed, err := url.Parse(grpcTarget)
+		hasSecureScheme := err == nil && (parsed.Scheme == "grpcs" || parsed.Scheme == "https")
+
 		if !strings.Contains(grpcTarget, ":") {
-			grpcTarget = grpcTarget + ":9091"
-		} else {
+			if hasSecureScheme {
+				grpcTarget = grpcTarget + ":443"
+			} else {
+				grpcTarget = grpcTarget + ":9091"
+			}
+		} else if !hasSecureScheme {
+			// Legacy: plain host:443 → gRPC direct listen port is 9091
 			grpcTarget = strings.Replace(grpcTarget, ":443", ":9091", 1)
 		}
 		return grpcTarget
 	}
+	// Fallback: serverHost with no explicit scheme — legacy remap of 443→9091
 	grpcTarget := strings.TrimSpace(serverHost)
 	if !strings.Contains(grpcTarget, ":") {
 		grpcTarget = grpcTarget + ":9091"
