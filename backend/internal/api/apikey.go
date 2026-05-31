@@ -120,16 +120,5 @@ func ValidateAPIKey(ctx context.Context, queries *database.Queries, apiKey strin
 		return emptyServer, fmt.Errorf("server access revoked")
 	}
 
-	// Step 6: Check user subscription entitlement
-	user, err := queries.GetUserByID(ctx, server.UserID)
-	if err != nil {
-		log.Printf("[ValidateAPIKey] Failed to fetch user for entitlement check: %v", err)
-		return emptyServer, fmt.Errorf("user not found")
-	}
-	if !hasSubscriptionEntitlement(user, time.Now()) {
-		log.Printf("[ValidateAPIKey] User %s has no active subscription — rejecting agent request", database.FromPgUUID(server.UserID))
-		return emptyServer, fmt.Errorf("subscription_inactive")
-	}
-
 	return server, nil
 }

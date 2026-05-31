@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -139,7 +138,7 @@ type CommandBuilder struct {
 	Features   map[string]bool
 }
 
-// HandleGenerateAPIKeyWithConfig generates API key with subscription validation
+// HandleGenerateAPIKeyWithConfig generates API key with agent configuration.
 func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id").(string)
@@ -147,40 +146,6 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 		var req GenerateAPIKeyRequest
 		if err := c.BodyParser(&req); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid request")
-		}
-
-		// Validate user has active subscription
-		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userID))
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
-		}
-
-		// Check subscription status - includes cancel-at-period-end access
-		hasActiveSub := hasSubscriptionEntitlement(user, time.Now())
-
-		if !hasActiveSub {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":   "No active subscription",
-				"message": "You need an active subscription or trial to add servers.",
-				"code":    "NO_SUBSCRIPTION",
-			})
-		}
-
-		// Check server limit
-		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userID))
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to check server limit")
-		}
-
-		if serverCount >= user.MaxServers {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":       "Server limit reached",
-				"message":     fmt.Sprintf("Your plan allows up to %d servers", user.MaxServers),
-				"code":        "SERVER_LIMIT_REACHED",
-				"current":     serverCount,
-				"max":         user.MaxServers,
-				"upgrade_url": "/subscription",
-			})
 		}
 
 		// Generate API key package only.
@@ -364,41 +329,6 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 		}
 
 		userIDStr := userID.(string)
-
-		// Validate user has active subscription
-		user, err := queries.GetUserByID(c.Context(), database.ToPgUUID(userIDStr))
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to verify user")
-		}
-
-		// Check subscription status - includes cancel-at-period-end access
-		hasActiveSub := hasSubscriptionEntitlement(user, time.Now())
-
-		if !hasActiveSub {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":         "No active subscription",
-				"message":       "You need an active subscription or trial to add servers.",
-				"code":          "NO_SUBSCRIPTION",
-				"subscribe_url": "/subscription",
-			})
-		}
-
-		// Check server limit
-		serverCount, err := queries.CountServersByUser(c.Context(), database.ToPgUUID(userIDStr))
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "failed to check server limit")
-		}
-
-		if int32(serverCount) >= user.MaxServers {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":       "Server limit reached",
-				"message":     fmt.Sprintf("Your plan allows up to %d servers", user.MaxServers),
-				"code":        "SERVER_LIMIT_REACHED",
-				"current":     serverCount,
-				"max":         user.MaxServers,
-				"upgrade_url": "/subscription",
-			})
-		}
 
 		// Generate API key package only.
 		// The server row will be created when the remote agent calls Register.

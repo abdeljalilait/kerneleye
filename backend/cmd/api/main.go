@@ -6,10 +6,9 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"net"
 	"os"
 	"time"
-
-	"net"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -22,7 +21,6 @@ import (
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/email"
 	"github.com/kerneleye/backend/internal/geoip"
-	"github.com/kerneleye/backend/internal/payments/polar"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc"
@@ -87,17 +85,6 @@ func main() {
 		log.Println("📧 Email service initialized (Mailtrap)")
 	} else {
 		log.Println("⚠️  Email service not configured (MAILTRAP_API_TOKEN not set)")
-	}
-
-	// Initialize Polar Payments Client
-	polarClient := polar.NewClient(polar.Config{
-		AccessToken:   os.Getenv("POLAR_ACCESS_TOKEN"),
-		WebhookSecret: os.Getenv("POLAR_WEBHOOK_SECRET"),
-	})
-	if polarClient.IsConfigured() {
-		log.Println("💳 Polar Payments client initialized")
-	} else {
-		log.Println("⚠️  Polar Payments not configured (POLAR_ACCESS_TOKEN not set)")
 	}
 
 	// Create Fiber app
@@ -184,10 +171,6 @@ func main() {
 		log.Println("🌍 GeoIP service initialized")
 		defer geoIP.Close()
 	}
-
-	// Polar webhook (public, but signed) - MUST be registered BEFORE protected group
-	// This ensures it doesn't inherit the AuthMiddleware from the protected group
-	v1.Post("/webhooks/polar", api.HandlePolarWebhook(queries, emailService, polarClient))
 
 	// Start scoring worker for accumulated traffic analysis (must be before routes that need it)
 	analysisWorker := analysis.NewWorker(analysis.WorkerConfig{
@@ -294,13 +277,6 @@ func main() {
 	protected.Post("/whitelist", api.RequireDashboardAuth(), api.HandleAddToWhitelist(queries, hub))
 	protected.Delete("/whitelist/:ip", api.RequireDashboardAuth(), api.HandleRemoveFromWhitelist(queries, hub))
 	protected.Get("/whitelist/check", api.HandleCheckWhitelist(queries))
-
-	// Subscription endpoints (Polar)
-	protected.Get("/subscription/plans", api.HandleListPlans(queries))
-	protected.Get("/subscription/status", api.HandleGetSubscriptionStatus(queries))
-	protected.Post("/subscription/checkout", api.HandleCreateCheckout(queries, polarClient))
-	protected.Post("/subscription/portal", api.HandleCreateCustomerPortal(queries, polarClient))
-	protected.Get("/subscription/debug", api.HandlePolarDebug(polarClient, queries))
 
 	// gRPC Server setup
 	grpcPort := os.Getenv("GRPC_PORT")

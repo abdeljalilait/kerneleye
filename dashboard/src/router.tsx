@@ -13,7 +13,6 @@ const Servers = lazy(() => import('./pages/Servers'))
 const Threats = lazy(() => import('./pages/Threats'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const ServerDetail = lazy(() => import('./pages/ServerDetail'))
-const Subscription = lazy(() => import('./pages/Subscription'))
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const Profile = lazy(() => import('./pages/Profile'))
@@ -21,7 +20,6 @@ const Reports = lazy(() => import('./pages/Reports'))
 const Visualizer = lazy(() => import('./pages/Visualizer'))
 const BlockedIPs = lazy(() => import('./pages/BlockedIPs'))
 const Whitelist = lazy(() => import('./pages/Whitelist'))
-const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'))
 
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -137,18 +135,6 @@ const whitelistRoute = createRoute({
   component: withSuspense(Whitelist),
 })
 
-const subscriptionRoute = createRoute({
-  getParentRoute: () => dashboardRoute,
-  path: 'subscription',
-  component: withSuspense(Subscription),
-})
-
-const checkoutSuccessRoute = createRoute({
-  getParentRoute: () => dashboardRoute,
-  path: 'subscription/success',
-  component: withSuspense(CheckoutSuccess),
-})
-
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth/callback',
@@ -193,8 +179,6 @@ const routeTree = rootRoute.addChildren([
     alertsRoute,
     blockedIPsRoute,
     whitelistRoute,
-    subscriptionRoute,
-    checkoutSuccessRoute,
     profileRoute,
     reportsRoute,
     visualizerRoute,

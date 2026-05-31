@@ -6,7 +6,7 @@
 
 > Kernel-level traffic intelligence and threat remediation for Linux servers.
 
-KernelEye is a security monitoring platform for Linux servers. It uses eBPF, TC, and XDP in a Go agent to observe network metadata, score suspicious activity, and apply remediation through kernel-level XDP blocking and ipset/iptables rules. A Go backend stores and analyzes events, while a React dashboard provides server management, live traffic, threat views, blocked IPs, whitelisting, reports, and subscription flows.
+KernelEye is a self-hosted security monitoring platform for Linux servers. It uses eBPF, TC, and XDP in a Go agent to observe network metadata, score suspicious activity, and apply remediation through kernel-level XDP blocking and ipset/iptables rules. A Go backend stores and analyzes events, while a React dashboard provides server management, live traffic, threat views, blocked IPs, whitelisting, reports, and analytics.
 
 ## What It Does
 
@@ -17,7 +17,7 @@ KernelEye is a security monitoring platform for Linux servers. It uses eBPF, TC,
 - XDP fast-path packet blocking and ipset/iptables fallback.
 - Backend-side analysis workers, block management, data retention, and monthly reports.
 - gRPC ingestion and block command streaming between agent and backend.
-- React dashboard with WebSocket updates, server detail views, blocked IP management, whitelisting, reports, analytics, and subscription pages.
+- React dashboard with WebSocket updates, server detail views, blocked IP management, whitelisting, reports, and analytics.
 - GeoIP enrichment when MaxMind databases are configured.
 - OAuth support for GitHub and Google, plus password login for existing users.
 - Privacy-first collection: metadata only, no packet payloads.
@@ -25,7 +25,7 @@ KernelEye is a security monitoring platform for Linux servers. It uses eBPF, TC,
 ## Architecture
 
 ```text
-Customer Linux host
+Monitored Linux host
   eBPF traffic probe + TC bandwidth hooks
   XDP firewall and ipset/iptables remediation
   Go agent
@@ -66,12 +66,11 @@ The agent requires Linux and elevated privileges for eBPF/XDP operations.
 The backend lives in `backend/`.
 
 - `backend/cmd/api/main.go` starts the Fiber HTTP API and gRPC services.
-- `backend/internal/api/` contains auth, dashboard handlers, gRPC handlers, block APIs, whitelist APIs, WebSocket handling, rate limiting, and subscription endpoints.
+- `backend/internal/api/` contains auth, dashboard handlers, gRPC handlers, block APIs, whitelist APIs, WebSocket handling, rate limiting, and self-hosted compatibility endpoints.
 - `backend/internal/analysis/` contains scoring workers, block management, data retention, and monthly report logic.
 - `backend/internal/database/` contains sqlc-generated database access code.
 - `backend/internal/geoip/` handles GeoIP enrichment.
 - `backend/internal/email/` sends Mailtrap-backed emails when configured.
-- `backend/internal/payments/polar/` integrates Polar subscriptions.
 - `backend/migrations/` contains PostgreSQL migrations.
 
 HTTP defaults to port `8080`; gRPC defaults to port `9091`.
@@ -80,7 +79,7 @@ HTTP defaults to port `8080`; gRPC defaults to port `9091`.
 
 The dashboard lives in `dashboard/` and is a Vite React application.
 
-- `dashboard/src/pages/` includes overview, servers, server detail, threats, alerts, reports, visualizer, blocked IPs, whitelist, subscription, login, profile, and OAuth callback pages.
+- `dashboard/src/pages/` includes overview, servers, server detail, threats, alerts, reports, visualizer, blocked IPs, whitelist, login, profile, and OAuth callback pages.
 - `dashboard/src/components/` contains live traffic, block feed, charts, server lists, configurators, and shared layout components.
 - `dashboard/src/api/client.ts` defines the REST API client.
 - `dashboard/src/context/WebSocketContext.tsx` manages live event updates.
@@ -171,7 +170,7 @@ API_KEY_SECRET=<strong-secret>
 CORS_ORIGINS=http://localhost:3000
 ```
 
-Optional integrations include Redis rate limiting, Mailtrap email, Polar subscriptions, GitHub/Google OAuth, and MaxMind GeoIP.
+Optional integrations include Redis rate limiting, Mailtrap email, GitHub/Google OAuth, and MaxMind GeoIP.
 
 ### Start Backend
 
@@ -239,7 +238,6 @@ kerneleye/
 │   ├── internal/database/     sqlc generated queries and helpers
 │   ├── internal/email/        Mailtrap email service
 │   ├── internal/geoip/        MaxMind GeoIP service
-│   ├── internal/payments/     Polar integration
 │   └── migrations/            PostgreSQL migrations
 ├── dashboard/                 React dashboard app
 ├── kerneleye-landing-page/    React landing page app
@@ -259,7 +257,7 @@ kerneleye/
 | Layer | Technologies |
 | --- | --- |
 | Agent | Go, cilium/ebpf, XDP, TC, gRPC, SQLite local stores, zap |
-| Backend | Go, Fiber, gRPC, PostgreSQL, sqlc, Redis, Mailtrap, Polar |
+| Backend | Go, Fiber, gRPC, PostgreSQL, sqlc, Redis, Mailtrap |
 | Dashboard | React, TypeScript, Vite, Ant Design, React Query, Recharts |
 | Landing page | React, TypeScript, Vite, Tailwind CSS |
 | Protocols | Protobuf, gRPC |

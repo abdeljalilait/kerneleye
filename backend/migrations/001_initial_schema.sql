@@ -11,8 +11,6 @@ CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    plan VARCHAR(50) NOT NULL DEFAULT 'free', -- free, starter, pro, team
-    max_servers INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -209,7 +207,7 @@ CREATE TRIGGER update_ip_stats_updated_at BEFORE UPDATE ON ip_stats
 -- ============================================
 -- Comments
 -- ============================================
-COMMENT ON TABLE users IS 'KernelEye customer accounts';
+COMMENT ON TABLE users IS 'KernelEye user accounts';
 COMMENT ON TABLE servers IS 'Monitored servers with agent installations';
 COMMENT ON TABLE traffic_events IS 'Aggregated network traffic events from agents';
 COMMENT ON TABLE alerts IS 'Threat alerts triggered by scoring system';

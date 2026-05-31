@@ -5,7 +5,6 @@ import api from '../api/client';
 interface User {
   id: string;
   email: string;
-  plan: string;
 }
 
 interface AuthContextType {
@@ -246,4 +245,3 @@ export function useAuth() {
   }
   return context;
 }
-

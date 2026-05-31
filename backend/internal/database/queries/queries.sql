@@ -1,6 +1,6 @@
 -- name: CreateUser :one
-INSERT INTO users (email, password_hash, plan)
-VALUES ($1, $2, $3)
+INSERT INTO users (email, password_hash)
+VALUES ($1, $2)
 RETURNING *;
 
 -- name: GetUserByEmail :one
@@ -407,67 +407,9 @@ WHERE server_id = $1
 DELETE FROM servers
 WHERE id = $1;
 
--- name: ListActivePlans :many
-SELECT * FROM subscription_plans
-WHERE is_active = true
-ORDER BY price_cents ASC;
-
--- name: GetPlanByName :one
-SELECT * FROM subscription_plans
-WHERE name = $1;
-
--- name: GetPlanByPolarProductID :one
-SELECT * FROM subscription_plans
-WHERE polar_product_id = $1;
-
--- name: UpdateUserSubscription :exec
-UPDATE users
-SET plan = $2,
-    polar_customer_id = COALESCE($3, polar_customer_id),
-    polar_subscription_id = COALESCE($4, polar_subscription_id),
-    subscription_status = COALESCE($5, subscription_status),
-    subscription_current_period_start = COALESCE($6, subscription_current_period_start),
-    subscription_current_period_end = COALESCE($7, subscription_current_period_end),
-    subscription_cancel_at_period_end = COALESCE($8, subscription_cancel_at_period_end),
-    trial_ends_at = COALESCE($9, trial_ends_at),
-    has_used_trial = COALESCE($10, has_used_trial),
-    updated_at = NOW()
-WHERE id = $1;
-
--- name: UpdateUserTrial :exec
-UPDATE users
-SET trial_ends_at = $2,
-    updated_at = NOW()
-WHERE id = $1;
-
--- name: CreateSubscriptionEvent :one
-INSERT INTO subscription_events (
-    user_id, polar_event_id, event_type, payload, processed_at
-) VALUES ($1, $2, $3, $4, $5)
-RETURNING *;
-
 -- name: CountServersByUser :one
 SELECT COUNT(*)::int FROM servers
 WHERE user_id = $1;
-
--- name: GetUserSubscriptionStatus :one
-SELECT 
-    u.id,
-    u.email,
-    u.plan,
-    u.max_servers,
-    u.subscription_status,
-    u.subscription_current_period_start,
-    u.subscription_current_period_end,
-    u.subscription_cancel_at_period_end,
-    u.trial_ends_at,
-    p.display_name as plan_display_name,
-    p.data_retention_days,
-    p.features,
-    (SELECT COUNT(*) FROM servers WHERE user_id = u.id) as current_server_count
-FROM users u
-LEFT JOIN subscription_plans p ON u.plan = p.name
-WHERE u.id = $1;
 
 -- ============================================
 -- Reports & Analytics Queries
@@ -961,20 +903,6 @@ ORDER BY blocked_at DESC;
 
 
 -- ============================================
--- User Polar Integration Queries
--- ============================================
-
--- name: GetUserByPolarCustomerID :one
-SELECT * FROM users
-WHERE polar_customer_id = $1;
-
--- name: UpdateUserPolarCustomerID :exec
-UPDATE users
-SET polar_customer_id = $2,
-    updated_at = NOW()
-WHERE id = $1;
-
--- ============================================
 -- Monthly Report Queries
 -- ============================================
 
@@ -982,8 +910,7 @@ WHERE id = $1;
 -- Gets all users with email addresses for monthly reports
 SELECT id, email, email as name
 FROM users
-WHERE email IS NOT NULL AND email != ''
-  AND (subscription_status = 'active' OR subscription_status = 'trialing');
+WHERE email IS NOT NULL AND email != '';
 
 -- name: GetMonthlyTrafficStats :one
 -- Gets total traffic event count for a user in a date range
@@ -1080,22 +1007,19 @@ LIMIT 5;
 SELECT archive_traffic_events($1, $2)::int as archived_count;
 
 -- name: GetServerDataRetentionDays :one
--- Gets the data retention days for a server's user
-SELECT p.data_retention_days
-FROM servers s
-JOIN users u ON s.user_id = u.id
-JOIN subscription_plans p ON u.plan = p.name
-WHERE s.id = $1;
+-- Gets the data retention days for a server.
+SELECT 3650::int as data_retention_days
+FROM servers
+WHERE id = $1;
 
 -- name: GetAllServersWithRetention :many
 -- Gets all servers with their data retention settings for archival job
 SELECT 
     s.id as server_id,
     u.id as user_id,
-    COALESCE(p.data_retention_days, 7) as retention_days
+    3650::int as retention_days
 FROM servers s
-JOIN users u ON s.user_id = u.id
-LEFT JOIN subscription_plans p ON u.plan = p.name;
+JOIN users u ON s.user_id = u.id;
 
 -- name: GetArchivedEventsCount :one
 -- Returns count of archived events for a server

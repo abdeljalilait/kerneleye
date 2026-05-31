@@ -248,7 +248,6 @@ func HandleLogin(queries *database.Queries) fiber.Handler {
 			"user": fiber.Map{
 				"id":    database.FromPgUUID(user.ID),
 				"email": user.Email,
-				"plan":  user.Plan,
 			},
 			"token": token,
 		})
@@ -271,7 +270,6 @@ func HandleMe(queries *database.Queries) fiber.Handler {
 		return c.JSON(fiber.Map{
 			"id":    database.FromPgUUID(user.ID),
 			"email": user.Email,
-			"plan":  user.Plan,
 		})
 	}
 }
