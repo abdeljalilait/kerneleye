@@ -333,10 +333,15 @@ func buildGRPCServerOptions() []grpc.ServerOption {
 	certFile := os.Getenv("GRPC_TLS_CERT_FILE")
 	keyFile := os.Getenv("GRPC_TLS_KEY_FILE")
 
-	if certFile == "" || keyFile == "" {
+	if certFile == "" && keyFile == "" {
 		// No TLS configured — plaintext (dev mode, or behind TLS-terminating proxy).
 		// The agent should use the --insecure flag to connect when this is the case.
 		return nil
+	}
+
+	if certFile == "" || keyFile == "" {
+		log.Fatalf("Incomplete gRPC TLS configuration: both GRPC_TLS_CERT_FILE and GRPC_TLS_KEY_FILE must be set (got cert=%q key=%q)",
+			certFile, keyFile)
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)

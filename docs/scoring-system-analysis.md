@@ -167,7 +167,7 @@ CrowdSec (Reference)
 - Multi-factor analysis
 - Confidence weighting
 
-### Phase 2 (Next) - Statistical Enhancements
+### Phase 2 - Statistical Enhancements ✅ IMPLEMENTED
 ```go
 // Per-server baselines
 type Baseline struct {
@@ -183,7 +183,9 @@ if (synRate - baseline.Avg) / baseline.StdDev > 3 {
 }
 ```
 
-### Phase 3 - ML/AI
+### Phase 3 - ML/AI (Deferred)
+> Note: Phase 4 (ML/AI) has been deferred. Current focus is on hardening
+> the deterministic scoring engine and hybrid remediation pipeline.
 ```go
 // Isolation Forest
 features := []float64{

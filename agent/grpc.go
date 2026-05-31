@@ -137,8 +137,13 @@ func buildTLSTransport(tlsCfg *TLSTransportConfig) (credentials.TransportCredent
 		tlsConfig.ServerName = tlsCfg.ServerName
 	}
 
-	// mTLS: load client certificate if provided
-	if tlsCfg != nil && tlsCfg.CertFile != "" && tlsCfg.KeyFile != "" {
+	// mTLS: load client certificate if provided.
+	// Both CertFile and KeyFile must be set together; single-sided config is an error.
+	if tlsCfg != nil && (tlsCfg.CertFile != "" || tlsCfg.KeyFile != "") {
+		if tlsCfg.CertFile == "" || tlsCfg.KeyFile == "" {
+			return nil, fmt.Errorf("incomplete mTLS configuration: both CertFile and KeyFile must be provided (got cert=%q key=%q)",
+				tlsCfg.CertFile, tlsCfg.KeyFile)
+		}
 		cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load client certificate (cert=%s, key=%s): %w",

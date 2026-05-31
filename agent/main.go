@@ -437,12 +437,14 @@ func validateEvent(e *Event) error {
 	if e.Direction > 1 {
 		return errors.New("invalid direction")
 	}
-	// Source IP must be non-zero (first 4 bytes for IPv4)
-	if e.Saddr[0] == 0 && e.Saddr[1] == 0 && e.Saddr[2] == 0 && e.Saddr[3] == 0 {
+	// Source IP must be non-zero — validate via the decoded IP
+	ipObj := bytesToIP(e.Saddr[:], e.Family)
+	if ipObj.IsUnspecified() {
 		return errors.New("missing source IP")
 	}
-	// At least one port must be non-zero
-	if e.Lport == 0 && e.Rport == 0 {
+	// Port check only for transport protocols that use ports (TCP, UDP).
+	// ICMP and other non-port protocols may legitimately have zero ports.
+	if (e.Protocol == 6 || e.Protocol == 17) && e.Lport == 0 && e.Rport == 0 {
 		return errors.New("missing ports")
 	}
 	// Timestamp sanity: not zero and not more than 1 hour into the future

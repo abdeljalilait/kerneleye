@@ -106,7 +106,8 @@ go run cmd/api/main.go
 # → 🚀 KernelEye API listening on port 8080
 # → 📡 gRPC listening on port 9091 (plaintext or TLS depending on config)
 
-# Apply migrations
+# Apply migrations (run from repo root before cd backend, or use migrations/*.sql)
+cd ..
 for f in backend/migrations/*.sql; do
   psql "$DATABASE_URL" -f "$f"
 done

@@ -907,6 +907,10 @@ func (h *GrpcIngestHandler) ReportIntegrity(ctx context.Context, req *pb.Integri
 		return nil, status.Errorf(codes.PermissionDenied, "server not active")
 	}
 
+	if req.Status == nil {
+		return nil, status.Error(codes.InvalidArgument, "integrity report is missing Status field")
+	}
+
 	log.Printf("[Integrity] Received report from %s (agent=%s): healthy=%v programs=%d maps=%d",
 		server.Hostname, req.AgentVersion, req.Status.Healthy,
 		len(req.Programs), len(req.Maps))

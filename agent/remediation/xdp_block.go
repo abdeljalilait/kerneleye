@@ -22,6 +22,9 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 	if cls, ok := MapClassificationByName("xdp_blocklist"); ok && cls.Frozen {
 		return fmt.Errorf("map xdp_blocklist is frozen (trust level: %s) — writes are not allowed", cls.TrustLevel)
 	}
+	if cls, ok := MapClassificationByName("xdp_blocklist_v6"); ok && cls.Frozen {
+		return fmt.Errorf("map xdp_blocklist_v6 is frozen (trust level: %s) — writes are not allowed", cls.TrustLevel)
+	}
 
 	if err := validateIP(ip); err != nil {
 		return err
@@ -57,7 +60,9 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 	return nil
 }
 
-// BlockCIDR adds a CIDR range to the blocklist
+// BlockCIDR adds an IPv4 CIDR range to the XDP blocklist.
+// IPv6 CIDRs are not currently supported (parseCIDRv4 only handles IPv4).
+// TODO: add parseCIDRv6 for IPv6 CIDR support.
 func (r *XDPRemediator) BlockCIDR(cidr string, duration time.Duration) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

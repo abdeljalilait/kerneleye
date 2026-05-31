@@ -16,7 +16,7 @@ Complete development workflow for KernelEye.
 
 ## Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      Agent (Linux, root)                     │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
@@ -56,7 +56,7 @@ Complete development workflow for KernelEye.
 
 ### Shared Packages
 
-```
+```text
 shared/
 ├── scoring/        Threat scoring engine (used by agent + backend)
 └── cmdsigning/     HMAC command signing + nonce replay protection
