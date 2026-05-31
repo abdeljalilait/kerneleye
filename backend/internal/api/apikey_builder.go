@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"os"
@@ -128,14 +130,15 @@ type GenerateAPIKeyRequest struct {
 
 // CommandBuilder generates the agent run command
 type CommandBuilder struct {
-	APIKey     string
-	ServerHost string
-	GRPCURL    string
-	Mode       string
-	Systemd    bool
-	Threshold  int
-	Duration   string
-	Features   map[string]bool
+	APIKey        string
+	ServerHost    string
+	GRPCURL       string
+	Mode          string
+	Systemd       bool
+	Threshold     int
+	Duration      string
+	Features      map[string]bool
+	CmdSigningKey string // Empty when mode is "monitor"
 }
 
 // HandleGenerateAPIKeyWithConfig generates API key with agent configuration.
@@ -175,15 +178,21 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 		grpcURL := getGRPCURL(serverHost)
 
 		// Build installation command
+		// Generate command signing key for remediation modes
+		signingKey := ""
+		if mode != "monitor" {
+			signingKey = generateSigningKey()
+		}
 		builder := CommandBuilder{
-			APIKey:     apiKey,
-			ServerHost: serverHost,
-			GRPCURL:    grpcURL,
-			Mode:       mode,
-			Systemd:    daemonize,
-			Threshold:  threshold,
-			Duration:   duration,
-			Features:   req.Config.Features,
+			APIKey:        apiKey,
+			ServerHost:    serverHost,
+			GRPCURL:       grpcURL,
+			Mode:          mode,
+			Systemd:       daemonize,
+			Threshold:     threshold,
+			Duration:      duration,
+			Features:      req.Config.Features,
+			CmdSigningKey: signingKey,
 		}
 
 		response := map[string]interface{}{
@@ -205,8 +214,13 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 // BinaryCommand generates one-line curl install command
 func (cb *CommandBuilder) BinaryCommand() string {
 	args := cb.buildInstallerArgs()
-	return fmt.Sprintf("curl -sSL %s | sudo API_KEY=\"%s\" bash -s -- %s",
+	cmd := fmt.Sprintf("curl -sSL %s | sudo API_KEY=\"%s\" bash -s -- %s",
 		getInstallScriptURL(), cb.APIKey, args)
+	if cb.CmdSigningKey != "" {
+		cmd = fmt.Sprintf("curl -sSL %s | sudo API_KEY=\"%s\" CMD_SIGNING_KEY=\"%s\" bash -s -- %s",
+			getInstallScriptURL(), cb.APIKey, cb.CmdSigningKey, args)
+	}
+	return cmd
 }
 
 // buildInstallerArgs generates arguments for install.sh.
@@ -229,13 +243,15 @@ func (cb *CommandBuilder) buildInstallerArgs() string {
 
 // EnvironmentVariables returns a map of env vars for the API response
 func (cb *CommandBuilder) EnvironmentVariables() map[string]string {
-	// The agent reads API key, server, and optional gRPC target from env.
-	// Mode settings are passed via command-line flags
-	return map[string]string{
+	env := map[string]string{
 		"KERNELEYE_API_KEY":  cb.APIKey,
 		"KERNELEYE_SERVER":   cb.ServerHost,
 		"KERNELEYE_GRPC_URL": cb.GRPCURL,
 	}
+	if cb.CmdSigningKey != "" {
+		env["CMD_SIGNING_KEY"] = cb.CmdSigningKey
+	}
+	return env
 }
 
 func getServerHost() string {
@@ -292,6 +308,17 @@ func getInstallScriptURL() string {
 	return fmt.Sprintf("https://%s/install.sh", installDomain)
 }
 
+// generateSigningKey creates a random base64 key for HMAC command signing.
+// Used when generating install commands for remediation-enabled modes.
+func generateSigningKey() string {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		// Fallback — shouldn't happen, but don't block install generation
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(key)
+}
+
 // ============================================
 // Server Configuration Handlers
 // ============================================
@@ -343,12 +370,17 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 		if req.Config.Daemon != nil {
 			daemonize = *req.Config.Daemon
 		}
+		signingKey := ""
+		if req.Config.Mode != "monitor" {
+			signingKey = generateSigningKey()
+		}
 		builder := CommandBuilder{
-			APIKey:     apiKey,
-			ServerHost: serverHost,
-			GRPCURL:    grpcURL,
-			Mode:       req.Config.Mode,
-			Systemd:    daemonize,
+			APIKey:        apiKey,
+			ServerHost:    serverHost,
+			GRPCURL:       grpcURL,
+			Mode:          req.Config.Mode,
+			Systemd:       daemonize,
+			CmdSigningKey: signingKey,
 		}
 
 		response := map[string]interface{}{
