@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/netip"
 	"strconv"
@@ -415,4 +416,45 @@ func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlo
 		Signature:       sig,
 		Nonce:           nonce,
 	}, nil
+}
+
+// signHubCommand signs a command map with HMAC-SHA256 and sends it to an agent
+// via the Hub. When CMD_SIGNING_KEY is not set, the command is sent unsigned
+// (the agent will reject it if hardened — dev environments only).
+func signHubCommand(hub *Hub, agentID, action, ip, reason, blockType string, duration int64) {
+	cmd := map[string]interface{}{
+		"action":     action,
+		"ip":         ip,
+		"reason":     reason,
+		"block_type": blockType,
+	}
+	if duration > 0 {
+		cmd["duration"] = duration
+	}
+
+	key := cmdsigning.Key()
+	if key == "" {
+		log.Printf("[signHubCommand] CMD_SIGNING_KEY not set — sending unsigned command to %s (agent will reject if hardened)", agentID)
+	} else {
+		nonce := time.Now().UnixNano()
+		issuedAt := time.Now()
+
+		var actionCode int32
+		switch action {
+		case "block":
+			actionCode = 0
+		case "unblock":
+			actionCode = 1
+		case "ratelimit":
+			actionCode = 2
+		}
+
+		payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, "", issuedAt.UnixNano())
+		sig := cmdsigning.Sign(key, nonce, payload)
+
+		cmd["signature"] = sig
+		cmd["nonce"] = fmt.Sprintf("%d", nonce)
+	}
+
+	hub.SendCommandToAgent(agentID, cmd)
 }
