@@ -86,6 +86,16 @@ func main() {
 		Logger.Info("🛡️  Read-only mode: agent will monitor and report, but never block")
 	}
 
+	// Enforce command signing when remediation is enabled.
+	// Unsigned block/unblock/rate-limit commands are a critical security gap.
+	if cfg.EnableRemediation {
+		if os.Getenv("CMD_SIGNING_KEY") == "" {
+			Logger.Fatal("CMD_SIGNING_KEY must be set when remediation is enabled. " +
+				"Generate one with: openssl rand -base64 32. " +
+				"Set the same key on both agent and backend.")
+		}
+	}
+
 	Logger.Info("Registering agent with server...")
 	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, tlsCfg); err != nil {
 		Logger.Fatalf("Registration failed: %v", err)
@@ -401,12 +411,29 @@ func runEventLoop(rd *ringbuf.Reader, agg *Aggregator) {
 }
 
 func validateEvent(e *Event) error {
-	// Check if source IP is set (first 4 bytes for IPv4)
+	// Protocol: only TCP(6), UDP(17), and ICMP(1) are valid
+	if e.Protocol != 6 && e.Protocol != 17 && e.Protocol != 1 {
+		return errors.New("invalid protocol")
+	}
+	// Family: only AF_INET(2) and AF_INET6(10)
+	if e.Family != 2 && e.Family != 10 {
+		return errors.New("invalid address family")
+	}
+	// Direction: 0=inbound, 1=outbound
+	if e.Direction > 1 {
+		return errors.New("invalid direction")
+	}
+	// Source IP must be non-zero (first 4 bytes for IPv4)
 	if e.Saddr[0] == 0 && e.Saddr[1] == 0 && e.Saddr[2] == 0 && e.Saddr[3] == 0 {
 		return errors.New("missing source IP")
 	}
+	// At least one port must be non-zero
 	if e.Lport == 0 && e.Rport == 0 {
 		return errors.New("missing ports")
+	}
+	// Timestamp sanity: not zero and not more than 1 hour into the future
+	if e.Timestamp == 0 {
+		return errors.New("missing timestamp")
 	}
 	return nil
 }

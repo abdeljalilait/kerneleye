@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +40,7 @@ type BlockCommandClient struct {
 	reconnecting      bool
 
 	nonceTracker cmdsigning.NonceTracker // Prevents replay attacks
+	noncePath    string                  // File path for persisting nonce across restarts
 }
 
 // SetOnRateLimit sets the callback invoked when the backend sends a RATE_LIMIT command.
@@ -59,7 +64,7 @@ func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlo
 		return nil, fmt.Errorf("failed to create block service client")
 	}
 
-	return &BlockCommandClient{
+	b := &BlockCommandClient{
 		conn:              conn,
 		client:            client,
 		apiKey:            apiKey,
@@ -68,7 +73,42 @@ func NewBlockCommandClient(conn *grpc.ClientConn, apiKey, serverID string, onBlo
 		onBlock:           onBlock,
 		onUnblock:         onUnblock,
 		maxReconnectDelay: 5 * time.Minute,
-	}, nil
+	}
+
+	// Persist nonce across restart — default to /var/lib/kerneleye/
+	nonceDir := "/var/lib/kerneleye"
+	if _, err := os.Stat(nonceDir); os.IsNotExist(err) {
+		nonceDir = os.TempDir()
+	}
+	b.noncePath = filepath.Join(nonceDir, "cmd_nonce")
+	b.loadNonce()
+
+	return b, nil
+}
+
+// loadNonce restores the last seen nonce from disk.
+func (b *BlockCommandClient) loadNonce() {
+	data, err := os.ReadFile(b.noncePath)
+	if err != nil {
+		return
+	}
+	last, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return
+	}
+	b.nonceTracker.Record(last)
+	Logger.Debugf("[BlockCommandClient] Restored nonce: %d", last)
+}
+
+// persistNonce saves the last seen nonce to disk.
+func (b *BlockCommandClient) persistNonce(nonce int64) {
+	if b.noncePath == "" {
+		return
+	}
+	data := []byte(strconv.FormatInt(nonce, 10))
+	if err := os.WriteFile(b.noncePath, data, 0600); err != nil {
+		Logger.Debugf("[BlockCommandClient] Failed to persist nonce: %v", err)
+	}
 }
 
 // Start begins receiving block commands from the backend
@@ -88,27 +128,12 @@ func (b *BlockCommandClient) Start(ctx context.Context) error {
 	return nil
 }
 
-// Reconcile performs a full reconciliation between backend blocks and local state
-// It removes IPs that are no longer in the backend and adds IPs that are missing locally
+// Reconcile performs a full reconciliation between backend blocks and local state.
+// Returns an error if the block list response signature is invalid (tampered response).
 func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
-	b.mu.RLock()
-	client := b.client
-	apiKey := b.apiKey
-	serverID := b.serverID
-	onBlock := b.onBlock
-	b.mu.RUnlock()
-
-	if client == nil {
-		return fmt.Errorf("client not initialized")
-	}
-
-	// Get blocks from backend
-	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
-		ApiKey:      apiKey,
-		ClientToken: serverID,
-	})
+	resp, err := b.fetchBlockList(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get block list: %w", err)
+		return err
 	}
 
 	// Build a map of backend blocks for quick lookup
@@ -117,7 +142,7 @@ func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
 		if block.ExpiresAt > 0 {
 			expiresAt := time.Unix(block.ExpiresAt, 0)
 			if time.Now().After(expiresAt) {
-				continue // Skip expired blocks
+				continue
 			}
 		}
 		backendBlocks[block.IpAddress] = block.BlockType
@@ -125,14 +150,6 @@ func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
 
 	Logger.Debugf("[BlockCommandClient] Backend has %d active blocks", len(backendBlocks))
 
-	// Note: To properly reconcile, we would need to query the local state (XDP/ipset)
-	// and compare with backend. For now, we just log the reconciliation attempt.
-	// Full implementation would require:
-	// 1. Query local ipset/XDP for current blocked IPs
-	// 2. Find IPs in backend but not locally -> add
-	// 3. Find IPs locally but not in backend -> remove
-
-	// For now, just re-apply all backend blocks (handles reconnection scenarios)
 	for ip := range backendBlocks {
 		var duration time.Duration
 		for _, block := range resp.Blocks {
@@ -144,6 +161,9 @@ func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
 			}
 		}
 
+		b.mu.RLock()
+		onBlock := b.onBlock
+		b.mu.RUnlock()
 		if onBlock != nil {
 			if err := onBlock(ip, duration, "reconcile"); err != nil {
 				Logger.Warnf("[BlockCommandClient] Failed to reconcile block %s: %v", ip, err)
@@ -153,6 +173,50 @@ func (b *BlockCommandClient) Reconcile(ctx context.Context) error {
 
 	Logger.Infof("[BlockCommandClient] Reconciliation complete: %d blocks from backend", len(backendBlocks))
 	return nil
+}
+
+// fetchBlockList gets the block list from backend and verifies the response signature.
+func (b *BlockCommandClient) fetchBlockList(ctx context.Context) (*pb.GetBlockListResponse, error) {
+	b.mu.RLock()
+	client := b.client
+	apiKey := b.apiKey
+	serverID := b.serverID
+	b.mu.RUnlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
+		ApiKey:      apiKey,
+		ClientToken: serverID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block list: %w", err)
+	}
+
+	// Verify response signature if CMD_SIGNING_KEY is configured
+	key := cmdsigning.Key()
+	if key != "" {
+		if len(resp.Signature) == 0 || resp.Nonce <= 0 {
+			return nil, fmt.Errorf("block list response is unsigned — rejecting (CMD_SIGNING_KEY is configured)")
+		}
+		entries := make([]cmdsigning.BlockListEntry, 0, len(resp.Blocks))
+		for _, b := range resp.Blocks {
+			entries = append(entries, cmdsigning.BlockListEntry{
+				IPAddress:       b.IpAddress,
+				DurationSeconds: b.DurationSeconds,
+				Reason:          b.Reason,
+				BlockType:       int32(b.BlockType),
+			})
+		}
+		payload := cmdsigning.BuildBlockListPayload(entries)
+		if err := cmdsigning.Verify(key, resp.Nonce, payload, resp.Signature); err != nil {
+			return nil, fmt.Errorf("block list signature verification failed: %w", err)
+		}
+	}
+
+	return resp, nil
 }
 
 // Stop stops the block command client
@@ -321,8 +385,8 @@ func (b *BlockCommandClient) UpdateClient(conn *grpc.ClientConn) {
 func (b *BlockCommandClient) verifyCommand(cmd *pb.BlockCommand) error {
 	key := cmdsigning.Key()
 	if key == "" {
-		Logger.Warn("[BlockCommandClient] CMD_SIGNING_KEY not set — accepting unsigned commands (insecure)")
-		return nil
+		return fmt.Errorf("CMD_SIGNING_KEY is not configured — unsigned commands are rejected. " +
+			"Set CMD_SIGNING_KEY env var on both agent and backend to enable command authentication")
 	}
 
 	if cmd.Nonce <= 0 || len(cmd.Signature) == 0 {
@@ -331,6 +395,13 @@ func (b *BlockCommandClient) verifyCommand(cmd *pb.BlockCommand) error {
 
 	if !b.nonceTracker.Check(cmd.Nonce) {
 		return fmt.Errorf("replayed command nonce %d (last seen: %d)", cmd.Nonce, b.nonceTracker.Last())
+	}
+
+	const maxCommandAge = 5 * time.Minute
+	if cmd.IssuedAt != nil {
+		if age := time.Since(cmd.IssuedAt.AsTime()); age > maxCommandAge {
+			return fmt.Errorf("command expired: issued %v ago (max %v)", age.Round(time.Second), maxCommandAge)
+		}
 	}
 
 	actionCode := int32(cmd.Action)
@@ -352,6 +423,7 @@ func (b *BlockCommandClient) verifyCommand(cmd *pb.BlockCommand) error {
 	}
 
 	b.nonceTracker.Record(cmd.Nonce)
+	b.persistNonce(cmd.Nonce)
 	return nil
 }
 
@@ -468,21 +540,10 @@ func (b *BlockCommandClient) IsConnected() bool {
 	return state == connectivity.Ready
 }
 
-// SyncBlockList fetches current block list from backend and applies locally
-// Called on reconnection to reconcile state
+// SyncBlockList fetches current block list from backend and applies locally.
+// Called on reconnection to reconcile state. Verifies the response signature.
 func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
-	b.mu.RLock()
-	client := b.client
-	b.mu.RUnlock()
-
-	if client == nil {
-		return fmt.Errorf("client not initialized")
-	}
-
-	resp, err := client.GetBlockList(ctx, &pb.GetBlockListRequest{
-		ApiKey:      b.apiKey,
-		ClientToken: b.serverID,
-	})
+	resp, err := b.fetchBlockList(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get block list: %w", err)
 	}
@@ -491,7 +552,6 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 
 	// Apply each block locally
 	for _, block := range resp.Blocks {
-		// Check if already expired
 		if block.ExpiresAt > 0 {
 			expiresAt := time.Unix(block.ExpiresAt, 0)
 			if time.Now().After(expiresAt) {
@@ -501,13 +561,11 @@ func (b *BlockCommandClient) SyncBlockList(ctx context.Context) error {
 		}
 
 		var duration time.Duration
-		// duration = 0 means permanent block
 		if block.DurationSeconds > 0 {
 			duration = time.Duration(block.DurationSeconds) * time.Second
 		}
 
 		if block.BlockType == pb.BlockListEntry_BLOCK_TYPE_RATE_LIMIT {
-			// Route ratelimit entries to onRateLimit handler
 			b.mu.RLock()
 			onRateLimit := b.onRateLimit
 			b.mu.RUnlock()

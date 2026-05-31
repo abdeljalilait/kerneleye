@@ -889,8 +889,12 @@ type GetBlockListResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Blocks          []*BlockListEntry      `protobuf:"bytes,1,rep,name=blocks,proto3" json:"blocks,omitempty"`
 	ServerTimestamp int64                  `protobuf:"varint,2,opt,name=server_timestamp,json=serverTimestamp,proto3" json:"server_timestamp,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// HMAC-SHA256 signature over the canonical serialization of the blocks list.
+	// Signed with CMD_SIGNING_KEY to prove authenticity.
+	Signature     []byte `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
+	Nonce         int64  `protobuf:"varint,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetBlockListResponse) Reset() {
@@ -933,6 +937,20 @@ func (x *GetBlockListResponse) GetBlocks() []*BlockListEntry {
 func (x *GetBlockListResponse) GetServerTimestamp() int64 {
 	if x != nil {
 		return x.ServerTimestamp
+	}
+	return 0
+}
+
+func (x *GetBlockListResponse) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *GetBlockListResponse) GetNonce() int64 {
+	if x != nil {
+		return x.Nonce
 	}
 	return 0
 }
@@ -1138,10 +1156,12 @@ const file_kerneleye_v1_blocks_proto_rawDesc = "" +
 	"\x16BLOCK_TYPE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14BLOCK_TYPE_BLOCKLIST\x10\x01\x12\x19\n" +
 	"\x15BLOCK_TYPE_RATE_LIMIT\x10\x02\x12\x13\n" +
-	"\x0fBLOCK_TYPE_CIDR\x10\x03\"w\n" +
+	"\x0fBLOCK_TYPE_CIDR\x10\x03\"\xab\x01\n" +
 	"\x14GetBlockListResponse\x124\n" +
 	"\x06blocks\x18\x01 \x03(\v2\x1c.kerneleye.v1.BlockListEntryR\x06blocks\x12)\n" +
-	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\"\xac\x03\n" +
+	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\x12\x1c\n" +
+	"\tsignature\x18\x03 \x01(\fR\tsignature\x12\x14\n" +
+	"\x05nonce\x18\x04 \x01(\x03R\x05nonce\"\xac\x03\n" +
 	"\fBlockCommand\x129\n" +
 	"\x06action\x18\x01 \x01(\x0e2!.kerneleye.v1.BlockCommand.ActionR\x06action\x12\x1d\n" +
 	"\n" +

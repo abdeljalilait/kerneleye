@@ -188,6 +188,12 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 	if !r.attached {
 		return errNotAttached
 	}
+
+	// Enforce map trust classification — refuse writes to frozen maps
+	if cls, ok := MapClassificationByName("xdp_blocklist"); ok && cls.Frozen {
+		return fmt.Errorf("map xdp_blocklist is frozen (trust level: %s) — writes are not allowed", cls.TrustLevel)
+	}
+
 	if err := validateIP(ip); err != nil {
 		return err
 	}

@@ -228,6 +228,12 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		return nil, status.Errorf(codes.PermissionDenied, "Server not active")
 	}
 
+	const maxBatchSize = 10000
+	if len(req.Events) > maxBatchSize {
+		log.Printf("[gRPC Traffic] Rejecting oversized batch from %s: %d events (max %d)", server.Hostname, len(req.Events), maxBatchSize)
+		return nil, status.Errorf(codes.InvalidArgument, "Batch too large: %d events (max %d)", len(req.Events), maxBatchSize)
+	}
+
 	// Update last_seen
 	_ = h.queries.UpdateServerHeartbeat(ctx, database.UpdateServerHeartbeatParams{
 		ApiKey:       server.ApiKey,
@@ -265,7 +271,8 @@ func (h *GrpcIngestHandler) SubmitTraffic(ctx context.Context, req *pb.TrafficBa
 		direction := directionLabel(event.Direction)
 
 		protocol := protocolToString(event.Protocol)
-		serviceName := resolveServiceName(event.ProcessName, int(event.DestinationPort), event.Protocol)
+		processName := sanitizeProcessName(event.ProcessName)
+		serviceName := resolveServiceName(processName, int(event.DestinationPort), event.Protocol)
 
 		_, err = h.queries.UpsertTrafficEvent(ctx, database.UpsertTrafficEventParams{
 			ServerID:             server.ID,
@@ -504,6 +511,21 @@ func getServiceFromPort(port int) string {
 //  1. Process name from eBPF comm field (works for custom ports, e.g. sshd on 2222)
 //  2. Well-known port number lookup (fallback when process name is unavailable)
 //  3. L4 protocol string as last resort
+// sanitizeProcessName strips non-printable characters and truncates to 15 chars
+// (TASK_COMM_LEN-1). The eBPF comm field is max 16 bytes including null terminator.
+func sanitizeProcessName(name string) string {
+	var buf []byte
+	for _, r := range name {
+		if r >= 0x20 && r < 0x7F {
+			buf = append(buf, byte(r))
+		}
+		if len(buf) >= 15 {
+			break
+		}
+	}
+	return string(buf)
+}
+
 func resolveServiceName(processName string, port int, proto pb.Protocol) string {
 	return services.ResolveService(processName, port, protocolToString(proto))
 }

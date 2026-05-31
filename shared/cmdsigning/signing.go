@@ -136,6 +136,34 @@ func MustGetenvInt64(key string, defaultVal int64) int64 {
 	return n
 }
 
+// BuildBlockListPayload creates a canonical byte representation of a block list
+// for signing. Each entry is serialized as: ip(null)type(null)duration(null)reason(null).
+// Entries are separated by newlines.
+func BuildBlockListPayload(entries []BlockListEntry) []byte {
+	var buf []byte
+	for i, e := range entries {
+		if i > 0 {
+			buf = append(buf, '\n')
+		}
+		buf = append(buf, e.IPAddress...)
+		buf = append(buf, 0)
+		buf = append(buf, byte(e.BlockType))
+		buf = append(buf, 0)
+		buf = binary.BigEndian.AppendUint64(buf, uint64(e.DurationSeconds))
+		buf = append(buf, 0)
+		buf = append(buf, e.Reason...)
+	}
+	return buf
+}
+
+// BlockListEntry is a simplified representation for signing block lists.
+type BlockListEntry struct {
+	IPAddress       string
+	DurationSeconds int64
+	Reason          string
+	BlockType       int32
+}
+
 // Logf is a logging function that can be set by consumers.
 // Default to fmt.Fprintf to os.Stderr.
 var Logf = func(format string, args ...interface{}) {

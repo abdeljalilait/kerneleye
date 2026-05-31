@@ -12,8 +12,10 @@ import (
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/geoip"
 	kerneleyev1 "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/cmdsigning"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // BlockHandler implements the BlockService gRPC interface
@@ -194,16 +196,30 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 	if whitelisted, err := h.queries.GetWhitelistedIPs(stream.Context(), server.UserID); err != nil {
 		log.Printf("[BlockHandler] Failed to load whitelist for agent %s: %v", clientID, err)
 	} else {
+		signingKey := cmdsigning.Key()
 		for _, ip := range whitelisted {
 			for _, bt := range []kerneleyev1.BlockListEntry_BlockType{
 				kerneleyev1.BlockListEntry_BLOCK_TYPE_BLOCKLIST,
 				kerneleyev1.BlockListEntry_BLOCK_TYPE_RATE_LIMIT,
 			} {
+				nonce := time.Now().UnixNano()
+				issuedAt := time.Now()
+				payload := cmdsigning.BuildCanonicalPayload(
+					int32(kerneleyev1.BlockCommand_UNBLOCK),
+					ip.String(), 0, "whitelisted", "", issuedAt.UnixNano(),
+				)
+				var signature []byte
+				if signingKey != "" {
+					signature = cmdsigning.Sign(signingKey, nonce, payload)
+				}
 				if err := stream.Send(&kerneleyev1.BlockCommand{
 					Action:    kerneleyev1.BlockCommand_UNBLOCK,
 					IpAddress: ip.String(),
 					Reason:    "whitelisted",
 					BlockType: bt,
+					IssuedAt:  timestamppb.New(issuedAt),
+					Signature: signature,
+					Nonce:     nonce,
 				}); err != nil {
 					log.Printf("[BlockHandler] Failed to send whitelist snapshot command: %v", err)
 					return err
@@ -273,6 +289,7 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				Reason:          reason,
 				BlockId:         blockID,
 				BlockType:       blockType,
+				IssuedAt:        timestamppb.Now(),
 				Signature:       signature,
 				Nonce:           nonce,
 			}
@@ -371,8 +388,31 @@ func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlo
 
 	log.Printf("[GetBlockList] Returning %d active blocks for server %s", len(result), server.Hostname)
 
+	// Sign the response blob for integrity verification by agent
+	var sig []byte
+	var nonce int64
+	key := cmdsigning.Key()
+	if key != "" {
+		nonce = time.Now().UnixNano()
+		entries := make([]cmdsigning.BlockListEntry, 0, len(result))
+		for _, b := range result {
+			entries = append(entries, cmdsigning.BlockListEntry{
+				IPAddress:       b.IpAddress,
+				DurationSeconds: b.DurationSeconds,
+				Reason:          b.Reason,
+				BlockType:       int32(b.BlockType),
+			})
+		}
+		payload := cmdsigning.BuildBlockListPayload(entries)
+		sig = cmdsigning.Sign(key, nonce, payload)
+	} else {
+		log.Printf("[GetBlockList] CMD_SIGNING_KEY not set — block list response is unsigned")
+	}
+
 	return &kerneleyev1.GetBlockListResponse{
 		Blocks:          result,
 		ServerTimestamp: time.Now().Unix(),
+		Signature:       sig,
+		Nonce:           nonce,
 	}, nil
 }
