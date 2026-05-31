@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/kerneleye/backend/internal/database"
+	"github.com/kerneleye/shared/cmdsigning"
 )
 
 // DeploymentMode represents a deployment option
@@ -178,10 +177,11 @@ func HandleGenerateAPIKeyWithConfig(queries *database.Queries) fiber.Handler {
 		grpcURL := getGRPCURL(serverHost)
 
 		// Build installation command
-		// Generate command signing key for remediation modes
+		// Include the backend's CMD_SIGNING_KEY so the agent can verify signed
+		// commands. Same key must be set on both agent and backend.
 		signingKey := ""
 		if mode != "monitor" {
-			signingKey = generateSigningKey()
+			signingKey = cmdsigning.Key()
 		}
 		builder := CommandBuilder{
 			APIKey:        apiKey,
@@ -308,17 +308,6 @@ func getInstallScriptURL() string {
 	return fmt.Sprintf("https://%s/install.sh", installDomain)
 }
 
-// generateSigningKey creates a random base64 key for HMAC command signing.
-// Used when generating install commands for remediation-enabled modes.
-func generateSigningKey() string {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		// Fallback — shouldn't happen, but don't block install generation
-		return ""
-	}
-	return base64.StdEncoding.EncodeToString(key)
-}
-
 // ============================================
 // Server Configuration Handlers
 // ============================================
@@ -372,7 +361,7 @@ func HandleCreateServerWithConfig(queries *database.Queries) fiber.Handler {
 		}
 		signingKey := ""
 		if req.Config.Mode != "monitor" {
-			signingKey = generateSigningKey()
+			signingKey = cmdsigning.Key()
 		}
 		builder := CommandBuilder{
 			APIKey:        apiKey,
