@@ -171,10 +171,24 @@ interface ProtocolTraffic {
 }
 
 // WebSocket Message Types
-export type EventType = 'new_threat' | 'new_alert' | 'new_traffic' | 'stats_update' | 'new_server' | 'server_updated' | 'blocked_packet' | 'new_block' | 'unblock_ip' | 'threat_detected';
+export type EventType = 'new_threat' | 'new_alert' | 'new_traffic' | 'stats_update' | 'new_server' | 'server_updated' | 'blocked_packet' | 'new_block' | 'unblock_ip' | 'threat_detected' | 'integrity_report' | 'integrity_alert';
 
 export interface WSMessage {
   type: EventType;
   timestamp: string;
   data: any;
+}
+
+// Integrity report data from agent attestations
+export interface IntegrityData {
+  server_id: string;
+  server_name: string;
+  agent_version: string;
+  agent_binary_hash: string;
+  healthy: boolean;
+  warnings: string[];
+  errors: string[];
+  program_count: number;
+  map_count: number;
+  timestamp: string;
 }

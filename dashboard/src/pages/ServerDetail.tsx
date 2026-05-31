@@ -4,8 +4,9 @@ import { ArrowLeft, Server, Activity, Shield, Globe, Trash2, RefreshCw, Clock, M
 import { CountryFlag } from '../components/CountryFlag'
 import type { ColumnsType } from 'antd/es/table'
 import { useServer, useServerStats, useServerPortTraffic, useDeleteServer, useServerPortSources } from '../hooks/useQueries'
-import type { PortTraffic, PortSourceIP } from '../types'
+import type { PortTraffic, PortSourceIP, IntegrityData } from '../types'
 import { useWebSocket } from '../context/WebSocketContext'
+import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
 import { useEffect, useState, useMemo } from 'react'
 import {
   useReactTable,
@@ -41,6 +42,15 @@ export default function ServerDetail() {
   const [ipFilter, setIpFilter] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
   const [sourcesParams, setSourcesParams] = useState({ page: 1, page_size: 25, search: '', sort_by: 'last_seen', sort_order: 'desc' })
+  const [integrity, setIntegrity] = useState<IntegrityData | null>(null)
+
+  // Subscribe to integrity events for this server
+  useWebSocketEvent<IntegrityData>('integrity_report', (data) => {
+    if (data.server_id === id) setIntegrity(data)
+  })
+  useWebSocketEvent<IntegrityData>('integrity_alert', (data) => {
+    if (data.server_id === id) setIntegrity(data)
+  })
   
   const { data: server, isLoading: serverLoading, error: serverError, refetch: refetchServer } = useServer(id)
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useServerStats(id)
@@ -734,6 +744,64 @@ export default function ServerDetail() {
                 >
                   {statusConfig.text}
                 </Tag>
+                {integrity && (
+                  <Tooltip
+                    title={
+                      <div style={{ maxWidth: 320 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                          Agent Integrity {integrity.healthy ? '✅ Healthy' : '⚠️ Issues Detected'}
+                        </div>
+                        <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
+                          Agent {integrity.agent_version} · {integrity.map_count} maps · {integrity.program_count} programs
+                        </div>
+                        {integrity.warnings.length > 0 && (
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{ fontWeight: 600, fontSize: 11, color: '#f59e0b', marginBottom: 2 }}>Warnings:</div>
+                            {integrity.warnings.map((w, i) => (
+                              <div key={i} style={{ fontSize: 10, opacity: 0.9, paddingLeft: 8 }}>• {w}</div>
+                            ))}
+                          </div>
+                        )}
+                        {integrity.errors.length > 0 && (
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{ fontWeight: 600, fontSize: 11, color: '#ef4444', marginBottom: 2 }}>Errors:</div>
+                            {integrity.errors.map((e, i) => (
+                              <div key={i} style={{ fontSize: 10, opacity: 0.9, paddingLeft: 8 }}>• {e}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    }
+                  >
+                    <Tag
+                      style={{
+                        background: integrity.healthy ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: integrity.healthy ? '#22c55e' : '#ef4444',
+                        border: 'none',
+                        fontWeight: 600,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {integrity.healthy ? '🛡️ Integrity OK' : `🛡️ ${integrity.warnings.length + integrity.errors.length} issues`}
+                    </Tag>
+                  </Tooltip>
+                )}
+                {!integrity && (
+                  <Tooltip title="Waiting for agent integrity report...">
+                    <Tag
+                      style={{
+                        background: 'var(--kerneleye-colorFillAlter)',
+                        color: 'var(--kerneleye-colorTextTertiary)',
+                        border: '1px dashed var(--kerneleye-colorBorderSecondary)',
+                        fontWeight: 600,
+                        fontSize: 12,
+                      }}
+                    >
+                      🛡️ No integrity data
+                    </Tag>
+                  </Tooltip>
+                )}
                 <Tooltip title={isConnected ? 'Live updates active' : 'Live updates disconnected'}>
                   <Space size={6}>
                     <span 
