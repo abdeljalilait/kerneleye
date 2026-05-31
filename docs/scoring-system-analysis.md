@@ -1,8 +1,9 @@
 # KernelEye Scoring System Analysis
 
 **Date**: 2026-02-20  
-**Status**: Phase 1 (IPSet) - Production Ready  
-**Next**: Phase 2 (XDP), Phase 3 (ML/AI)
+**Status**: Production (XDP + ipset hybrid remediation, HMAC-signed commands)
+
+> Note: Phase 2 (XDP) and Phase 3 have been implemented. Phase 4 (ML/AI) is deferred.
 
 ---
 
@@ -221,8 +222,7 @@ threatScorer := &ThreatScorer{
 
 ## Related Files
 
-- `agent/internal/scoring/scorer.go` - Agent scoring implementation
-- `backend/internal/scoring/scorer.go` - Backend scoring
+- `shared/scoring/scorer.go` - Shared threat scoring engine (used by both agent and backend)
 - `agent/remediation/auto_blocker.go` - Auto-blocking based on scores
 
 ---

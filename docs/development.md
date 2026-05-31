@@ -7,53 +7,64 @@ Complete development workflow for KernelEye.
 | Component    | Required For     | Version       |
 | ------------ | ---------------- | ------------- |
 | Docker       | PostgreSQL       | Latest        |
-| Go           | Backend & Agent  | 1.21+         |
+| Go           | Backend, Agent, Shared | 1.22+    |
 | Node.js      | Dashboard        | 18+           |
 | clang/llvm   | eBPF compilation | 14+           |
 | bpftool      | eBPF development | Latest        |
+| protoc       | Protobuf generation | 3.21+       |
 | Linux Kernel | Agent            | 5.8+ with BTF |
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Agent (Linux)                          │
+│                      Agent (Linux, root)                     │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ XDP Firewall│  │eBPF Probes  │  │    Remediation      │  │
-│  │ (xdp_*.c)   │  │(traffic_*.c)│  │    (Go)             │  │
+│  │ (xdp_*.c)   │  │(traffic_*.c)│  │  XDP + ipset/iptbl  │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                           │                                  │
-│                           │ gRPC                             │
-└───────────────────────────┼──────────────────────────────────┘
-                            ▼
+│        │                                              │      │
+│        │ pinned maps   ┌──────────────────────┐       │      │
+│        ▼               │  Command Auth         │       │      │
+│  /sys/fs/bpf/          │  HMAC verify + nonce  │       │      │
+│  kerneleye/            │  Audit logging        │       │      │
+│                        └──────────────────────┘       │      │
+│                                   │                    │      │
+│                                   │ gRPC + mTLS        │      │
+└───────────────────────────────────┼────────────────────┘      │
+                                    ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     Backend (Go)                            │
+│                     Backend (Go)                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ gRPC Server │  │ HTTP/REST   │  │  WebSocket          │  │
-│  │ (handlers)  │  │ (handlers)  │  │  (live stream)      │  │
+│  │ (TLS/mTLS)  │  │ (JWT auth)  │  │  (live stream)      │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                           │                                  │
-│                           │ SQL                              │
-└───────────────────────────┼──────────────────────────────────┘
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │ analysis/ ── scoring worker, block manager, retention   │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                           │ SQL                               │
+└───────────────────────────┼───────────────────────────────────┘
                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    PostgreSQL                               │
-│  users | servers | traffic | threats | api_keys             │
-└─────────────────────────────────────────────────────────────┘
+                    PostgreSQL + Redis
                             ▲
                             │ REST + WebSocket
 ┌───────────────────────────┴──────────────────────────────────┐
-│                    Dashboard (React)                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │
-│  │ React Query │  │ Components  │  │  WebSocket Context  │   │
-│  │ (caching)   │  │ (UI)        │  │  (live updates)     │   │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘   │
+│                    Dashboard (React + Vite)                   │
+│  TanStack Router, React Query, Ant Design, WebSocket live    │
 └──────────────────────────────────────────────────────────────┘
+```
+
+### Shared Packages
+
+```
+shared/
+├── scoring/        Threat scoring engine (used by agent + backend)
+└── cmdsigning/     HMAC command signing + nonce replay protection
 ```
 
 ## Local Development Setup
 
-### 1. Clone & Configure
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/abdeljalilait/kerneleye.git
@@ -61,13 +72,22 @@ cd kerneleye
 cp .env.example .env
 ```
 
+Edit `.env` with at minimum:
+
+```bash
+DATABASE_URL=postgres://kerneleye:kerneleye@localhost:5432/kerneleye
+JWT_SECRET=dev-secret
+API_KEY_SECRET=dev-secret
+CMD_SIGNING_KEY=dev-key   # Required for agent with --enable-remediation
+AUTH_OWNER_EMAIL=you@gmail.com
+```
+
 ### 2. Start PostgreSQL
 
 ```bash
 docker-compose up -d postgres
-sleep 5
+sleep 3
 
-# Run all migrations
 for f in backend/migrations/*.sql; do
   docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < "$f"
 done
@@ -77,15 +97,12 @@ done
 
 ```bash
 cd backend
-go mod download
 go run cmd/api/main.go
 ```
 
 Endpoints:
-
 - HTTP API: `http://localhost:8080`
-- gRPC: `localhost:50051`
-- WebSocket: `ws://localhost:8080/api/v1/ws`
+- gRPC: `localhost:9091` (plaintext by default; add TLS env vars for encryption)
 
 ### 4. Start Dashboard
 
@@ -95,33 +112,35 @@ npm install
 npm run dev
 ```
 
-Dashboard: `http://localhost:3000`
+Dashboard: `http://localhost:5173`
 
-### 5. Start Agent (Linux)
+### 5. Start Agent (Linux only)
 
 ```bash
 cd agent
 
-# Generate kernel headers (one-time)
+# One-time: generate kernel headers
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
-
-# Generate Go bindings
 go generate ./...
 
 # Build
 go build -o kerneleye-agent
 
-# Run (requires root)
-sudo ./kerneleye-agent
+# Run (dev — plaintext via --insecure)
+sudo KERNELEYE_API_KEY=ke_... \
+     KERNELEYE_SERVER=localhost \
+     CMD_SIGNING_KEY=dev-key \
+     ./kerneleye-agent --insecure --enable-remediation
 ```
+
+For monitoring without blocking: `--read-only`
+For TLS: omit `--insecure` and use `--tls-ca-file`, `--tls-cert-file`, `--tls-key-file`.
 
 ## Component Development
 
-### Agent Development
+### Agent
 
-#### eBPF Programs
-
-Located in `agent/ebpf/`:
+#### eBPF Programs (`agent/ebpf/`)
 
 | File              | Purpose                       |
 | ----------------- | ----------------------------- |
@@ -129,136 +148,121 @@ Located in `agent/ebpf/`:
 | `xdp_firewall.c`  | XDP packet filtering          |
 
 After modifying `.c` files:
-
 ```bash
 go generate ./...
 go build -o kerneleye-agent
 ```
 
-#### Remediation System
+#### Remediation (`agent/remediation/`)
 
-Located in `agent/remediation/`:
-
-| File                   | Purpose                 |
-| ---------------------- | ----------------------- |
-| `analyzer.go`          | Threat detection logic  |
-| `xdp_remediator.go`    | XDP-based blocking      |
-| `remediator.go`        | IPSet/iptables blocking |
-| `hybrid_remediator.go` | Combined approach       |
-
-Run tests:
+| File                   | Purpose                   |
+| ---------------------- | ------------------------- |
+| `analyzer.go`          | Threat detection          |
+| `auto_blocker.go`      | Score-based auto-blocking |
+| `xdp_remediator.go`    | XDP fast-path blocking    |
+| `ipset_remediator.go`  | ipset/iptables blocking   |
+| `hybrid_remediator.go` | XDP + ipset coordination  |
+| `types.go`             | Interfaces and types      |
 
 ```bash
 go test ./remediation/... -v
 ```
 
-### Backend Development
+#### Security (`agent/` root)
+
+| File                    | Purpose                        |
+| ----------------------- | ------------------------------ |
+| `block_command_client.go` | Receive and verify signed commands |
+| `audit.go`              | Structured JSON audit logging  |
+| `map_integrity.go`      | Map trust checks and attestation |
+| `config.go`             | TLS flags, `--read-only`, `--insecure` |
+
+### Shared Packages (`shared/`)
+
+| Package     | Purpose                                   |
+| ----------- | ----------------------------------------- |
+| `scoring/`  | Threat scorer with multi-factor analysis  |
+| `cmdsigning/` | HMAC-SHA256 sign/verify, nonce tracker |
+
+```bash
+cd shared/cmdsigning && go test ./...
+cd shared/scoring && go test ./...
+```
+
+### Backend
 
 #### Database Queries (sqlc)
 
 After modifying `backend/internal/database/queries/queries.sql`:
-
 ```bash
-cd backend
-sqlc generate
+cd backend && sqlc generate
 ```
 
-#### Adding Migrations
-
+#### Migrations
 ```bash
-# Create new migration
-touch backend/migrations/010_your_change.sql
-
-# Apply
-docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < backend/migrations/010_your_change.sql
+touch backend/migrations/029_your_change.sql
+docker exec -i kerneleye-db psql -U kerneleye -d kerneleye < backend/migrations/029_your_change.sql
 ```
 
-#### Protobuf Changes
+#### Protobuf
 
-After modifying `proto/kerneleye/v1/ingest.proto`:
-
+After modifying `proto/kerneleye/v1/*.proto`:
 ```bash
-cd proto
-buf generate
+make gen-proto
+cd proto/gen/go && go mod tidy
 ```
 
-### Dashboard Development
+#### Analysis Workers (`backend/internal/analysis/`)
 
-#### Key Files
+| File                 | Purpose                    |
+| -------------------- | -------------------------- |
+| `worker.go`          | Background traffic scoring |
+| `block_manager.go`   | Auto-block decisions + command signing |
+| `data_retention.go`  | Traffic data archival      |
+| `monthly_report.go`  | Email reports              |
 
-| Path                               | Purpose             |
-| ---------------------------------- | ------------------- |
-| `src/hooks/useQueries.ts`          | React Query hooks   |
-| `src/context/WebSocketContext.tsx` | Live stream         |
-| `src/components/LiveStream.tsx`    | Real-time feed      |
-| `src/pages/ServerDetail.tsx`       | Server traffic view |
+### Dashboard
 
-#### Adding API Calls
+Key directories:
+- `src/hooks/useQueries.ts` — React Query hooks
+- `src/context/WebSocketContext.tsx` — Live updates
+- `src/pages/` — Route-level components
 
-All API calls use React Query. Add hooks in `useQueries.ts`:
-
+Adding an API call:
 ```typescript
 export function useNewFeature() {
   return useQuery({
     queryKey: ['feature'],
-    queryFn: () => apiClient.get('/api/v1/feature'),
+    queryFn: () => apiClient.get('/api/v1/new-feature'),
   });
 }
 ```
 
 ## Testing
 
-### Agent Tests
-
 ```bash
-cd agent
-go test ./... -v
-go test ./remediation/... -v -race  # With race detector
-```
+# Agent
+cd agent && go test ./... -v
 
-### Backend Tests
+# Backend
+cd backend && go test ./... -v
 
-```bash
-cd backend
-go test ./... -v
-```
+# Shared
+cd shared/scoring && go test ./... -v
 
-### Integration Testing
-
-Generate test traffic:
-
-```bash
-# Port scan
-nmap -p 1-100 localhost
-
-# SYN flood (requires hping3)
-sudo hping3 -S -p 80 --flood localhost
-
-# Normal connections
-for i in {1..10}; do curl localhost; done
+# Generate test traffic
+for port in $(seq 1 100); do nc -z -w1 localhost $port 2>/dev/null & done
+sudo hping3 -S -p 80 --flood localhost   # SYN flood (requires hping3)
 ```
 
 ## Code Quality
 
-### Go
-
 ```bash
-# Format
-gofmt -w .
+# Go
+gofmt -w . && go vet ./...
 
-# Lint
-golangci-lint run
-
-# Vet
-go vet ./...
-```
-
-### TypeScript
-
-```bash
-cd dashboard
-npm run lint
-npm run typecheck
+# TypeScript
+cd dashboard && npm run lint && npm run typecheck
 ```
 
 ## Debugging
@@ -266,76 +270,40 @@ npm run typecheck
 ### eBPF Programs
 
 ```bash
-# List loaded programs
-sudo bpftool prog list
-
-# View XDP maps
-sudo bpftool map dump name blocked_ips
-sudo bpftool map dump name rate_limits
-
-# Trace eBPF output
-sudo cat /sys/kernel/debug/tracing/trace_pipe
-```
-
-### Backend
-
-```bash
-# Enable debug logging
-export LOG_LEVEL=debug
-go run cmd/api/main.go
-```
-
-### WebSocket
-
-Open browser DevTools → Network → WS tab to inspect live stream messages.
-
-## Production Build
-
-### Backend
-
-```bash
-cd backend
-CGO_ENABLED=0 go build -o api cmd/api/main.go
-```
-
-### Dashboard
-
-```bash
-cd dashboard
-npm run build
-# Output in dist/
+sudo bpftool prog list                    # Loaded programs
+sudo bpftool map dump name xdp_blocklist  # XDP blocklist contents
+sudo cat /sys/kernel/debug/tracing/trace_pipe  # eBPF trace output
 ```
 
 ### Agent
 
 ```bash
-cd agent
-go generate ./...
-CGO_ENABLED=0 go build -o kerneleye-agent .
+# Audit log
+tail -f /var/log/kerneleye-audit.log
+
+# Debug logging
+KERNELEYE_DEBUG=true sudo -E ./kerneleye-agent --insecure
 ```
 
-## Common Issues
-
-### "Failed to load eBPF"
-
-- Check kernel: `uname -r` (need 5.8+)
-- Check BTF: `ls /sys/kernel/btf/vmlinux`
-- Run as root
-
-### "sqlc: command not found"
+### Backend
 
 ```bash
-go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+# Health check
+curl http://localhost:8080/health
+
+# gRPC reflection (if enabled)
+grpcurl -plaintext localhost:9091 list
 ```
 
-### "buf: command not found"
+## Production Builds
 
 ```bash
-go install github.com/bufbuild/buf/cmd/buf@latest
+# Backend
+cd backend && CGO_ENABLED=0 go build -o api cmd/api/main.go
+
+# Dashboard
+cd dashboard && npm run build   # Output in dist/
+
+# Agent
+cd agent && go generate ./... && CGO_ENABLED=0 go build -o kerneleye-agent .
 ```
-
-## Support
-
-- Documentation: [docs/](.)
-- Issues: GitHub Issues
-- Email: support@kerneleye.net

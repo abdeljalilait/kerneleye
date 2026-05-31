@@ -97,6 +97,32 @@ KernelEye operates across three privilege levels:
 | Cross-agent data isolation | user_id scoping on all queries |
 | WebSocket auth | JWT via query parameter upgrade |
 
+## Route Protection
+
+All API routes are authenticated by `AuthMiddleware` (`backend/internal/api/auth.go`).
+Agent routes use API keys; dashboard routes use JWT.
+
+| Route | Auth | Type |
+|-------|------|------|
+| `/api/v1/auth/*` | — | Public (OAuth callbacks, token refresh) |
+| `/api/v1/servers/*` | JWT | Dashboard |
+| `/api/v1/servers/generate-api-key` | JWT | Dashboard |
+| `/api/v1/blocks` | JWT | Dashboard |
+| `/api/v1/blocks/:ip/unblock` | JWT | Dashboard |
+| `/api/v1/whitelist/*` | JWT | Dashboard |
+| `/api/v1/threats` | JWT | Dashboard |
+| `/api/v1/alerts` | JWT | Dashboard |
+| `/api/v1/analytics/*` | JWT | Dashboard |
+| `/api/v1/stats/*` | JWT | Dashboard |
+| `/api/v1/ws` | JWT (query param) | Dashboard WebSocket |
+| `/health` | — | Public |
+| gRPC `IngestService` | API Key | Agent |
+| gRPC `BlockService` | API Key | Agent |
+| gRPC `ReportIntegrity` | API Key | Agent |
+
+Agent API keys are validated by `ValidateAPIKey()` (`backend/internal/api/apikey.go`):
+HMAC-SHA256 format (`ke_<base64>`), database verification, and server status check.
+
 ## Configuration Security
 
 Required secrets for production deployment:
