@@ -52,6 +52,8 @@ type Aggregator struct {
 
 	blockCmdClient *BlockCommandClient // Receives block commands from backend
 
+	tlsCfg *TLSTransportConfig // TLS configuration for all gRPC connections
+
 	// Reconnection state
 	reconnectMu       sync.Mutex
 	reconnectCount    int           // Number of reconnection attempts
@@ -78,10 +80,10 @@ func (a *Aggregator) ServerID() string {
 }
 
 // NewAggregator creates a new aggregator with gRPC connection
-func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
+func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, tlsCfg *TLSTransportConfig, rem remediation.Remediator, ana *remediation.Analyzer, autoBlocker *remediation.AutoBlocker, scorer *scoring.ThreatScorer) (*Aggregator, error) {
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 	controlPlaneHost, controlPlanePort, controlPlaneIPs := resolveControlPlaneEndpoint(grpcTarget)
-	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(grpcTarget), buildGRPCOpts(grpcTarget)...)
+	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(grpcTarget), buildGRPCOpts(grpcTarget, tlsCfg)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
 	}
@@ -146,6 +148,7 @@ func NewAggregator(apiKey, serverHost, grpcURL, agentVersion string, rem remedia
 		controlPlaneHost:  controlPlaneHost,
 		controlPlanePort:  controlPlanePort,
 		whitelistedIPs:    make(map[string]bool),
+		tlsCfg:            tlsCfg,
 		maxReconnectDelay: 5 * time.Minute,
 	}
 	if len(controlPlaneIPs) > 0 {
@@ -623,7 +626,7 @@ func (a *Aggregator) attemptReconnect(attempt int) {
 	Logger.Infof("🔄 Attempting to reconnect to gRPC server %s (attempt %d)...", a.grpcURL, attempt)
 
 	// Create new connection
-	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(a.grpcURL), buildGRPCOpts(a.grpcURL)...)
+	conn, err := grpc.NewClient(grpcDialTargetPrefix+buildGRPCDialTarget(a.grpcURL), buildGRPCOpts(a.grpcURL, a.tlsCfg)...)
 	if err != nil {
 		Logger.Errorf("❌ Failed to create new gRPC connection: %v", err)
 		a.reconnectMu.Lock()

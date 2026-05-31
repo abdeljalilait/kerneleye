@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/url"
 	"os"
@@ -19,14 +20,30 @@ import (
 
 const grpcDialTargetPrefix = "passthrough:///"
 
-// buildGRPCTarget converts server host to gRPC target address
-// If grpcURL is provided, it takes precedence over serverHost.
-// The returned value may include an explicit scheme.
+// TLSTransportConfig holds TLS configuration for agent-to-backend communication.
+type TLSTransportConfig struct {
+	// Insecure disables TLS entirely. Only for development/testing.
+	// The agent will log a prominent warning each time this is used.
+	Insecure bool
+
+	// CAFile is the path to a CA certificate PEM file for verifying the backend.
+	// When empty, the system CA pool is used.
+	CAFile string
+
+	// CertFile is the path to the agent's client certificate PEM file (for mTLS).
+	CertFile string
+
+	// KeyFile is the path to the agent's client private key PEM file (for mTLS).
+	KeyFile string
+
+	// ServerName overrides the TLS server name used for hostname verification.
+	ServerName string
+}
+
+// buildGRPCTarget converts server host to gRPC target address.
 func buildGRPCTarget(serverHost, grpcURL string) string {
-	// If explicit gRPC URL is provided, normalize it to port 9091
 	if grpcURL != "" {
 		grpcTarget := strings.TrimSpace(grpcURL)
-		// If no port, append 9091; otherwise replace existing port with 9091
 		if !strings.Contains(grpcTarget, ":") {
 			grpcTarget = grpcTarget + ":9091"
 		} else {
@@ -34,7 +51,6 @@ func buildGRPCTarget(serverHost, grpcURL string) string {
 		}
 		return grpcTarget
 	}
-	// Otherwise derive from server host
 	grpcTarget := strings.TrimSpace(serverHost)
 	if !strings.Contains(grpcTarget, ":") {
 		grpcTarget = grpcTarget + ":9091"
@@ -45,22 +61,18 @@ func buildGRPCTarget(serverHost, grpcURL string) string {
 }
 
 // buildGRPCDialTarget returns the target format expected by grpc.NewClient.
-// It strips URL schemes and normalizes default ports where possible.
 func buildGRPCDialTarget(target string) string {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return target
 	}
-
 	if !strings.Contains(target, "://") {
 		return target
 	}
-
 	parsed, err := url.Parse(target)
 	if err != nil || parsed.Host == "" {
 		return target
 	}
-
 	host := parsed.Host
 	if !strings.Contains(host, ":") {
 		switch strings.ToLower(parsed.Scheme) {
@@ -70,51 +82,71 @@ func buildGRPCDialTarget(target string) string {
 			host += ":80"
 		}
 	}
-
 	return host
 }
 
-func grpcTransportForTarget(target string) bool {
-	target = strings.TrimSpace(target)
+// buildTLSTransport creates a TLS transport credentials object for the agent.
+// When tlsCfg.Insecure is true, returns plaintext credentials (insecure).
+// When CertFile+KeyFile are provided, sets up mTLS client certificate.
+// When CAFile is provided, uses a custom CA pool instead of the system pool.
+func buildTLSTransport(target string, tlsCfg *TLSTransportConfig) (credentials.TransportCredentials, error) {
+	if tlsCfg != nil && tlsCfg.Insecure {
+		if Logger != nil {
+			Logger.Warn("⚠️  TLS DISABLED: agent is running in insecure mode. " +
+				"All gRPC traffic with the backend will be in plaintext. " +
+				"Never use this in production.")
+		}
+		return insecure.NewCredentials(), nil
+	}
 
-	if strings.Contains(target, "://") {
-		if parsed, err := url.Parse(target); err == nil {
-			switch strings.ToLower(parsed.Scheme) {
-			case "https", "grpcs":
-				return true
-			case "http", "grpc", "h2c":
-				return false
-			}
-			target = parsed.Host
+	var caCertPool *x509.CertPool
+	if tlsCfg != nil && tlsCfg.CAFile != "" {
+		caCertPool = x509.NewCertPool()
+		pem, err := os.ReadFile(tlsCfg.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate from %s: %w", tlsCfg.CAFile, err)
+		}
+		if !caCertPool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("failed to parse CA certificate from %s", tlsCfg.CAFile)
 		}
 	}
 
-	hostPort := target
-	if idx := strings.LastIndex(hostPort, ":"); idx > 0 {
-		if hostPort[idx+1:] == "443" {
-			// Conventional TLS endpoint when no explicit scheme is provided.
-			return true
-		}
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs:    caCertPool,
 	}
 
-	// Default to plaintext for local and self-hosted direct gRPC listeners.
-	return false
+	if tlsCfg != nil && tlsCfg.ServerName != "" {
+		tlsConfig.ServerName = tlsCfg.ServerName
+	}
+
+	// mTLS: load client certificate if provided
+	if tlsCfg != nil && tlsCfg.CertFile != "" && tlsCfg.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate (cert=%s, key=%s): %w",
+				tlsCfg.CertFile, tlsCfg.KeyFile, err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
 }
 
-func buildGRPCOpts(target string) []grpc.DialOption {
-	useTLS := grpcTransportForTarget(target)
-	if !useTLS {
-		return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+// buildGRPCOpts builds gRPC dial options with TLS by default.
+// Plaintext is only allowed when tlsCfg.Insecure is explicitly true.
+func buildGRPCOpts(target string, tlsCfg *TLSTransportConfig) []grpc.DialOption {
+	creds, err := buildTLSTransport(target, tlsCfg)
+	if err != nil {
+		Logger.Fatalf("Failed to build TLS transport: %v", err)
 	}
-
-	return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))}
+	return []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 }
 
 func isRetriableRegisterError(err error) bool {
 	if err == nil {
 		return false
 	}
-
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.Unavailable, codes.DeadlineExceeded, codes.Internal, codes.Unknown:
@@ -123,10 +155,9 @@ func isRetriableRegisterError(err error) bool {
 			return false
 		}
 	}
-
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "unexpected http status code received from server") ||
-		strings.Contains(msg, "missing http content-type") ||
+		strings.Contains(msg, "missing http-content-type") ||
 		strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "transport is closing") ||
 		strings.Contains(msg, "connection reset by peer") ||
@@ -134,12 +165,11 @@ func isRetriableRegisterError(err error) bool {
 		strings.Contains(msg, "eof") {
 		return true
 	}
-
 	return false
 }
 
-// registerAndWaitForApproval registers the agent and polls for approval
-func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
+// registerAndWaitForApproval registers the agent and polls for approval.
+func registerAndWaitForApproval(apiKey, serverHost, grpcURL string, tlsCfg *TLSTransportConfig) error {
 	hostname, _ := os.Hostname()
 	ipAddress := getPublicIP()
 
@@ -151,6 +181,8 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 	var lastErr error
 	const maxAttempts = 5
 
+	opts := buildGRPCOpts(grpcTarget, tlsCfg)
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {
 			backoff := time.Duration(1<<(attempt-2)) * time.Second
@@ -158,7 +190,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 			time.Sleep(backoff)
 		}
 
-		conn, err := grpc.NewClient(grpcDialTargetPrefix+grpcDialTarget, buildGRPCOpts(grpcTarget)...)
+		conn, err := grpc.NewClient(grpcDialTargetPrefix+grpcDialTarget, opts...)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to create gRPC client: %w", err)
 			continue
@@ -198,7 +230,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string) error {
 
 	Logger.Info("Agent registered (pending). Waiting for approval...")
 
-	pollConn, err := grpc.NewClient(grpcDialTargetPrefix+grpcDialTarget, buildGRPCOpts(grpcTarget)...)
+	pollConn, err := grpc.NewClient(grpcDialTargetPrefix+grpcDialTarget, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC client for status polling: %w", err)
 	}

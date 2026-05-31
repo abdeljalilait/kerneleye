@@ -870,3 +870,69 @@ func (h *GrpcIngestHandler) ReportBlockedIP(ctx context.Context, req *pb.Blocked
 		Success: true,
 	}, nil
 }
+
+// ReportIntegrity handles periodic integrity attestation reports from agents.
+// It validates agent-reported state against expected values and broadcasts
+// integrity alerts to the dashboard via WebSocket.
+func (h *GrpcIngestHandler) ReportIntegrity(ctx context.Context, req *pb.IntegrityReport) (*pb.IntegrityReportResponse, error) {
+	// Authenticate the agent
+	server, err := ValidateAPIKey(ctx, h.queries, req.ApiKey)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "invalid API key")
+	}
+
+	if server.Status != "active" {
+		return nil, status.Errorf(codes.PermissionDenied, "server not active")
+	}
+
+	log.Printf("[Integrity] Received report from %s (agent=%s): healthy=%v programs=%d maps=%d",
+		server.Hostname, req.AgentVersion, req.Status.Healthy,
+		len(req.Programs), len(req.Maps))
+
+	// Broadcast integrity status to dashboard
+	integrityData := map[string]interface{}{
+		"server_id":          server.ID.String(),
+		"server_name":        server.Hostname,
+		"agent_version":      req.AgentVersion,
+		"agent_binary_hash":  req.AgentBinaryHash,
+		"healthy":            req.Status.Healthy,
+		"warnings":           req.Status.Warnings,
+		"errors":             req.Status.Errors,
+		"program_count":      len(req.Programs),
+		"map_count":          len(req.Maps),
+		"timestamp":          time.Now(),
+	}
+
+	eventType := "integrity_report"
+
+	// Escalate to alert if integrity check fails
+	if !req.Status.Healthy {
+		eventType = "integrity_alert"
+		log.Printf("[Integrity] ALERT: agent %s reports unhealthy state — errors: %v",
+			server.Hostname, req.Status.Errors)
+	}
+
+	h.hub.BroadcastToUser(database.FromPgUUID(server.UserID), eventType, integrityData)
+
+	// Check for high-severity map issues
+	for _, m := range req.Maps {
+		if m.PinnedPathChanged || m.ConfigHashChanged || m.UnexpectedWriterDetected {
+			log.Printf("[Integrity] Map integrity violation on %s: map=%s pinned_changed=%v hash_changed=%v unexpected_writer=%v",
+				server.Hostname, m.Name, m.PinnedPathChanged, m.ConfigHashChanged, m.UnexpectedWriterDetected)
+		}
+	}
+
+	// Check for program hash mismatches
+	for _, p := range req.Programs {
+		if !p.HashMatches && p.ExpectedHash != "" {
+			log.Printf("[Integrity] Program hash mismatch on %s: %s (expected=%s actual=%s)",
+				server.Hostname, p.Name, p.ExpectedHash, p.ActualHash)
+		}
+	}
+
+	return &pb.IntegrityReportResponse{
+		Success:      true,
+		Message:      "integrity report acknowledged",
+		Acknowledged: true,
+	}, nil
+}

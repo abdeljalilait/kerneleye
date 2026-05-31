@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -253,6 +254,18 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 			reason, _ := cmd["reason"].(string)
 			blockID, _ := cmd["block_id"].(string)
 
+			// Propagate command signature and nonce for agent-side verification
+			var signature []byte
+			var nonce int64
+			if sig, ok := cmd["signature"].([]byte); ok {
+				signature = sig
+			}
+			if nStr, ok := cmd["nonce"].(string); ok {
+				if n, err := strconv.ParseInt(nStr, 10, 64); err == nil {
+					nonce = n
+				}
+			}
+
 			pbCmd := &kerneleyev1.BlockCommand{
 				Action:          action,
 				IpAddress:       ip,
@@ -260,6 +273,8 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				Reason:          reason,
 				BlockId:         blockID,
 				BlockType:       blockType,
+				Signature:       signature,
+				Nonce:           nonce,
 			}
 			if err := stream.Send(pbCmd); err != nil {
 				log.Printf("[BlockHandler] Failed to send command: %v", err)

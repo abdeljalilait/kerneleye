@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
+	github.com/kerneleye/shared/cmdsigning v0.0.0
 	github.com/kerneleye/shared/scoring v0.1.0
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/redis/go-redis/v9 v9.18.0
@@ -44,5 +45,7 @@ require (
 )
 
 replace github.com/kerneleye/proto => ../proto/gen/go
+
+replace github.com/kerneleye/shared/cmdsigning => ../shared/cmdsigning
 
 replace github.com/kerneleye/shared/scoring => ../shared/scoring

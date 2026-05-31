@@ -8,6 +8,7 @@ import (
 
 	"github.com/kerneleye/agent/remediation"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
+	"github.com/kerneleye/shared/cmdsigning"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -33,6 +34,8 @@ type BlockCommandClient struct {
 	reconnectCount    int
 	maxReconnectDelay time.Duration
 	reconnecting      bool
+
+	nonceTracker cmdsigning.NonceTracker // Prevents replay attacks
 }
 
 // SetOnRateLimit sets the callback invoked when the backend sends a RATE_LIMIT command.
@@ -312,10 +315,59 @@ func (b *BlockCommandClient) UpdateClient(conn *grpc.ClientConn) {
 	Logger.Info("[BlockCommandClient] Client updated with new connection")
 }
 
+// verifyCommand checks the HMAC signature and nonce of a command.
+// When CMD_SIGNING_KEY is configured, unsigned commands are rejected.
+// When CMD_SIGNING_KEY is not set, verification is skipped with a warning.
+func (b *BlockCommandClient) verifyCommand(cmd *pb.BlockCommand) error {
+	key := cmdsigning.Key()
+	if key == "" {
+		Logger.Warn("[BlockCommandClient] CMD_SIGNING_KEY not set — accepting unsigned commands (insecure)")
+		return nil
+	}
+
+	if cmd.Nonce <= 0 || len(cmd.Signature) == 0 {
+		return fmt.Errorf("unsigned command rejected (CMD_SIGNING_KEY is configured, but command has no signature)")
+	}
+
+	if !b.nonceTracker.Check(cmd.Nonce) {
+		return fmt.Errorf("replayed command nonce %d (last seen: %d)", cmd.Nonce, b.nonceTracker.Last())
+	}
+
+	actionCode := int32(cmd.Action)
+	issuedAtNano := int64(0)
+	if cmd.IssuedAt != nil {
+		issuedAtNano = cmd.IssuedAt.AsTime().UnixNano()
+	}
+	payload := cmdsigning.BuildCanonicalPayload(
+		actionCode,
+		cmd.IpAddress,
+		cmd.DurationSeconds,
+		cmd.Reason,
+		cmd.BlockId,
+		issuedAtNano,
+	)
+
+	if err := cmdsigning.Verify(key, cmd.Nonce, payload, cmd.Signature); err != nil {
+		return fmt.Errorf("command signature verification failed: %w", err)
+	}
+
+	b.nonceTracker.Record(cmd.Nonce)
+	return nil
+}
+
 // processCommand handles a single block command
 func (b *BlockCommandClient) processCommand(cmd *pb.BlockCommand) {
-	Logger.Infof("[BlockCommandClient] Received command: action=%s ip=%s duration=%ds reason=%s",
-		cmd.Action.String(), cmd.IpAddress, cmd.DurationSeconds, cmd.Reason)
+	Logger.Infof("[BlockCommandClient] Received command: action=%s ip=%s duration=%ds reason=%s nonce=%d",
+		cmd.Action.String(), cmd.IpAddress, cmd.DurationSeconds, cmd.Reason, cmd.Nonce)
+
+	// Verify command authenticity before execution
+	if err := b.verifyCommand(cmd); err != nil {
+		Logger.Errorf("[BlockCommandClient] Command verification FAILED: %v — refusing to execute", err)
+		AuditLogCommandRejected(cmd.Action.String(), cmd.IpAddress, cmd.Reason, err)
+		return
+	}
+
+	AuditLogCommandAccepted(cmd.Action.String(), cmd.IpAddress, cmd.Reason, cmd.DurationSeconds)
 
 	switch cmd.Action {
 	case pb.BlockCommand_BLOCK:

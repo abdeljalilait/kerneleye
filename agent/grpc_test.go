@@ -1,6 +1,8 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestBuildGRPCDialTarget(t *testing.T) {
 	tests := []struct {
@@ -24,24 +26,50 @@ func TestBuildGRPCDialTarget(t *testing.T) {
 	}
 }
 
-func TestGRPCTransportForTarget(t *testing.T) {
-	tests := []struct {
-		name    string
-		target  string
-		wantTLS bool
-	}{
-		{name: "http scheme is plaintext", target: "http://localhost:9091", wantTLS: false},
-		{name: "https scheme is tls", target: "https://grpc.example.com:443", wantTLS: true},
-		{name: "port 443 defaults to tls", target: "api.example.com:443", wantTLS: true},
-		{name: "port 9091 defaults to plaintext", target: "localhost:9091", wantTLS: false},
+func TestBuildTLSTransportInsecure(t *testing.T) {
+	creds, err := buildTLSTransport("localhost:9091", &TLSTransportConfig{Insecure: true})
+	if err != nil {
+		t.Fatalf("buildTLSTransport insecure should not error: %v", err)
 	}
+	if creds == nil {
+		t.Fatal("credentials should not be nil")
+	}
+	info := creds.Info()
+	if info.SecurityProtocol != "insecure" {
+		t.Fatalf("expected insecure protocol, got %s", info.SecurityProtocol)
+	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotTLS := grpcTransportForTarget(tt.target)
-			if gotTLS != tt.wantTLS {
-				t.Fatalf("grpcTransportForTarget(%q) = %v, want %v", tt.target, gotTLS, tt.wantTLS)
-			}
-		})
+func TestBuildTLSTransportSecure(t *testing.T) {
+	// TLS (no mTLS) uses system CA pool — no error expected.
+	creds, err := buildTLSTransport("grpc.example.com:443", &TLSTransportConfig{})
+	if err != nil {
+		t.Fatalf("buildTLSTransport secure should not error: %v", err)
+	}
+	if creds == nil {
+		t.Fatal("credentials should not be nil")
+	}
+	info := creds.Info()
+	if info.SecurityProtocol != "tls" {
+		t.Fatalf("expected tls protocol, got %s", info.SecurityProtocol)
+	}
+}
+
+func TestBuildTLSTransportMissingCAFile(t *testing.T) {
+	_, err := buildTLSTransport("grpc.example.com:443", &TLSTransportConfig{
+		CAFile: "/nonexistent/ca.pem",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing CA file")
+	}
+}
+
+func TestBuildTLSTransportMissingCert(t *testing.T) {
+	_, err := buildTLSTransport("grpc.example.com:443", &TLSTransportConfig{
+		CertFile: "/nonexistent/cert.pem",
+		KeyFile:  "/nonexistent/key.pem",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing client cert/key")
 	}
 }

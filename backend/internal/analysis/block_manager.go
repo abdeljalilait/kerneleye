@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kerneleye/backend/internal/database"
 	"github.com/kerneleye/backend/internal/services"
+	"github.com/kerneleye/shared/cmdsigning"
 )
 
 type BlockManagerConfig struct {
@@ -504,12 +505,49 @@ func (bm *BlockManager) createBlock(ctx context.Context, row database.GetBlockab
 		decision.Type, ipStr, row.ThreatScore, decision.Duration, decision.Escalation)
 }
 
+// signCommand computes an HMAC signature over the command fields and adds
+// the signature + nonce to the command map. When CMD_SIGNING_KEY is not set,
+// signing is skipped (unsigned commands are still delivered, for dev/testing).
+func (bm *BlockManager) signCommand(cmd map[string]interface{}) map[string]interface{} {
+	key := cmdsigning.Key()
+	if key == "" {
+		log.Println("[BlockManager] WARNING: CMD_SIGNING_KEY not set — commands are unsigned")
+		return cmd
+	}
+
+	action, _ := cmd["action"].(string)
+	ip, _ := cmd["ip"].(string)
+	duration, _ := cmd["duration"].(int64)
+	reason, _ := cmd["reason"].(string)
+	blockID, _ := cmd["block_id"].(string)
+
+	nonce := time.Now().UnixNano()
+	actedAt := time.Now().UnixNano()
+
+	var actionCode int32
+	switch action {
+	case "block":
+		actionCode = 0
+	case "unblock":
+		actionCode = 1
+	case "ratelimit":
+		actionCode = 2
+	}
+
+	payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, blockID, actedAt)
+	sig := cmdsigning.Sign(key, nonce, payload)
+
+	cmd["signature"] = sig
+	cmd["nonce"] = fmt.Sprintf("%d", nonce)
+	return cmd
+}
+
 func (bm *BlockManager) sendBlockCommand(agentID, ip string, duration time.Duration, reason, blockType, blockID string) {
 	if bm.hub == nil {
 		return
 	}
 
-	bm.hub.SendCommandToAgent(agentID, map[string]interface{}{
+	cmd := bm.signCommand(map[string]interface{}{
 		"action":     "block",
 		"ip":         ip,
 		"duration":   int64(duration.Seconds()),
@@ -517,6 +555,7 @@ func (bm *BlockManager) sendBlockCommand(agentID, ip string, duration time.Durat
 		"block_id":   blockID,
 		"block_type": blockType,
 	})
+	bm.hub.SendCommandToAgent(agentID, cmd)
 }
 
 func (bm *BlockManager) Unblock(ctx context.Context, ip string, reason string) error {
@@ -529,11 +568,12 @@ func (bm *BlockManager) Unblock(ctx context.Context, ip string, reason string) e
 	}
 
 	agentID := block.ServerID.String()
-	bm.hub.SendCommandToAgent(agentID, map[string]interface{}{
+	cmd := bm.signCommand(map[string]interface{}{
 		"action": "unblock",
 		"ip":     ip,
 		"reason": reason,
 	})
+	bm.hub.SendCommandToAgent(agentID, cmd)
 
 	delete(bm.activeBlocks, ip)
 	return nil

@@ -76,8 +76,18 @@ func main() {
 	if cfg.APIKey == "" {
 		Logger.Fatal("KERNELEYE_API_KEY is required.")
 	}
+	tlsCfg := cfg.ToTLSTransportConfig()
+
+	// Read-only mode: override remediation to disable all blocking.
+	// The agent still monitors and reports, but never modifies kernel state.
+	if cfg.ReadOnly {
+		cfg.EnableRemediation = false
+		cfg.EnableXDP = false
+		Logger.Info("🛡️  Read-only mode: agent will monitor and report, but never block")
+	}
+
 	Logger.Info("Registering agent with server...")
-	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL); err != nil {
+	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, tlsCfg); err != nil {
 		Logger.Fatalf("Registration failed: %v", err)
 	}
 	Logger.Info("✅ Agent approved! Starting monitoring...")
@@ -152,7 +162,7 @@ func main() {
 	defer analyzerCancel()
 	analyzer.CleanupRoutine(analyzerCtx, 5*time.Minute)
 
-	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, Version, remediator, analyzer, autoBlocker, scorer)
+	aggregator, err := NewAggregator(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, Version, tlsCfg, remediator, analyzer, autoBlocker, scorer)
 	if err != nil {
 		Logger.Fatalf("Failed to create aggregator: %v", err)
 	}
@@ -300,6 +310,32 @@ func main() {
 	}
 
 	aggregator.StartFlushTimer(10 * time.Second)
+
+	// Start periodic eBPF map integrity verification and attestation (Phase 3-4)
+	go func() {
+		// Run an initial check after startup
+		time.Sleep(15 * time.Second)
+		verifyMapIntegrity()
+
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-blockCtx.Done():
+				return
+			case <-ticker.C:
+				verifyMapIntegrity()
+				// Send integrity report to backend
+				conn := aggregator.GetGRPCConn()
+				if conn != nil {
+					if err := sendIntegrityReport(conn, cfg.APIKey, aggregator.ServerID(), Version); err != nil {
+						Logger.Debugf("[Integrity] Failed to send integrity report: %v", err)
+					}
+				}
+			}
+		}
+	}()
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go handleShutdown(sig, aggregator, rd, remediator, analyzerCancel, cancelBlock)
@@ -331,6 +367,8 @@ func handleShutdown(sig chan os.Signal, agg *Aggregator, rd *ringbuf.Reader, rem
 		rem.Teardown()
 		Logger.Debug("[Shutdown] Remediator torn down")
 	}
+
+	CloseAuditLog()
 	Logger.Info("[Shutdown] Complete, exiting...")
 	os.Exit(0)
 }
