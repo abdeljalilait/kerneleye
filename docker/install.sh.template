@@ -21,6 +21,7 @@ DATA_DIR="/var/lib/kerneleye"
 
 # Agent configuration from command line
 API_KEY="${API_KEY:-}"
+CMD_SIGNING_KEY="${CMD_SIGNING_KEY:-}"
 # Default is monitor-only (no remediation flags)
 MODE="monitor"
 SERVER_HOST="__INSTALL_DOMAIN__:443"
@@ -184,6 +185,7 @@ KERNELEYE_API_KEY="${API_KEY}"
 KERNELEYE_SERVER="${SERVER_HOST}"
 KERNELEYE_GRPC_URL="${GRPC_URL}"
 KERNELEYE_MODE="${MODE}"
+CMD_SIGNING_KEY="${CMD_SIGNING_KEY}"
 ENVEOF
     chmod 0600 "${CONFIG_DIR}/agent.env"
     log_success "Config saved to ${CONFIG_DIR}/agent.env"
