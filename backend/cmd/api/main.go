@@ -142,7 +142,7 @@ func main() {
 		return c.JSON(fiber.Map{
 			"version":      AppVersion,
 			"agent":        "kerneleye-agent",
-			"agentVersion": "0.4.0",
+			"agentVersion": AppVersion,
 		})
 	})
 
