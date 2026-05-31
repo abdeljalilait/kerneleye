@@ -14,8 +14,9 @@ import (
 
 // verifyMapIntegrity checks pinned BPF maps against their load-time snapshots
 // using real kernel BPF state (map IDs, content hashes, frozen status).
-// This replaces the old file-mtime heuristic with proper BPF-level verification.
-func verifyMapIntegrity() {
+// Returns warnings detected during verification for inclusion in the integrity report.
+func verifyMapIntegrity() []string {
+	var warnings []string
 	maps := remediation.ClassifyMaps()
 
 	for _, cls := range maps {
@@ -29,11 +30,13 @@ func verifyMapIntegrity() {
 			continue
 		}
 
-		warnings := verifySnapshot(snap.Name, snap)
-		for _, w := range warnings {
+		w := verifySnapshot(snap.Name, snap)
+		for _, w := range w {
 			Logger.Warnf("[Integrity] %s", w)
 		}
+		warnings = append(warnings, w...)
 	}
+	return warnings
 }
 
 // verifySnapshot checks a single map against its load-time snapshot.
@@ -108,8 +111,10 @@ func mapTrustLevelToProto(level remediation.MapTrustLevel) pb.TrustLevel {
 }
 
 // buildIntegrityReport constructs a pb.IntegrityReport from current state,
-// populated with real BPF map info from loaded snapshots.
-func buildIntegrityReport(agentID, agentVersion string) *pb.IntegrityReport {
+// populated with real BPF map info from loaded snapshots and runtime
+// verification findings.
+func buildIntegrityReport(agentID, agentVersion string, findings []string) *pb.IntegrityReport {
+	healthy := true
 	report := &pb.IntegrityReport{
 		ApiKey:          "",
 		AgentId:         agentID,
@@ -121,6 +126,12 @@ func buildIntegrityReport(agentID, agentVersion string) *pb.IntegrityReport {
 			Warnings: nil,
 			Errors:   nil,
 		},
+	}
+
+	// Fold runtime verification findings into the report
+	if len(findings) > 0 {
+		healthy = false
+		report.Status.Warnings = append(report.Status.Warnings, findings...)
 	}
 
 	// Populate maps from load-time snapshots with kernel-verified data
@@ -152,7 +163,7 @@ func buildIntegrityReport(agentID, agentVersion string) *pb.IntegrityReport {
 		report.Maps = append(report.Maps, lm)
 	}
 
-	if len(report.Status.Errors) > 0 {
+	if len(report.Status.Errors) > 0 || !healthy {
 		report.Status.Healthy = false
 	}
 
@@ -160,12 +171,12 @@ func buildIntegrityReport(agentID, agentVersion string) *pb.IntegrityReport {
 }
 
 // sendIntegrityReport sends the integrity report to the backend via gRPC.
-func sendIntegrityReport(conn *grpc.ClientConn, apiKey, agentID, agentVersion string) error {
+func sendIntegrityReport(conn *grpc.ClientConn, apiKey, agentID, agentVersion string, findings []string) error {
 	if conn == nil {
 		return fmt.Errorf("no gRPC connection")
 	}
 
-	report := buildIntegrityReport(agentID, agentVersion)
+	report := buildIntegrityReport(agentID, agentVersion, findings)
 	report.ApiKey = apiKey
 	report.Timestamp = time.Now().UnixNano()
 

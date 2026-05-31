@@ -207,7 +207,7 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				issuedAt := time.Now()
 				payload := cmdsigning.BuildCanonicalPayload(
 					int32(kerneleyev1.BlockCommand_UNBLOCK),
-					ip.String(), 0, "whitelisted", "", issuedAt.UnixNano(),
+					ip.String(), 0, "whitelisted", "", int32(bt), issuedAt.UnixNano(),
 				)
 				var signature []byte
 				if signingKey != "" {
@@ -283,6 +283,16 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				}
 			}
 
+			// Use the signed issued_at timestamp so the agent can verify the
+			// signature against the same bytes that were signed. Fall back to
+			// timestamppb.Now() for unsigned commands or missing field.
+			issuedAt := timestamppb.Now()
+			if issuedStr, ok := cmd["issued_at_unix_nano"].(string); ok {
+				if issuedNano, err := strconv.ParseInt(issuedStr, 10, 64); err == nil {
+					issuedAt = timestamppb.New(time.Unix(0, issuedNano))
+				}
+			}
+
 			pbCmd := &kerneleyev1.BlockCommand{
 				Action:          action,
 				IpAddress:       ip,
@@ -290,7 +300,7 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 				Reason:          reason,
 				BlockId:         blockID,
 				BlockType:       blockType,
-				IssuedAt:        timestamppb.Now(),
+				IssuedAt:        issuedAt,
 				Signature:       signature,
 				Nonce:           nonce,
 			}
@@ -402,6 +412,7 @@ func (h *BlockHandler) GetBlockList(ctx context.Context, req *kerneleyev1.GetBlo
 				DurationSeconds: b.DurationSeconds,
 				Reason:          b.Reason,
 				BlockType:       int32(b.BlockType),
+				ExpiresAt:       b.ExpiresAt,
 			})
 		}
 		payload := cmdsigning.BuildBlockListPayload(entries)
@@ -449,7 +460,17 @@ func signHubCommand(hub *Hub, agentID, action, ip, reason, blockType string, dur
 			actionCode = 2
 		}
 
-		payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, "", issuedAt.UnixNano())
+		var blockTypeCode int32
+		switch blockType {
+		case "ratelimit":
+			blockTypeCode = 1
+		case "cidr":
+			blockTypeCode = 2
+		default:
+			blockTypeCode = 0
+		}
+
+		payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, "", blockTypeCode, issuedAt.UnixNano())
 		sig := cmdsigning.Sign(key, nonce, payload)
 
 		cmd["signature"] = sig

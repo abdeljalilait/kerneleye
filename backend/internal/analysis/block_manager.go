@@ -520,6 +520,7 @@ func (bm *BlockManager) signCommand(cmd map[string]interface{}) map[string]inter
 	duration, _ := cmd["duration"].(int64)
 	reason, _ := cmd["reason"].(string)
 	blockID, _ := cmd["block_id"].(string)
+	blockType, _ := cmd["block_type"].(string)
 
 	nonce := time.Now().UnixNano()
 	actedAt := time.Now().UnixNano()
@@ -534,11 +535,23 @@ func (bm *BlockManager) signCommand(cmd map[string]interface{}) map[string]inter
 		actionCode = 2
 	}
 
-	payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, blockID, actedAt)
+	// Map block_type string to int32 for signing
+	var blockTypeCode int32
+	switch blockType {
+	case "ratelimit":
+		blockTypeCode = 1
+	case "cidr":
+		blockTypeCode = 2
+	default:
+		blockTypeCode = 0 // blocklist
+	}
+
+	payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, blockID, blockTypeCode, actedAt)
 	sig := cmdsigning.Sign(key, nonce, payload)
 
 	cmd["signature"] = sig
 	cmd["nonce"] = fmt.Sprintf("%d", nonce)
+	cmd["issued_at_unix_nano"] = fmt.Sprintf("%d", actedAt)
 	return cmd
 }
 

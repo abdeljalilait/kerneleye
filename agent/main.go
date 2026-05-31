@@ -348,11 +348,11 @@ func main() {
 			case <-blockCtx.Done():
 				return
 			case <-ticker.C:
-				verifyMapIntegrity()
+				findings := verifyMapIntegrity()
 				// Send integrity report to backend
 				conn := aggregator.GetGRPCConn()
 				if conn != nil {
-					if err := sendIntegrityReport(conn, cfg.APIKey, aggregator.ServerID(), Version); err != nil {
+					if err := sendIntegrityReport(conn, cfg.APIKey, aggregator.ServerID(), Version, findings); err != nil {
 						Logger.Debugf("[Integrity] Failed to send integrity report: %v", err)
 					}
 				}

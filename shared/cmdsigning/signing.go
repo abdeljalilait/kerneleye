@@ -90,9 +90,8 @@ func (t *NonceTracker) Last() int64 {
 // BuildCanonicalPayload serializes command fields into a canonical byte
 // representation for signing. The format is deterministic: each field is
 // prefixed with its length and separated by null bytes.
-// Fields included: action(4B) + ip(4B/16B) + duration(8B) + reason + block_id + issued_at
-// signature(NOT included) + nonce(NOT signed separately — included in HMAC payload).
-func BuildCanonicalPayload(action int32, ipAddress string, durationSeconds int64, reason, blockID string, issuedAtUnixNano int64) []byte {
+// Fields: action(4B) + ip(NB) + duration(8B) + reason(NB) + block_id(NB) + block_type(4B) + issued_at(8B)
+func BuildCanonicalPayload(action int32, ipAddress string, durationSeconds int64, reason, blockID string, blockType int32, issuedAtUnixNano int64) []byte {
 	var buf []byte
 
 	// Action (32-bit)
@@ -116,6 +115,9 @@ func BuildCanonicalPayload(action int32, ipAddress string, durationSeconds int64
 	buf = binary.BigEndian.AppendUint32(buf, uint32(len(blockIDBytes)))
 	buf = append(buf, blockIDBytes...)
 
+	// Block type (32-bit) — prevents type confusion (BLOCK vs RATE_LIMIT replay)
+	buf = append(buf, byte(blockType>>24), byte(blockType>>16), byte(blockType>>8), byte(blockType))
+
 	// Issued at (64-bit unix nano)
 	buf = binary.BigEndian.AppendUint64(buf, uint64(issuedAtUnixNano))
 
@@ -137,7 +139,7 @@ func MustGetenvInt64(key string, defaultVal int64) int64 {
 }
 
 // BuildBlockListPayload creates a canonical byte representation of a block list
-// for signing. Each entry is serialized as: ip(null)type(null)duration(null)reason(null).
+// for signing. Each entry is serialized as: ip(null)type(null)duration(null)expiresAt(null)reason(null).
 // Entries are separated by newlines.
 func BuildBlockListPayload(entries []BlockListEntry) []byte {
 	var buf []byte
@@ -151,6 +153,8 @@ func BuildBlockListPayload(entries []BlockListEntry) []byte {
 		buf = append(buf, 0)
 		buf = binary.BigEndian.AppendUint64(buf, uint64(e.DurationSeconds))
 		buf = append(buf, 0)
+		buf = binary.BigEndian.AppendUint64(buf, uint64(e.ExpiresAt))
+		buf = append(buf, 0)
 		buf = append(buf, e.Reason...)
 	}
 	return buf
@@ -162,6 +166,7 @@ type BlockListEntry struct {
 	DurationSeconds int64
 	Reason          string
 	BlockType       int32
+	ExpiresAt       int64
 }
 
 // Logf is a logging function that can be set by consumers.

@@ -150,7 +150,8 @@ struct {
 
 // TCP connection tracking map (for detecting failed handshakes)
 // Key: Full 4-tuple (saddr, sport, daddr, dport) to avoid collisions
-// Value: timestamp of SYN
+// Value: syn_track_val (timestamp + direction so detect_tcp_close can
+//        set the correct direction instead of hardcoding DIR_OUTBOUND).
 // Using LRU_HASH to auto-evict stale entries (e.g., connections that timeout
 // without tcp_close being called due to killed processes or kernel cleanup)
 struct conn_key {
@@ -167,18 +168,24 @@ struct conn_key_v6 {
     u16 dport;              // Remote port
 };
 
+struct syn_track_val {
+    u64 timestamp;   // Nanoseconds since boot
+    u8  direction;   // DIR_INBOUND or DIR_OUTBOUND
+    u8  _pad[7];     // Pad to 16 bytes (natural alignment)
+};
+
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, 262144);  // 256K entries for high-traffic servers
     __type(key, struct conn_key); // Full 4-tuple as key
-    __type(value, u64);           // Timestamp of SYN
+    __type(value, struct syn_track_val);
 } tcp_syn_tracker SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, 65536);   // 64K entries for IPv6
     __type(key, struct conn_key_v6);
-    __type(value, u64);           // Timestamp of SYN
+    __type(value, struct syn_track_val);
 } tcp_syn_tracker_v6 SEC(".maps");
 
 // ============================================
@@ -512,14 +519,15 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     // detect failed handshakes. Key: (server_ip, server_port, client_ip, client_port)
     // matching what the accepted socket will have at close time.
     u64 ts = e->timestamp;
+    struct syn_track_val stv = { .timestamp = ts, .direction = DIR_INBOUND };
     if (ctx->family == AF_INET) {
         struct conn_key key = {};
         make_conn_key(&key, e->daddr.addr4, e->lport, e->saddr.addr4, e->rport);
-        bpf_map_update_elem(&tcp_syn_tracker, &key, &ts, BPF_ANY);
+        bpf_map_update_elem(&tcp_syn_tracker, &key, &stv, BPF_ANY);
     } else {
         struct conn_key_v6 key = {};
         make_conn_key_v6(&key, &e->daddr.addr6, e->lport, &e->saddr.addr6, e->rport);
-        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &ts, BPF_ANY);
+        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &stv, BPF_ANY);
     }
 
     bpf_ringbuf_submit(e, 0);
@@ -642,13 +650,13 @@ int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
     if (family == AF_INET) {
         struct conn_key key = {};
         make_conn_key(&key, saddr4, sport, daddr4, dport);
-        u64 ts = e->timestamp;
-        bpf_map_update_elem(&tcp_syn_tracker, &key, &ts, BPF_ANY);
+        struct syn_track_val stv = { .timestamp = e->timestamp, .direction = DIR_OUTBOUND };
+        bpf_map_update_elem(&tcp_syn_tracker, &key, &stv, BPF_ANY);
     } else {
         struct conn_key_v6 key = {};
         make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
-        u64 ts = e->timestamp;
-        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &ts, BPF_ANY);
+        struct syn_track_val stv = { .timestamp = e->timestamp, .direction = DIR_OUTBOUND };
+        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &stv, BPF_ANY);
     }
 
     bpf_ringbuf_submit(e, 0);
@@ -722,8 +730,8 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
         struct conn_key key = {};
         make_conn_key(&key, saddr4, sport, daddr4, dport);
         
-        u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker, &key);
-        if (syn_ts) {
+        struct syn_track_val *stv = bpf_map_lookup_elem(&tcp_syn_tracker, &key);
+        if (stv) {
             u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
             if (sk_state == TCP_ESTABLISHED) {
                 bpf_map_delete_elem(&tcp_syn_tracker, &key);
@@ -748,7 +756,7 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
             e->family = family;
             e->protocol = IPPROTO_TCP;
             e->flags = FLAG_FAILED;
-            e->direction = DIR_OUTBOUND;
+            e->direction = stv->direction;
             e->timestamp = bpf_ktime_get_ns();
             
             fill_process_info(e);
@@ -760,8 +768,8 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
         struct conn_key_v6 key = {};
         make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
         
-        u64 *syn_ts = bpf_map_lookup_elem(&tcp_syn_tracker_v6, &key);
-        if (syn_ts) {
+        struct syn_track_val *stv = bpf_map_lookup_elem(&tcp_syn_tracker_v6, &key);
+        if (stv) {
             u8 sk_state = BPF_CORE_READ(sk, __sk_common.skc_state);
             if (sk_state == TCP_ESTABLISHED) {
                 bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
@@ -786,7 +794,7 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
             e->family = family;
             e->protocol = IPPROTO_TCP;
             e->flags = FLAG_FAILED;
-            e->direction = DIR_OUTBOUND;
+            e->direction = stv->direction;
             e->timestamp = bpf_ktime_get_ns();
             
             fill_process_info(e);

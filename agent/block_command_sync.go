@@ -144,6 +144,7 @@ func (b *BlockCommandClient) fetchBlockList(ctx context.Context) (*pb.GetBlockLi
 				DurationSeconds: b.DurationSeconds,
 				Reason:          b.Reason,
 				BlockType:       int32(b.BlockType),
+				ExpiresAt:       b.ExpiresAt,
 			})
 		}
 		payload := cmdsigning.BuildBlockListPayload(entries)

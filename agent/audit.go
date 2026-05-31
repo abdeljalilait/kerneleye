@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,7 +35,11 @@ type AuditLogger struct {
 
 func getAuditLogger() *AuditLogger {
 	auditInitOnce.Do(func() {
-		auditLogger = newAuditLogger()
+		var err error
+		auditLogger, err = newAuditLogger()
+		if err != nil {
+			Logger.Errorf("Audit logging unavailable: %v", err)
+		}
 	})
 	return auditLogger
 }
@@ -46,15 +51,14 @@ func auditLogPath() string {
 	return filepath.Join("/var/log", "kerneleye-audit.log")
 }
 
-func newAuditLogger() *AuditLogger {
+func newAuditLogger() (*AuditLogger, error) {
 	path := auditLogPath()
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
-		Logger.Errorf("Failed to open audit log %s: %v (audit logging disabled)", path, err)
-		return nil
+		return nil, fmt.Errorf("failed to open audit log %s: %w", path, err)
 	}
 	Logger.Infof("📝 Audit logging to %s", path)
-	return &AuditLogger{f: f, enc: json.NewEncoder(f)}
+	return &AuditLogger{f: f, enc: json.NewEncoder(f)}, nil
 }
 
 func (a *AuditLogger) log(entry AuditEntry) {
@@ -64,7 +68,9 @@ func (a *AuditLogger) log(entry AuditEntry) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	entry.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
-	_ = a.enc.Encode(entry)
+	if err := a.enc.Encode(entry); err != nil {
+		Logger.Errorf("Failed to write audit entry: %v", err)
+	}
 }
 
 func (a *AuditLogger) close() {

@@ -50,6 +50,7 @@ func (b *BlockCommandClient) verifyCommand(cmd *pb.BlockCommand) error {
 		cmd.DurationSeconds,
 		cmd.Reason,
 		cmd.BlockId,
+		int32(cmd.BlockType),
 		issuedAtNano,
 	)
 
