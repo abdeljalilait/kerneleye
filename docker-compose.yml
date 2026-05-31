@@ -71,7 +71,7 @@ services:
 
     
       # gRPC
-      - "traefik.http.routers.kernelgrpc.rule=PathPrefix(/kerneleye.v1)"
+      - "traefik.http.routers.kernelgrpc.rule=Host(`grpc.kerneleye.net`)"
       - "traefik.http.routers.kernelgrpc.entrypoints=websecure"
       - "traefik.http.routers.kernelgrpc.tls=true"
       - "traefik.http.routers.kernelgrpc.tls.certresolver=letsencrypt"

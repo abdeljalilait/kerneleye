@@ -15,7 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/recover"
+	fiberrecover "github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/kerneleye/backend/internal/analysis"
@@ -27,6 +27,8 @@ import (
 	"github.com/kerneleye/shared/scoring"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var AppVersion = "dev"
@@ -98,7 +100,7 @@ func main() {
 	})
 
 	// Middleware
-	app.Use(recover.New())
+	app.Use(fiberrecover.New())
 
 	// Setup file logger
 	logFile, err := os.OpenFile("./api.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0640)
@@ -290,7 +292,7 @@ func main() {
 		log.Fatalf("Failed to listen for gRPC: %v", err)
 	}
 
-	grpcServer := grpc.NewServer(buildGRPCServerOptions()...)
+	grpcServer := grpc.NewServer(append(buildGRPCServerOptions(), grpc.UnaryInterceptor(grpcPanicRecovery), grpc.StreamInterceptor(grpcStreamPanicRecovery))...)
 	pb.RegisterIngestServiceServer(grpcServer, api.NewGrpcIngestHandler(queries, scorer, hub, geoIP))
 	pb.RegisterBlockServiceServer(grpcServer, api.NewBlockHandler(queries, hub, geoIP))
 
@@ -321,6 +323,26 @@ func main() {
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+func grpcPanicRecovery(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("PANIC in gRPC unary handler %s: %v", info.FullMethod, r)
+			err = status.Errorf(codes.Internal, "internal server error")
+		}
+	}()
+	return handler(ctx, req)
+}
+
+func grpcStreamPanicRecovery(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("PANIC in gRPC stream handler %s: %v", info.FullMethod, r)
+			err = status.Errorf(codes.Internal, "internal server error")
+		}
+	}()
+	return handler(srv, ss)
 }
 
 // grpcHasTLS reports whether the gRPC server is configured for TLS.

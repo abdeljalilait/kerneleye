@@ -143,7 +143,10 @@ func (h *BlockHandler) GetBlockStatus(ctx context.Context, req *kerneleyev1.Bloc
 	}
 
 	// Check if this IP is blocked for this user
-	ip := netip.MustParseAddr(req.IpAddress)
+	ip, err := netip.ParseAddr(req.IpAddress)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid IP address: %s", req.IpAddress)
+	}
 	blocked, err := h.queries.IsIPBlocked(ctx, database.IsIPBlockedParams{
 		UserID:    server.UserID,
 		IpAddress: ip,
