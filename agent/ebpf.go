@@ -17,9 +17,9 @@ type EBPFResources struct {
 	KpAccept      link.Link
 	KpConnect     link.Link
 	KpClose       link.Link
-	KpSetState    link.Link
 	KpUdpRecv     link.Link
-	KpConnRequest link.Link // Inbound SYN detector (kprobe or tracepoint)
+	KpConnRequest link.Link // Inbound SYN detector (tracepoint)
+	KpReset       link.Link // TCP RST detector (tracepoint)
 	IngressFilter *netlink.BpfFilter
 	EgressFilter  *netlink.BpfFilter
 }
@@ -34,7 +34,7 @@ func markOptionalInboundSynProgramFromError(err error, status *inboundSynProbeSt
 	changed := false
 
 	if !status.TracepointDisabled &&
-		(strings.Contains(msg, "DetectInboundSyn") || strings.Contains(msg, "detect_inbound_syn")) {
+		(strings.Contains(msg, "DetectTcpStateTransition") || strings.Contains(msg, "detect_tcp_state_transition")) {
 		status.TracepointDisabled = true
 		changed = true
 	}
@@ -128,9 +128,6 @@ func (r *EBPFResources) Close() {
 	if r.KpUdpRecv != nil {
 		r.KpUdpRecv.Close()
 	}
-	if r.KpSetState != nil {
-		r.KpSetState.Close()
-	}
 	if r.KpClose != nil {
 		r.KpClose.Close()
 	}
@@ -142,6 +139,9 @@ func (r *EBPFResources) Close() {
 	}
 	if r.KpConnRequest != nil {
 		r.KpConnRequest.Close()
+	}
+	if r.KpReset != nil {
+		r.KpReset.Close()
 	}
 	if r.Objects != nil {
 		r.Objects.Close()
@@ -176,7 +176,7 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 	// Inbound SYN detection via tracepoint
 	if !synProbeStatus.TracepointDisabled {
 		Logger.Info("🔄 Attempting tracepoint attachment: sock:inet_sock_set_state")
-		res.KpConnRequest, linkErr = link.Tracepoint("sock", "inet_sock_set_state", res.Objects.DetectInboundSyn, nil)
+		res.KpConnRequest, linkErr = link.Tracepoint("sock", "inet_sock_set_state", res.Objects.DetectTcpStateTransition, nil)
 		if linkErr != nil {
 			Logger.Warnf("⚠️  tracepoint sock:inet_sock_set_state not available (non-critical): %v", linkErr)
 		} else {
@@ -196,15 +196,6 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 	}
 	Logger.Info("✅ TCP connect probe attached: tcp_connect")
 
-	// TCP State Change (clean SYN tracker on ESTABLISHED)
-	res.KpSetState, linkErr = link.Kprobe("tcp_set_state", res.Objects.DetectTcpStateChange, nil)
-	if linkErr != nil {
-		Logger.Warnf("⚠️  tcp_set_state probe not available (non-critical): %v", linkErr)
-		// Non-fatal: tcp_close will still clean up, just less efficiently
-	} else {
-		Logger.Info("✅ TCP state probe attached: tcp_set_state")
-	}
-
 	// TCP Close (detect failed handshakes)
 	res.KpClose, linkErr = link.Kprobe("tcp_close", res.Objects.DetectTcpClose, nil)
 	if linkErr != nil {
@@ -212,6 +203,14 @@ func LoadAndAttacheBPF() (*EBPFResources, error) {
 		return nil, linkErr
 	}
 	Logger.Info("✅ TCP close probe attached: tcp_close")
+
+	// TCP Reset (detect RST packets via tracepoint)
+	res.KpReset, linkErr = link.Tracepoint("tcp", "tcp_receive_reset", res.Objects.DetectTcpReset, nil)
+	if linkErr != nil {
+		Logger.Warnf("⚠️  tcp_receive_reset tracepoint not available (non-critical): %v", linkErr)
+	} else {
+		Logger.Info("✅ TCP reset probe attached: tracepoint tcp:tcp_receive_reset")
+	}
 
 	// UDP Receive
 	res.KpUdpRecv, linkErr = link.Kprobe("udp_recvmsg", res.Objects.DetectUdpRecv, nil)

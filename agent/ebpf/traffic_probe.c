@@ -59,28 +59,34 @@ struct ipv6hdr_t {
     struct in6_addr daddr;
 };
 
-// Event structure sent to userspace
+// Event structure sent to userspace.
+// Fields are ordered to eliminate implicit compiler padding:
+//   8-byte → 4-byte → 2-byte → 1-byte → 16-byte unions → comm array.
+// Total size: 80 bytes (cleanly divisible by 8, no tail padding).
+//
+// NOTE: Changing field order here requires matching changes in the Go
+//       deserialization (binary.Read with the same field order).
 typedef struct event_t {
+    u64 timestamp;   // Nanoseconds since boot                 [0:8]
+    u32 pid;         // Process ID                             [8:12]
+    u32 tgid;        // Thread Group ID (main process)         [12:16]
+    u32 uid;         // User ID                                [16:20]
+    u16 lport;       // Local Port (e.g., 80, 443)             [20:22]
+    u16 rport;       // Remote Port                            [22:24]
+    u16 family;      // AF_INET or AF_INET6                    [24:26]
+    u8 protocol;     // TCP=6, UDP=17                          [26]
+    u8 flags;        // SYN=0x01, ACK=0x02, EST=0x04, FAIL=0x08 [27]
+    u8 direction;    // DIR_INBOUND or DIR_OUTBOUND             [28]
+    u8 _pad[3];      // Alignment to 4-byte boundary           [29:32]
     union {
         u32 addr4;           // IPv4 address (host order)
         struct in6_addr addr6; // IPv6 address (network order)
-    } saddr;
+    } saddr;         // Source address                         [32:48]
     union {
         u32 addr4;
         struct in6_addr addr6;
-    } daddr;
-    u16 lport;       // Local Port (e.g., 80, 443)
-    u16 rport;       // Remote Port
-    u16 family;      // AF_INET or AF_INET6
-    u8 protocol;     // TCP=6, UDP=17
-    u8 flags;        // SYN=0x01, ACK=0x02, ESTABLISHED=0x04, FAILED=0x08
-    u8 direction;    // DIR_INBOUND or DIR_OUTBOUND
-    u8 _pad[1];      // Alignment padding
-    u64 timestamp;   // Nanoseconds since boot
-    u32 pid;         // Process ID
-    u32 tgid;        // Thread Group ID (main process)
-    u32 uid;         // User ID
-    char comm[TASK_COMM_LEN]; // Process name
+    } daddr;         // Destination address                    [48:64]
+    char comm[TASK_COMM_LEN]; // Process name                  [64:80]
 } event_t;
 
 // Ring buffer for events
@@ -147,6 +153,27 @@ struct {
     __type(key, u32);
     __type(value, struct rate_limit_state);
 } rate_limiter SEC(".maps");
+
+// Global (cross-CPU) rate limit — prevents multi-core flooding attacks
+// from multiplying the effective rate by NR_CPUS via NIC multi-queue or RPS.
+// This is a secondary gate: the per-CPU limiter runs first (preemption-safe,
+// no atomics), then this global counter gates total system-wide events/sec.
+//
+// Uses __sync_fetch_and_add for atomic cross-CPU increments. Window reset
+// is best-effort (racy across CPUs) but error is bounded to one window.
+#define GLOBAL_RATE_LIMIT_EVENTS_PER_SEC 200000  // Max events/sec system-wide
+
+struct global_rate_state {
+    u64 window_start;
+    u64 event_count;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, struct global_rate_state);
+} global_rate_limiter SEC(".maps");
 
 // TCP connection tracking map (for detecting failed handshakes)
 // Key: Full 4-tuple (saddr, sport, daddr, dport) to avoid collisions
@@ -297,15 +324,11 @@ struct {
 } ip_port_bytes SEC(".maps");
 
 // ============================================
-// Configurable Map Sizes (.rodata)
+// Runtime Configuration (.rodata)
 // ============================================
-static volatile const u32 CONFIG_TCP_TRACKER_MAX = 262144;
-static volatile const u32 CONFIG_IPV4_COUNTERS_MAX = 262144;
-static volatile const u32 CONFIG_IPV6_COUNTERS_MAX = 65536;
-static volatile const u32 CONFIG_TCP_TRACKER_V6_MAX = 65536;
-
-// Interface filter: if non-zero, only count packets on this interface
-// 0 means all interfaces (default for backward compatibility)
+// Interface filter: if non-zero, only count packets on this interface.
+// 0 means all interfaces (default for backward compatibility).
+// Userspace can override at load time via bpftool map update on .rodata.
 static volatile const u32 CONFIG_ALLOWED_IFINDEX = 0;
 
 // ============================================
@@ -366,11 +389,17 @@ static __always_inline void fill_process_info(struct event_t *e) {
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
 }
 
-// Helper: Check rate limit before emitting event
-// Returns 1 if event should be emitted, 0 if rate limited
-// NOTE: Uses simple read-modify-write which is verifier-friendly.
-// Since kprobes run with preemption disabled on the current CPU,
-// simple operations are sufficient for per-CPU rate limiting.
+// Helper: Check rate limit before emitting event.
+// Returns 1 if event should be emitted, 0 if rate limited.
+//
+// Two-tier gating:
+//   1. Per-CPU windowed limiter (10K/sec/CPU) — preemption-safe RMW, no atomics.
+//      Handles single-core bursts efficiently.
+//   2. Global atomic limiter (200K/sec system-wide) — __sync_fetch_and_add on
+//      a shared counter. Prevents an attacker from multiplying the effective
+//      rate by NR_CPUS via NIC multi-queue / RPS packet steering.
+//
+// Both limiters use the same 1-second sliding windows.
 static __always_inline int check_rate_limit(void) {
     u32 key = 0;
     struct rate_limit_state *state = bpf_map_lookup_elem(&rate_limiter, &key);
@@ -380,26 +409,43 @@ static __always_inline int check_rate_limit(void) {
     
     u64 now = bpf_ktime_get_ns();
     u64 window_start = state->window_start;
+    int per_cpu_ok = 1;
     
-    // Initialize window if uninitialized (window_start = 0)
+    // --- Tier 1: Per-CPU rate limit ---
     if (window_start == 0) {
         state->window_start = now;
         state->event_count = 1;
-        return 1;
-    }
-    
-    // Check if we're in a new time window
-    if (now - window_start >= RATE_LIMIT_WINDOW_NS) {
-        // Reset window - simple write is safe since we're per-CPU
+    } else if (now - window_start >= RATE_LIMIT_WINDOW_NS) {
         state->window_start = now;
         state->event_count = 1;
-        return 1;
+    } else {
+        state->event_count++;
+        if (state->event_count >= RATE_LIMIT_EVENTS_PER_SEC) {
+            state->dropped_count++;
+            per_cpu_ok = 0;
+        }
     }
     
-    // Increment count and check limit
-    state->event_count++;
-    if (state->event_count >= RATE_LIMIT_EVENTS_PER_SEC) {
+    if (!per_cpu_ok)
         return 0;
+    
+    // --- Tier 2: Global cross-CPU rate limit ---
+    // Uses atomic fetch-and-add on a shared counter. Window reset is racy
+    // (multiple CPUs may reset concurrently) but error is bounded to ±1 window
+    // and the counter never overflows the limit by more than NR_CPUS events.
+    {
+        struct global_rate_state *g = bpf_map_lookup_elem(&global_rate_limiter, &key);
+        if (g) {
+            if (now - g->window_start >= RATE_LIMIT_WINDOW_NS) {
+                g->window_start = now;
+                g->event_count = 0;
+            }
+            u64 old = __sync_fetch_and_add(&g->event_count, 1);
+            if (old >= GLOBAL_RATE_LIMIT_EVENTS_PER_SEC) {
+                state->dropped_count++;
+                return 0;
+            }
+        }
     }
     
     return 1;
@@ -462,24 +508,65 @@ int BPF_KRETPROBE(detect_tcp_accept, struct sock *newsk) {
     fill_process_info(e);
 
     // NOTE: Server-side accepts should NOT touch tcp_syn_tracker.
-    // The SYN tracker is for client-side (outgoing) connection tracking only.
+    // The SYN tracker is used for failed-handshake detection (see detect_tcp_close).
 
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
 
-// Tracepoint: TCP state change - catches inbound SYN (SYN_RECV state)
-// More stable than kprobe - properly typed fields, works across kernel versions
+// Tracepoint: TCP state change — handles three state transitions:
+//   1. SYN_RECV / NEW_SYN_RECV — populate tracker + emit SYN event (inbound detection)
+//   2. ESTABLISHED — clean up tracker (successful handshake, no event)
+//   3. CLOSE — clean up tracker (kernel cleanup, no event — detect_tcp_close
+//      kprobe handles failed-handshake emission before this fires)
+//
+// Consolidates what was previously split across this tracepoint + kprobe/tcp_set_state.
+// Tracepoints are preferred over kprobes for stability (properly typed fields,
+// works across kernel versions).
 SEC("tracepoint/sock/inet_sock_set_state")
-int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
-    // Only care about transitions INTO SYN_RECV/NEW_SYN_RECV (server received a SYN)
-    if (ctx->newstate != TCP_SYN_RECV && ctx->newstate != TCP_NEW_SYN_RECV)
-        return 0;
-
+int detect_tcp_state_transition(struct trace_event_raw_inet_sock_set_state *ctx) {
     if (ctx->protocol != IPPROTO_TCP)
         return 0;
 
     if (ctx->family != AF_INET && ctx->family != AF_INET6)
+        return 0;
+
+    // Extract addresses once — used for tracker ops and event emission.
+    u32 s4 = 0, d4 = 0;
+    struct in6_addr s6 = {}, d6 = {};
+    u16 lp = 0, rp = 0;
+    if (ctx->family == AF_INET) {
+        s4 = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
+             ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
+        d4 = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
+             ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
+    } else {
+        bpf_core_read(&s6, sizeof(s6), ctx->saddr_v6);
+        bpf_core_read(&d6, sizeof(d6), ctx->daddr_v6);
+    }
+    lp = bpf_ntohs(ctx->dport);
+    rp = bpf_ntohs(ctx->sport);
+
+    // --- ESTABLISHED or CLOSE: clean up tracker entries ---
+    // Every connection that reached SYN_RECV will eventually hit ESTABLISHED
+    // (success) or CLOSE (failure/timeout). Cleanup here prevents LRU map bloat
+    // from long-lived connections (HTTP/2, WebSocket) and ensures stale entries
+    // don't persist past connection lifetime.
+    if (ctx->newstate == TCP_ESTABLISHED || ctx->newstate == TCP_CLOSE) {
+        if (ctx->family == AF_INET) {
+            struct conn_key key = {};
+            make_conn_key(&key, d4, lp, s4, rp);
+            bpf_map_delete_elem(&tcp_syn_tracker, &key);
+        } else {
+            struct conn_key_v6 key = {};
+            make_conn_key_v6(&key, &d6, lp, &s6, rp);
+            bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
+        }
+        return 0;
+    }
+
+    // --- SYN_RECV / NEW_SYN_RECV: server received a SYN ---
+    if (ctx->newstate != TCP_SYN_RECV && ctx->newstate != TCP_NEW_SYN_RECV)
         return 0;
 
     // Rate limit check: prevent ring buffer overflow under SYN floods.
@@ -490,21 +577,6 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     // Always update SYN tracker for failed-handshake detection,
     // even when ring buffer events are being rate-limited.
     {
-        u32 s4 = 0, d4 = 0;
-        struct in6_addr s6 = {}, d6 = {};
-        u16 lp = 0, rp = 0;
-        if (ctx->family == AF_INET) {
-            s4 = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
-                 ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
-            d4 = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
-                 ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
-        } else {
-            bpf_core_read(&s6, sizeof(s6), ctx->saddr_v6);
-            bpf_core_read(&d6, sizeof(d6), ctx->daddr_v6);
-        }
-        lp = bpf_ntohs(ctx->dport);
-        rp = bpf_ntohs(ctx->sport);
-
         u64 val = PACK_SYN_TRACK(bpf_ktime_get_ns(), DIR_INBOUND);
         if (ctx->family == AF_INET) {
             struct conn_key key = {};
@@ -528,17 +600,15 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
         return 0;
 
     if (ctx->family == AF_INET) {
-        e->saddr.addr4 = ((__u32)ctx->saddr[0] << 24) | ((__u32)ctx->saddr[1] << 16) |
-                   ((__u32)ctx->saddr[2] << 8) | (__u32)ctx->saddr[3];
-        e->daddr.addr4 = ((__u32)ctx->daddr[0] << 24) | ((__u32)ctx->daddr[1] << 16) |
-                   ((__u32)ctx->daddr[2] << 8) | (__u32)ctx->daddr[3];
+        e->saddr.addr4 = s4;
+        e->daddr.addr4 = d4;
     } else {
-        bpf_core_read(&e->saddr.addr6, sizeof(e->saddr.addr6), ctx->saddr_v6);
-        bpf_core_read(&e->daddr.addr6, sizeof(e->daddr.addr6), ctx->daddr_v6);
+        e->saddr.addr6 = s6;
+        e->daddr.addr6 = d6;
     }
 
-    e->lport = bpf_ntohs(ctx->dport);
-    e->rport = bpf_ntohs(ctx->sport);
+    e->lport = lp;
+    e->rport = rp;
     e->family = ctx->family;
     e->protocol = IPPROTO_TCP;
     e->flags = FLAG_SYN;
@@ -551,20 +621,28 @@ int detect_inbound_syn(struct trace_event_raw_inet_sock_set_state *ctx) {
     return 0;
 }
 
-// Tracepoint context for tcp_receive_reset (not defined in vmlinux.h)
-// See: net/ipv4/tcp.c - trace_tcp_receive_reset(sk)
-struct trace_event_raw_tcp_receive_reset {
-    struct trace_entry ent;
-    const void *skaddr;  // struct sock pointer (from TP_STRUCT__entry)
-    char __data[0];
-};
-
 // Tracepoint: TCP Receive Reset - detects RST packets
 // This catches:
 //   • Rejected connections (connection refused)
 //   • Firewall blocks (iptables/nftables dropping with RST)
 //   • Connection failures (mid-stream resets, timeouts)
 //   • IDS/IPS blocking (security appliances sending RST)
+//
+// trace_event_raw_tcp_receive_reset is not always available in vmlinux.h.
+// Define it manually to match the kernel tracepoint format.
+struct trace_event_raw_tcp_receive_reset {
+	struct trace_entry ent;
+	const void *skaddr;
+	__u16 sport;
+	__u16 dport;
+	__u16 family;
+	__u8 saddr[4];
+	__u8 daddr[4];
+	__u8 saddr_v6[16];
+	__u8 daddr_v6[16];
+	char __data[0];
+};
+
 SEC("tracepoint/tcp/tcp_receive_reset")
 int detect_tcp_reset(struct trace_event_raw_tcp_receive_reset *ctx) {
     struct sock *sk = (struct sock *)ctx->skaddr;
@@ -618,14 +696,6 @@ int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
     if (sk == NULL) {
         return 0;
     }
-    
-    // Rate limit check FIRST - before any expensive operations
-    if (!check_rate_limit()) {
-        return 0;
-    }
-
-    // Debug counter for connect events
-    inc_debug_counter(2);
 
     struct inet_sock *inet = (struct inet_sock *)sk;
     
@@ -641,6 +711,29 @@ int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
     if (!get_sock_addrs((struct sock *)sk, family, &saddr4, &daddr4, &saddr6, &daddr6, &sport, &dport)) {
         return 0;
     }
+
+    // Always update SYN tracker for failed-handshake detection,
+    // even when ring buffer events are being rate-limited.
+    {
+        u64 val = PACK_SYN_TRACK(bpf_ktime_get_ns(), DIR_OUTBOUND);
+        if (family == AF_INET) {
+            struct conn_key key = {};
+            make_conn_key(&key, saddr4, sport, daddr4, dport);
+            bpf_map_update_elem(&tcp_syn_tracker, &key, &val, BPF_ANY);
+        } else {
+            struct conn_key_v6 key = {};
+            make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
+            bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &val, BPF_ANY);
+        }
+    }
+
+    // Rate limit ring buffer events only (tracker already updated above)
+    if (!check_rate_limit()) {
+        return 0;
+    }
+
+    // Debug counter for connect events
+    inc_debug_counter(2);
 
     struct event_t *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e) {
@@ -664,60 +757,7 @@ int BPF_KPROBE(detect_tcp_connect, struct sock *sk) {
     
     fill_process_info(e);
 
-    if (family == AF_INET) {
-        struct conn_key key = {};
-        make_conn_key(&key, saddr4, sport, daddr4, dport);
-        u64 val = PACK_SYN_TRACK(e->timestamp, DIR_OUTBOUND);
-        bpf_map_update_elem(&tcp_syn_tracker, &key, &val, BPF_ANY);
-    } else {
-        struct conn_key_v6 key = {};
-        make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
-        u64 val = PACK_SYN_TRACK(e->timestamp, DIR_OUTBOUND);
-        bpf_map_update_elem(&tcp_syn_tracker_v6, &key, &val, BPF_ANY);
-    }
-
     bpf_ringbuf_submit(e, 0);
-    return 0;
-}
-
-// Hook: TCP State Change (clean SYN tracker on ESTABLISHED)
-// This is crucial for long-lived connections (HTTP/2, WebSocket) that would
-// otherwise leave stale entries in tcp_syn_tracker until tcp_close
-SEC("kprobe/tcp_set_state")
-int BPF_KPROBE(detect_tcp_state_change, struct sock *sk, int state) {
-    if (sk == NULL) {
-        return 0;
-    }
-    
-    if (state != TCP_ESTABLISHED) {
-        return 0;
-    }
-    
-    struct inet_sock *inet = (struct inet_sock *)sk;
-    
-    u16 family = BPF_CORE_READ(inet, sk.__sk_common.skc_family);
-    if (family != AF_INET && family != AF_INET6) {
-        return 0;
-    }
-    
-    u32 saddr4 = 0, daddr4 = 0;
-    struct in6_addr saddr6 = {}, daddr6 = {};
-    u16 sport = 0, dport = 0;
-    
-    if (!get_sock_addrs((struct sock *)sk, family, &saddr4, &daddr4, &saddr6, &daddr6, &sport, &dport)) {
-        return 0;
-    }
-    
-    if (family == AF_INET) {
-        struct conn_key key = {};
-        make_conn_key(&key, saddr4, sport, daddr4, dport);
-        bpf_map_delete_elem(&tcp_syn_tracker, &key);
-    } else {
-        struct conn_key_v6 key = {};
-        make_conn_key_v6(&key, &saddr6, sport, &daddr6, dport);
-        bpf_map_delete_elem(&tcp_syn_tracker_v6, &key);
-    }
-    
     return 0;
 }
 
@@ -825,12 +865,12 @@ int BPF_KPROBE(detect_tcp_close, struct sock *sk) {
 }
 
 // Hook: UDP Receive (for UDP monitoring)
-// NOTE: For UDP, the socket stores the REMOTE peer in skc_daddr/skc_dport (if connected),
-// or zeros for unconnected sockets receiving from multiple sources.
-// SUPPORTED: Connected UDP sockets (e.g., QUIC, DTLS, connected DNS clients).
-// LIMITATION: Truly unconnected UDP sockets (e.g., DNS servers, multicast listeners)
-// where BOTH daddr=0 AND lport=0 are skipped. To get actual source IP/port for
-// unconnected sockets, would need to hook __skb_recv_udp or parse msghdr - planned for v3.
+// NOTE: For connected UDP sockets (QUIC, DTLS, connected DNS clients), the socket
+// stores the REMOTE peer in skc_daddr/skc_dport, giving accurate source IP/port
+// information. For unconnected UDP sockets, daddr is 0. This hook records
+// saddr = 0.0.0.0 in these cases. It is primarily useful for connected UDP
+// (QUIC, DTLS) or requires __skb_recv_udp hooking for true unconnected source
+// IP tracking (planned for v3).
 SEC("kprobe/udp_recvmsg")
 int BPF_KPROBE(detect_udp_recv, struct sock *sk) {
     if (sk == NULL) {
@@ -910,13 +950,7 @@ int BPF_KPROBE(detect_udp_recv, struct sock *sk) {
 // - Counter-only: no ringbuf in packet path
 // - L3 + minimal L4 header read (first 4 bytes only for port extraction)
 // - Always returns TC_ACT_OK (never drops packets)
-
-// Helper: atomically increment a u64 field inside an LRU map value.
-// Uses __sync_fetch_and_add for atomicity under concurrent TC execution.
-static __always_inline void lru_add_u64(void *map, void *key, u64 *field_offset_ptr, u64 val) {
-    // Not used directly — inline per-map below for verifier clarity.
-    (void)map; (void)key; (void)field_offset_ptr; (void)val;
-}
+// - Fragment check prevents garbage port reads on non-first fragments
 
 // Helper: update icmp_counters for an IPv4 address.
 // direction: 0 = packets_in, 1 = packets_out
@@ -1047,10 +1081,12 @@ int tc_ingress(struct __sk_buff *skb) {
             update_icmp_counter(src_ip, 0 /* packets_in */);
         }
 
-        // Per-port byte counter (TCP/UDP only — ICMP has no port)
-        // Extract destination port from the first 4 bytes of the L4 header.
-        // Both TCP and UDP have src_port at offset 0 and dst_port at offset 2.
-        if (ip->protocol == IPPROTO_TCP || ip->protocol == IPPROTO_UDP) {
+        // Per-port byte counter (TCP/UDP only — ICMP has no port).
+        // Skip non-first fragments: they have no L4 header, port bytes
+        // would be garbage. Total byte counter above is still correct
+        // because ip->tot_len is valid on all fragments.
+        if ((ip->protocol == IPPROTO_TCP || ip->protocol == IPPROTO_UDP) &&
+            !(ip->frag_off & bpf_htons(0x1FFF))) {
             __be16 *l4_ports = ip_end;
             if ((void *)(l4_ports + 2) <= data_end) {
                 u16 dst_port = bpf_ntohs(*(l4_ports + 1)); // dst port
@@ -1169,9 +1205,11 @@ int tc_egress(struct __sk_buff *skb) {
             update_icmp_counter(dst_ip, 1 /* packets_out */);
         }
 
-        // Per-port byte counter (TCP/UDP only)
+        // Per-port byte counter (TCP/UDP only).
         // For egress: source port identifies the local service (e.g., 80, 443).
-        if (ip->protocol == IPPROTO_TCP || ip->protocol == IPPROTO_UDP) {
+        // Skip non-first fragments (no L4 header).
+        if ((ip->protocol == IPPROTO_TCP || ip->protocol == IPPROTO_UDP) &&
+            !(ip->frag_off & bpf_htons(0x1FFF))) {
             __be16 *l4_ports = ip_end;
             if ((void *)(l4_ports + 2) <= data_end) {
                 u16 src_port = bpf_ntohs(*l4_ports); // src port (local service port on egress)

@@ -59,6 +59,7 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
     
       # HTTP API
       - "traefik.http.routers.kernelapi.rule=Host(`api.kerneleye.net`)"
@@ -76,8 +77,7 @@ services:
       - "traefik.http.routers.kernelgrpc.tls=true"
       - "traefik.http.routers.kernelgrpc.tls.certresolver=letsencrypt"
       - "traefik.http.routers.kernelgrpc.service=kernelgrpc"
-      - "traefik.http.services.kernelgrpc.loadbalancer.server.port=9091"
-      - "traefik.http.services.kernelgrpc.loadbalancer.server.scheme=h2c"
+      - "traefik.http.services.kernelgrpc.loadbalancer.server.url=h2c://backend:9091"
 
   # Frontend (Landing + Dashboard)
   # Serves static files only - API calls go directly to backend
