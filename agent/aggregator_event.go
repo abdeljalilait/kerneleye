@@ -237,7 +237,7 @@ func (a *Aggregator) ProcessEvent(event Event) {
 	stats.Protocol = event.Protocol
 
 	// Count flags from actual event data.
-	// TCP connections always start with a SYN event (detect_inbound_syn or
+	// TCP connections always start with a SYN event (detect_tcp_state_transition or
 	// detect_tcp_connect both set FLAG_SYN), so no first-event inference is needed.
 	if event.Flags&0x01 != 0 {
 		stats.SYNCount++

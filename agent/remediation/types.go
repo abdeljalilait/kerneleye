@@ -173,6 +173,7 @@ func ClassifyMaps() []MapClassification {
 		// Traffic probe maps
 		{Name: "events", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
 		{Name: "rate_limiter", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "global_rate_limiter", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
 		{Name: "syn_tracker", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
 		{Name: "debug_counters", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
 		{Name: "ip_stats", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},

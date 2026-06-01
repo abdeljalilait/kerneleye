@@ -3,7 +3,7 @@ module github.com/kerneleye/agent
 go 1.25.5
 
 require (
-	github.com/cilium/ebpf v0.20.0
+	github.com/cilium/ebpf v0.21.0
 	github.com/joho/godotenv v1.5.1
 	github.com/kerneleye/proto v0.0.0-00010101000000-000000000000
 	github.com/kerneleye/shared/cmdsigning v0.0.0

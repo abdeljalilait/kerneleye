@@ -77,7 +77,7 @@ func loadBPFObjectsWithInboundSynFallback(objects *bpfObjects) (inboundSynProbeS
 		}
 
 		if status.TracepointDisabled {
-			if prog, ok := spec.Programs["detect_inbound_syn"]; ok && prog != nil {
+			if prog, ok := spec.Programs["detect_tcp_state_transition"]; ok && prog != nil {
 				prog.Instructions = asm.Instructions{
 					asm.Mov.Imm(asm.R0, 0),
 					asm.Return(),

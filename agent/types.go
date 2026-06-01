@@ -5,37 +5,37 @@ import (
 	"time"
 )
 
-// Event matches the C struct event_t in traffic_probe.c (84 bytes)
-// C struct layout:
-//   - saddr: 16 bytes (union of uint32 and in6_addr)
-//   - daddr: 16 bytes (union of uint32 and in6_addr)
-//   - lport: 2 bytes
-//   - rport: 2 bytes
-//   - family: 2 bytes
-//   - protocol: 1 byte
-//   - flags: 1 byte
-//   - direction: 1 byte
-//   - _pad: 1 byte + 6 bytes padding (to align timestamp to 8 bytes)
-//   - timestamp: 8 bytes
-//   - pid: 4 bytes
-//   - tgid: 4 bytes
-//   - uid: 4 bytes
-//   - comm: 16 bytes
+// Event matches the C struct event_t in traffic_probe.c (80 bytes — no padding).
+// C struct layout (zero-padding, offset→field):
+//   [0:8]   timestamp (uint64)
+//   [8:12]  pid (uint32)
+//   [12:16] tgid (uint32)
+//   [16:20] uid (uint32)
+//   [20:22] lport (uint16)
+//   [22:24] rport (uint16)
+//   [24:26] family (uint16)
+//   [26]    protocol (uint8)
+//   [27]    flags (uint8)
+//   [28]    direction (uint8)
+//   [29:32] _pad[3] (3 byte alignment padding)
+//   [32:48] saddr (16-byte union: IPv4 uses first 4 bytes, IPv6 all 16)
+//   [48:64] daddr (16-byte union)
+//   [64:80] comm[16] (TASK_COMM_LEN)
 type Event struct {
-	Saddr     [16]byte // 16-byte union (IPv4 uses first 4 bytes, IPv6 uses all 16)
-	Daddr     [16]byte // 16-byte union (IPv4 uses first 4 bytes, IPv6 uses all 16)
+	Timestamp uint64
+	Pid       uint32
+	Tgid      uint32
+	Uid       uint32
 	Lport     uint16
 	Rport     uint16
 	Family    uint16
 	Protocol  uint8
 	Flags     uint8
 	Direction uint8
-	_         [7]byte // Padding: 1 byte explicit + 6 bytes to align timestamp to offset 48
-	Timestamp uint64
-	Pid       uint32
-	Tgid      uint32
-	Uid       uint32
-	Comm      [16]byte // TASK_COMM_LEN
+	_         [3]byte // alignment padding, mirrors C _pad[3]
+	Saddr     [16]byte
+	Daddr     [16]byte
+	Comm      [16]byte
 }
 
 // Direction constants matching eBPF defines
