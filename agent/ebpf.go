@@ -26,6 +26,7 @@ type EBPFResources struct {
 
 type inboundSynProbeStatus struct {
 	TracepointDisabled bool
+	ReducedMapCapacity bool
 }
 
 func markOptionalInboundSynProgramFromError(err error, status *inboundSynProbeStatus) bool {
@@ -41,11 +42,35 @@ func markOptionalInboundSynProgramFromError(err error, status *inboundSynProbeSt
 	return changed
 }
 
+func isBPFMapMemoryError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "map create") &&
+		(strings.Contains(msg, "cannot allocate memory") || strings.Contains(msg, "not enough memory"))
+}
+
+func applyReducedMapCapacity(spec *ebpf.CollectionSpec) {
+	reducedMaxEntries := map[string]uint32{
+		"events":              1 << 22, // 4MB ring buffer
+		"tcp_syn_tracker":     65536,
+		"tcp_syn_tracker_v6":  16384,
+		"ip_byte_counters":    65536,
+		"ip_byte_counters_v6": 16384,
+		"icmp_counters":       65536,
+		"ip_port_bytes":       65536,
+	}
+
+	for name, maxEntries := range reducedMaxEntries {
+		if mapSpec, ok := spec.Maps[name]; ok && mapSpec != nil && mapSpec.MaxEntries > maxEntries {
+			mapSpec.MaxEntries = maxEntries
+		}
+	}
+}
+
 func loadBPFObjectsWithInboundSynFallback(objects *bpfObjects) (inboundSynProbeStatus, error) {
 	status := inboundSynProbeStatus{}
 	var firstErr error
 
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < 4; attempt++ {
 		spec, specErr := loadBpf()
 		if specErr != nil {
 			return status, fmt.Errorf("failed to load eBPF spec: %w", specErr)
@@ -60,16 +85,28 @@ func loadBPFObjectsWithInboundSynFallback(objects *bpfObjects) (inboundSynProbeS
 			}
 		}
 
+		if status.ReducedMapCapacity {
+			applyReducedMapCapacity(spec)
+		}
+
 		if err := spec.LoadAndAssign(objects, nil); err == nil {
 			Logger.Info("✅ eBPF objects loaded successfully")
 			if status.TracepointDisabled {
 				Logger.Warn("⚠️  detect_inbound_syn was disabled due to kernel verifier rejection")
+			}
+			if status.ReducedMapCapacity {
+				Logger.Warn("⚠️  eBPF maps loaded with reduced capacity due to kernel memory limits")
 			}
 			return status, nil
 		} else {
 			Logger.Warnf("⚠️  eBPF load attempt %d failed: %v", attempt+1, err)
 			if firstErr == nil {
 				firstErr = err
+			}
+			if isBPFMapMemoryError(err) && !status.ReducedMapCapacity {
+				status.ReducedMapCapacity = true
+				Logger.Warn("⚠️  Retrying eBPF load with reduced map capacity after map memory allocation failure")
+				continue
 			}
 			if !markOptionalInboundSynProgramFromError(err, &status) {
 				return status, fmt.Errorf("eBPF load failed (%w); fallback retry failed: %v", firstErr, err)
