@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -60,6 +61,10 @@ func normalizeGRPCTarget(raw string) string {
 		return target
 	}
 
+	if hasExplicitPort(target) {
+		return target
+	}
+
 	parsed, err := url.Parse(target)
 	hasPlainScheme := err == nil && (parsed.Scheme == "grpc" || parsed.Scheme == "http" || parsed.Scheme == "h2c")
 
@@ -75,6 +80,16 @@ func normalizeGRPCTarget(raw string) string {
 
 	// Explicit port — preserve as-is. No more :443→:9091 remapping.
 	return target
+}
+
+func hasExplicitPort(target string) bool {
+	if strings.Contains(target, "://") {
+		return false
+	}
+	if _, _, err := net.SplitHostPort(target); err == nil {
+		return true
+	}
+	return false
 }
 
 // buildGRPCDialTarget returns the target format expected by grpc.NewClient.
@@ -180,6 +195,7 @@ func isRetriableRegisterError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "unexpected http status code received from server") ||
 		strings.Contains(msg, "missing http-content-type") ||
+		strings.Contains(msg, "missing http content-type") ||
 		strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "transport is closing") ||
 		strings.Contains(msg, "connection reset by peer") ||

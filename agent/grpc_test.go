@@ -1,8 +1,36 @@
 package main
 
 import (
+	"errors"
 	"testing"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+func TestNormalizeGRPCTarget(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "plain host default port", target: "grpc.example.com", want: "grpc.example.com:443"},
+		{name: "plain host explicit port", target: "grpc.example.com:443", want: "grpc.example.com:443"},
+		{name: "localhost explicit port", target: "localhost:9091", want: "localhost:9091"},
+		{name: "https default port", target: "https://grpc.example.com", want: "https://grpc.example.com:443"},
+		{name: "https explicit port", target: "https://grpc.example.com:8443", want: "https://grpc.example.com:8443"},
+		{name: "http default port", target: "http://localhost", want: "http://localhost:80"},
+		{name: "ipv6 explicit port", target: "[::1]:9091", want: "[::1]:9091"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeGRPCTarget(tt.target); got != tt.want {
+				t.Fatalf("normalizeGRPCTarget(%q) = %q, want %q", tt.target, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestBuildGRPCDialTarget(t *testing.T) {
 	tests := []struct {
@@ -21,6 +49,27 @@ func TestBuildGRPCDialTarget(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := buildGRPCDialTarget(tt.target); got != tt.want {
 				t.Fatalf("buildGRPCDialTarget(%q) = %q, want %q", tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsRetriableRegisterError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "unknown grpc status", err: status.Error(codes.Unknown, "unexpected HTTP status code received from server: 500 (Internal Server Error); malformed header: missing HTTP content-type"), want: true},
+		{name: "missing content type text", err: errors.New("malformed header: missing HTTP content-type"), want: true},
+		{name: "permission denied", err: status.Error(codes.PermissionDenied, "invalid key"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isRetriableRegisterError(tt.err); got != tt.want {
+				t.Fatalf("isRetriableRegisterError(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}
