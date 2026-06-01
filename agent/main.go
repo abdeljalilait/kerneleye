@@ -107,8 +107,9 @@ func main() {
 
 	Logger.Info("Registering agent with server...")
 	if err := registerAndWaitForApproval(cfg.APIKey, cfg.ServerHost, cfg.GRPCURL, tlsCfg); err != nil {
-		if strings.Contains(err.Error(), "rejected") {
-			Logger.Infof("Registration rejected by user. Agent will not retry. Delete and re-create the server in the dashboard to generate a new API key.")
+		errStr := err.Error()
+		if strings.Contains(errStr, "rejected") || strings.Contains(errStr, "Not Found") || strings.Contains(errStr, "NotFound") || strings.Contains(errStr, "not found") {
+			Logger.Infof("Registration permanently failed: %v. Agent will not retry. Delete and re-create the server in the dashboard to generate a new API key.", err)
 			os.Exit(0)
 		}
 		Logger.Fatalf("Registration failed: %v", err)

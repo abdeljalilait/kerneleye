@@ -270,6 +270,9 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string, tlsCfg *TLST
 		cancel()
 
 		if err != nil {
+			if s, ok := status.FromError(err); ok && (s.Code() == codes.NotFound || s.Code() == codes.PermissionDenied) {
+				return fmt.Errorf("server %w", err)
+			}
 			Logger.Warnf("Poll failed: %v", err)
 			continue
 		}
