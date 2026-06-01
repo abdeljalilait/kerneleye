@@ -149,6 +149,18 @@ download_binary() {
     mv "$tmp_file" "${INSTALL_DIR}/${BINARY_NAME}"
     chmod 0755 "${INSTALL_DIR}/${BINARY_NAME}"
 
+    # Set eBPF capabilities so the agent can load kprobes/XDP programs
+    # without requiring full root (works with both sudo and systemd AmbientCapabilities)
+    if command -v setcap > /dev/null 2>&1; then
+        if setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+eip "${INSTALL_DIR}/${BINARY_NAME}" 2>/dev/null; then
+            log_success "eBPF capabilities set on binary"
+        else
+            log_warn "setcap failed — agent will need sudo or systemd AmbientCapabilities for eBPF"
+        fi
+    else
+        log_warn "setcap not found — agent will need sudo for eBPF"
+    fi
+
     log_success "Agent installed to ${INSTALL_DIR}/${BINARY_NAME}"
 }
 

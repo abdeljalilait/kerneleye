@@ -229,6 +229,8 @@ install: check-root build-release create-dirs
 	@echo "$(BLUE)Installing KernelEye Agent...$(NC)"
 	@echo "  Installing binary to $(DESTDIR)$(BINDIR)/"
 	@install -m 0755 $(BINARY_NAME) $(DESTDIR)$(BINDIR)/$(BINARY_NAME)
+	@echo "  Setting eBPF capabilities on binary..."
+	@setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+eip $(DESTDIR)$(BINDIR)/$(BINARY_NAME) 2>/dev/null || echo "  $(YELLOW)⚠$(NC)  setcap failed (run 'sudo make install' or setcap manually)"
 	@echo "  Creating config directory $(DESTDIR)$(CONFIGDIR)/"
 	@mkdir -p $(DESTDIR)$(CONFIGDIR)
 	@echo "  Creating log directory $(DESTDIR)$(LOGDIR)/"
@@ -251,6 +253,7 @@ install: check-root build-release create-dirs
 # Uninstall
 uninstall: check-root
 	@echo "$(BLUE)Uninstalling KernelEye Agent...$(NC)"
+	@setcap -r $(DESTDIR)$(BINDIR)/$(BINARY_NAME) 2>/dev/null || true
 	@rm -f $(DESTDIR)$(BINDIR)/$(BINARY_NAME)
 	@echo "  Removed binary from $(DESTDIR)$(BINDIR)/"
 	@echo "$(YELLOW)Note: Config files in $(DESTDIR)$(CONFIGDIR)/ and logs in $(DESTDIR)$(LOGDIR)/ were not removed.$(NC)"
