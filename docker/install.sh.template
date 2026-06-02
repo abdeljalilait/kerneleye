@@ -152,7 +152,7 @@ download_binary() {
     # Set eBPF capabilities so the agent can load kprobes/XDP programs
     # without requiring full root (works with both sudo and systemd AmbientCapabilities)
     if command -v setcap > /dev/null 2>&1; then
-        if setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+eip "${INSTALL_DIR}/${BINARY_NAME}" 2>/dev/null; then
+        if setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+ip "${INSTALL_DIR}/${BINARY_NAME}" 2>/dev/null; then
             log_success "eBPF capabilities set on binary"
         else
             log_warn "setcap failed — agent will need sudo or systemd AmbientCapabilities for eBPF"
@@ -238,7 +238,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=root
 EnvironmentFile=-${CONFIG_DIR}/agent.env
+ExecStartPre=+/sbin/setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+ip ${INSTALL_DIR}/${BINARY_NAME}
 ExecStart=${INSTALL_DIR}/${BINARY_NAME} ${agent_flags}
 Restart=on-failure
 RestartSec=10
@@ -246,10 +248,9 @@ StandardOutput=append:${LOG_DIR}/agent.log
 StandardError=append:${LOG_DIR}/agent.log
 
 # Security hardening
-NoNewPrivileges=true
 ProtectHome=true
-ProtectSystem=strict
-ReadWritePaths=${LOG_DIR} ${DATA_DIR}
+ProtectSystem=full
+ReadWritePaths=${DATA_DIR}
 
 # Increase memlock limit for eBPF
 LimitMEMLOCK=infinity

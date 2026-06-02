@@ -79,6 +79,36 @@ deps:
 	cd $(BACKEND_DIR) && go get -u ./... && go mod tidy
 	cd $(AGENT_DIR) && go get -u ./... && go mod tidy
 
+# ==========================================
+# Systemd Service
+# ==========================================
+
+# Install systemd service for the agent (delegates to agent/Makefile)
+.PHONY: install-service
+install-service:
+	@echo "Installing systemd service..."
+	cd $(AGENT_DIR) && $(MAKE) install-service
+
+# Remove systemd service for the agent
+.PHONY: uninstall-service
+uninstall-service:
+	@echo "Removing systemd service..."
+	cd $(AGENT_DIR) && $(MAKE) uninstall-service
+
+# ==========================================
+# TLS Certificates
+# ==========================================
+
+# Generate self-signed TLS certificates for gRPC
+.PHONY: gen-certs
+gen-certs:
+	@echo "Generating gRPC TLS certificates..."
+	@if [ -z "$(GRPC_DOMAIN)" ]; then \
+		echo "Usage: make gen-certs GRPC_DOMAIN=grpc.kerneleye.net"; \
+		exit 1; \
+	fi
+	./scripts/generate-grpc-certs.sh $(GRPC_DOMAIN)
+
 # All generation tasks
 .PHONY: generate
 generate: gen-proto gen-sql gen-ebpf
@@ -236,6 +266,11 @@ help:
 	@echo "  make build-agent        Build agent binary only"
 	@echo "  make generate           Generate all code (proto, sql, ebpf)"
 	@echo "  make dev                Show dev environment instructions"
+	@echo ""
+	@echo "Systemd Service (requires root):"
+	@echo "  make install-service    Install agent systemd service with auto-capabilities"
+	@echo "  make uninstall-service  Remove agent systemd service"
+	@echo "  make gen-certs          Generate gRPC TLS certificates (GRPC_DOMAIN=hostname)"
 	@echo ""
 	@echo "Docker Build:"
 	@echo "  make docker-build-backend     Build backend Docker image"

@@ -1,0 +1,22 @@
+[Unit]
+Description=KernelEye Agent — eBPF/XDP network monitoring and remediation
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=+/sbin/setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+ip /usr/local/bin/kerneleye-agent
+ExecStart=/usr/local/bin/kerneleye-agent --config /etc/kerneleye/agent.env
+Restart=on-failure
+RestartSec=10
+AmbientCapabilities=cap_net_admin cap_net_raw cap_sys_resource cap_perfmon cap_bpf
+CapabilityBoundingSet=cap_net_admin cap_net_raw cap_sys_resource cap_perfmon cap_bpf
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/kerneleye
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
