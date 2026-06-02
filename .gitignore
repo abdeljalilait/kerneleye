@@ -67,6 +67,11 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+certs/
+*.crt
+*.key
+*.csr
+*.pem
 
 # Data
 backend/geoip/
