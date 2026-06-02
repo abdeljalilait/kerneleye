@@ -112,6 +112,7 @@ struct {
     __uint(max_entries, 131072);
     __type(key, __u32);
     __type(value, struct rate_limit_state);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
 } xdp_rate_limit SEC(".maps");
 
 struct {
