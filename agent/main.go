@@ -120,15 +120,28 @@ func main() {
 	}
 	ebpfRes, err := LoadAndAttacheBPF()
 	if err != nil {
-		Logger.Errorf("Failed to load eBPF objects: %v", err)
-		Logger.Info("\n⚠️  eBPF loading failed. Possible causes:")
-		Logger.Info("  1. Not running as root (try: sudo)")
-		Logger.Info("  2. Missing kernel capabilities (need: CAP_BPF, CAP_PERFMON, CAP_NET_ADMIN, CAP_SYS_RESOURCE)")
-		Logger.Info("  3. eBPF disabled in kernel (check: /proc/sys/kernel/unprivileged_bpf_disabled)")
-		Logger.Info("\nTo check eBPF status:")
-		Logger.Info("  cat /proc/sys/kernel/unprivileged_bpf_disabled")
-		Logger.Info("\nTo enable eBPF (as root):")
-		Logger.Info("  echo 0 | sudo tee /proc/sys/kernel/unprivileged_bpf_disabled")
+		errStr := err.Error()
+		// Distinguish load failures (eBPF not available) from attach failures
+		// (missing capabilities, kprobe conflicts) so the operator knows
+		// which capability is actually missing.
+		if strings.Contains(errStr, "permission denied") || strings.Contains(errStr, "perf_kprobe") {
+			Logger.Errorf("Failed to attach eBPF probes: %v", err)
+			Logger.Info("\n⚠️  eBPF programs loaded but kprobe attachment failed.")
+			Logger.Info("  On kernel >= 5.8, kprobe attachment requires CAP_PERFMON.")
+			Logger.Info("  The binary may have lost file capabilities after a rebuild.")
+			Logger.Info("  Fix: sudo setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+eip $(which kerneleye-agent)")
+			Logger.Info("  Or run the agent as root: sudo kerneleye-agent ...")
+		} else {
+			Logger.Errorf("Failed to load eBPF objects: %v", err)
+			Logger.Info("\n⚠️  eBPF loading failed. Possible causes:")
+			Logger.Info("  1. Not running as root (try: sudo)")
+			Logger.Info("  2. Missing kernel capabilities (need: CAP_BPF, CAP_PERFMON, CAP_NET_ADMIN, CAP_SYS_RESOURCE)")
+			Logger.Info("  3. eBPF disabled in kernel (check: /proc/sys/kernel/unprivileged_bpf_disabled)")
+			Logger.Info("\nTo check eBPF status:")
+			Logger.Info("  cat /proc/sys/kernel/unprivileged_bpf_disabled")
+			Logger.Info("\nTo enable eBPF (as root):")
+			Logger.Info("  echo 0 | sudo tee /proc/sys/kernel/unprivileged_bpf_disabled")
+		}
 		Logger.Fatal("\nAgent cannot run without eBPF support.")
 	}
 	defer ebpfRes.Close()
