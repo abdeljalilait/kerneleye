@@ -287,7 +287,7 @@ func main() {
 		grpcPort = "9091"
 	}
 
-	lis, err := net.Listen("tcp", ":"+grpcPort)
+	lis, err := net.Listen("tcp", "0.0.0.0:"+grpcPort)
 	if err != nil {
 		log.Fatalf("Failed to listen for gRPC: %v", err)
 	}
@@ -320,7 +320,7 @@ func main() {
 	}
 
 	log.Printf("🚀 KernelEye API listening on port %s\n", port)
-	if err := app.Listen(":" + port); err != nil {
+	if err := app.Listen("0.0.0.0:" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

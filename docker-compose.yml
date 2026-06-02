@@ -25,9 +25,12 @@ services:
     pull_policy: always
     volumes:
       - ../files/geoip:/opt/kerneleye/geoip
-    expose:
-      - "8080"
-      - "9091"
+      - ./certs:/certs:ro
+    ports:
+      - "9091:9091"
+    # expose:  # Not needed when ports: is used
+    #   - "8080"
+    #   - "9091"
     # ports:
     #   - "9091:9091"
     environment:
@@ -53,6 +56,11 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       OAUTH_REDIRECT_URL: ${OAUTH_REDIRECT_URL}
       AUTH_OWNER_EMAIL: ${AUTH_OWNER_EMAIL}
+      # gRPC TLS (server certificate)
+      GRPC_TLS_CERT_FILE: ${GRPC_TLS_CERT_FILE:-/certs/server.crt}
+      GRPC_TLS_KEY_FILE: ${GRPC_TLS_KEY_FILE:-/certs/server.key}
+      # mTLS (optional — uncomment to require agent client certificates)
+      # GRPC_MTLS_CA_FILE: ${GRPC_MTLS_CA_FILE:-/certs/ca.crt}
     depends_on:
       kerneleye-db:
         condition: service_healthy
@@ -70,14 +78,18 @@ services:
       - "traefik.http.services.kernelapi.loadbalancer.server.port=8080"
       - "traefik.http.services.kernelapi.loadbalancer.server.scheme=http"
 
-    
-      # gRPC
-      - "traefik.http.routers.kernelgrpc.rule=Host(`grpc.kerneleye.net`)"
-      - "traefik.http.routers.kernelgrpc.entrypoints=websecure"
-      - "traefik.http.routers.kernelgrpc.tls=true"
-      - "traefik.http.routers.kernelgrpc.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.kernelgrpc.service=kernelgrpc"
-      - "traefik.http.services.kernelgrpc.loadbalancer.server.url=h2c://backend:9091"
+      # gRPC: direct TLS on port 9091 (bypasses Traefik entirely).
+      # Port 9091 is published above. Backend terminates TLS using certs from ./certs/.
+      # Agents connect to: grpc.kerneleye.net:9091 (TLS)
+      # To use Traefik TCP passthrough instead, comment the ports: block above
+      # and uncomment the Traefik TCP router below.
+      #
+      # # Traefik TCP passthrough for gRPC (optional alternative to direct TLS):
+      # - "traefik.tcp.routers.kernelgrpc.rule=HostSNI(`grpc.kerneleye.net`)"
+      # - "traefik.tcp.routers.kernelgrpc.entrypoints=websecure"
+      # - "traefik.tcp.routers.kernelgrpc.tls.passthrough=true"
+      # - "traefik.tcp.routers.kernelgrpc.service=kernelgrpc"
+      # - "traefik.tcp.services.kernelgrpc.loadbalancer.server.port=9091"
 
   # Frontend (Landing + Dashboard)
   # Serves static files only - API calls go directly to backend
