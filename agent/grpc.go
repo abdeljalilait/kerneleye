@@ -170,6 +170,28 @@ func buildTLSTransport(tlsCfg *TLSTransportConfig) (credentials.TransportCredent
 	return credentials.NewTLS(tlsConfig), nil
 }
 
+func grpcTransportModeMessage(tlsCfg *TLSTransportConfig, target string) string {
+	if tlsCfg != nil && tlsCfg.Insecure {
+		return fmt.Sprintf("⚠️  gRPC transport: plaintext (--insecure), target=%s", target)
+	}
+
+	if tlsCfg != nil && tlsCfg.CertFile != "" {
+		return fmt.Sprintf("🔐 gRPC transport: mTLS enabled, target=%s, client_cert=%s", target, tlsCfg.CertFile)
+	}
+
+	ca := "system"
+	if tlsCfg != nil && tlsCfg.CAFile != "" {
+		ca = tlsCfg.CAFile
+	}
+	return fmt.Sprintf("🔐 gRPC transport: TLS 1.3 enabled, target=%s, CA=%s", target, ca)
+}
+
+func logTLSMode(tlsCfg *TLSTransportConfig, target string) {
+	if Logger != nil {
+		Logger.Info(grpcTransportModeMessage(tlsCfg, target))
+	}
+}
+
 // buildGRPCOpts builds gRPC dial options with TLS by default.
 // Plaintext is only allowed when tlsCfg.Insecure is explicitly true.
 func buildGRPCOpts(tlsCfg *TLSTransportConfig) []grpc.DialOption {
@@ -214,6 +236,7 @@ func registerAndWaitForApproval(apiKey, serverHost, grpcURL string, tlsCfg *TLST
 	grpcTarget := buildGRPCTarget(serverHost, grpcURL)
 	grpcDialTarget := buildGRPCDialTarget(grpcTarget)
 	Logger.Infof("Connecting to gRPC server at %s...", grpcTarget)
+	logTLSMode(tlsCfg, grpcTarget)
 
 	var regResp *pb.RegisterResponse
 	var lastErr error
