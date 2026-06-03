@@ -162,31 +162,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Handle OAuth callback
-  useEffect(() => {
-    const handleOAuthCallback = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      const error = urlParams.get('error');
-
-      if (error) {
-        console.error('OAuth error:', error);
-        return;
-      }
-
-      if (token && window.location.pathname === '/oauth/callback') {
-        try {
-          await login(token);
-          navigate({ to: '/dashboard' });
-        } catch (error) {
-          console.error('OAuth login failed:', error);
-        }
-      }
-    };
-
-    handleOAuthCallback();
-  }, [login, navigate]);
-
   // Listen for storage changes (multi-tab support)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {

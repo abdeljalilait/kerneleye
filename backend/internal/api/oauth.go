@@ -224,12 +224,6 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 			}
 		}
 
-		// Generate JWT token
-		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
-		}
-
 		// Generate and store refresh token
 		refreshToken, err := GenerateRefreshToken()
 		if err != nil {
@@ -242,8 +236,8 @@ func HandleGitHubCallback(queries *database.Queries) fiber.Handler {
 			}
 		}
 
-		// Redirect to dashboard with token
-		redirectURL := fmt.Sprintf("%s/oauth/callback?token=%s", config.DashboardURL, token)
+		// Redirect to dashboard (refresh token is in HttpOnly cookie)
+		redirectURL := fmt.Sprintf("%s/oauth/callback", config.DashboardURL)
 		return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
 	}
 }
@@ -464,12 +458,6 @@ func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
 			}
 		}
 
-		// Generate JWT token
-		token, err := GenerateJWT(database.FromPgUUID(user.ID), user.Email)
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
-		}
-
 		// Generate and store refresh token
 		refreshToken, err := GenerateRefreshToken()
 		if err != nil {
@@ -482,8 +470,8 @@ func HandleGoogleCallback(queries *database.Queries) fiber.Handler {
 			}
 		}
 
-		// Redirect to dashboard with token
-		redirectURL := fmt.Sprintf("%s/oauth/callback?token=%s", config.DashboardURL, token)
+		// Redirect to dashboard (refresh token is in HttpOnly cookie)
+		redirectURL := fmt.Sprintf("%s/oauth/callback", config.DashboardURL)
 		return c.Redirect(redirectURL, fiber.StatusTemporaryRedirect)
 	}
 }

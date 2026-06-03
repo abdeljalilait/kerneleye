@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Card, Spin, Typography, Alert, Button } from 'antd'
 import { Shield, CheckCircle, XCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { authAPI } from '../api/client'
 
 const { Title, Text } = Typography
 
@@ -36,7 +37,6 @@ export default function OAuthCallback() {
   useEffect(() => {
     const handleOAuthCallback = async () => {
       const params = search as any
-      const token = params?.token
       const error = params?.error
 
       if (error) {
@@ -45,22 +45,27 @@ export default function OAuthCallback() {
         return
       }
 
-      if (token) {
-        try {
-          await login(token)
-          setStatus('success')
-          
-          // Redirect after a short delay
-          setTimeout(() => {
-            navigate({ to: '/dashboard' })
-          }, 1000)
-        } catch (err: any) {
+      try {
+        // Exchange HttpOnly refresh cookie for an access token
+        const { data } = await authAPI.refreshToken()
+        const token = data?.token
+
+        if (!token) {
           setStatus('error')
-          setErrorCode(err?.message || 'Failed to complete authentication')
+          setErrorCode('No authentication token received')
+          return
         }
-      } else {
+
+        await login(token)
+        setStatus('success')
+
+        // Redirect after a short delay
+        setTimeout(() => {
+          navigate({ to: '/dashboard' })
+        }, 1000)
+      } catch (err: any) {
         setStatus('error')
-        setErrorCode('No authentication token received')
+        setErrorCode(err?.message || 'Failed to complete authentication')
       }
     }
 
