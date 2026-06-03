@@ -132,13 +132,13 @@ func HandleGitHubLogin() fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate state")
 		}
 
-		// Store state in cookie
+		// Store state in cookie (always Secure — OAuth only works over HTTPS)
 		c.Cookie(&fiber.Cookie{
 			Name:     "oauth_state",
 			Value:    state,
 			MaxAge:   600,
 			HTTPOnly: true,
-			Secure:   os.Getenv("ENV") == "production",
+			Secure:   true,
 			SameSite: "Lax",
 		})
 
@@ -372,13 +372,13 @@ func HandleGoogleLogin() fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate state")
 		}
 
-		// Store state in cookie
+		// Store state in cookie (always Secure — OAuth only works over HTTPS)
 		c.Cookie(&fiber.Cookie{
 			Name:     "oauth_state",
 			Value:    state,
 			MaxAge:   600,
 			HTTPOnly: true,
-			Secure:   os.Getenv("ENV") == "production",
+			Secure:   true,
 			SameSite: "Lax",
 		})
 

@@ -19,7 +19,7 @@ import (
 var jwtSecret []byte
 
 const (
-	AccessTokenExpiry  = 24 * time.Hour     // JWT access token: 24 hours
+	AccessTokenExpiry  = 1 * time.Hour      // JWT access token: 1 hour (refresh mechanism handles rotation)
 	RefreshTokenExpiry = 7 * 24 * time.Hour // Refresh token: 7 days
 	RefreshTokenSize   = 64                 // 64 bytes of random data
 	CookieName         = "kerneleye_refresh"
@@ -45,7 +45,7 @@ type Claims struct {
 
 // GenerateJWT creates a new JWT token for a user
 func GenerateJWT(userID, email string) (string, error) {
-	expirationTime := time.Now().Add(24 * time.Hour)
+	expirationTime := time.Now().Add(AccessTokenExpiry)
 	claims := &Claims{
 		UserID: userID,
 		Email:  email,
