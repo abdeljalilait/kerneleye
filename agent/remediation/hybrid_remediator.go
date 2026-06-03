@@ -52,6 +52,10 @@ func (h *HybridRemediator) Setup() error {
 		} else {
 			h.xdpEnabled = true
 			logger.Infof("✅ Hybrid mode: XDP (%s) + iptables", h.xdp.Mode())
+			// Initialize rate limiting with sensible defaults and freeze the config map
+			if err := h.xdp.SetRateLimit(10000, 100000000, 5*time.Minute); err != nil {
+				logger.Warnf("⚠️  XDP rate limit initialization failed: %v", err)
+			}
 			// Start periodic cleanup of expired XDP entries (every 5 minutes)
 			h.xdp.StartCleanup(5 * time.Minute)
 		}

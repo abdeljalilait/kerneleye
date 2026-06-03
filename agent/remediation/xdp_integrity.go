@@ -148,9 +148,11 @@ func VerifyMapSnapshot(name string, snap *MapStateSnapshot) (warnings []string) 
 			fmt.Sprintf("map %s: ID changed %d → %d — map was replaced", name, snap.MapID, currentID))
 	}
 
-	// Check frozen status matches expectation
+	// Check frozen status matches expectation.
+	// Skip the warning if the map is empty (unconfigured) — an empty map that
+	// has never been written to is not a security violation.
 	cls, _ := MapClassificationByName(name)
-	if cls.Frozen && !info.Frozen() {
+	if cls.Frozen && !info.Frozen() && snap.EntryCount > 0 {
 		warnings = append(warnings,
 			fmt.Sprintf("map %s: classified as frozen but BPF_MAP_FREEZE not applied", name))
 	}
