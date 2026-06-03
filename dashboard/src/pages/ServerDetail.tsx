@@ -754,7 +754,7 @@ export default function ServerDetail() {
                         <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>
                           Agent {integrity.agent_version} · {integrity.map_count} maps · {integrity.program_count} programs
                         </div>
-                        {integrity.warnings.length > 0 && (
+                        {integrity.warnings?.length > 0 && (
                           <div style={{ marginTop: 6 }}>
                             <div style={{ fontWeight: 600, fontSize: 11, color: '#f59e0b', marginBottom: 2 }}>Warnings:</div>
                             {integrity.warnings.map((w, i) => (
@@ -762,7 +762,7 @@ export default function ServerDetail() {
                             ))}
                           </div>
                         )}
-                        {integrity.errors.length > 0 && (
+                        {integrity.errors?.length > 0 && (
                           <div style={{ marginTop: 6 }}>
                             <div style={{ fontWeight: 600, fontSize: 11, color: '#ef4444', marginBottom: 2 }}>Errors:</div>
                             {integrity.errors.map((e, i) => (
@@ -783,7 +783,7 @@ export default function ServerDetail() {
                         cursor: 'pointer',
                       }}
                     >
-                      {integrity.healthy ? '🛡️ Integrity OK' : `🛡️ ${integrity.warnings.length + integrity.errors.length} issues`}
+                      {integrity.healthy ? '🛡️ Integrity OK' : `🛡️ ${(integrity.warnings?.length ?? 0) + (integrity.errors?.length ?? 0)} issues`}
                     </Tag>
                   </Tooltip>
                 )}

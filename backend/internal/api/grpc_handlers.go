@@ -915,15 +915,26 @@ func (h *GrpcIngestHandler) ReportIntegrity(ctx context.Context, req *pb.Integri
 		server.Hostname, req.AgentVersion, req.Status.Healthy,
 		len(req.Programs), len(req.Maps))
 
-	// Broadcast integrity status to dashboard
+	// Broadcast integrity status to dashboard.
+	// Ensure warnings/errors are non-nil so JSON serialization produces []
+	// instead of null. The frontend accesses .length on these arrays.
+	warnings := req.Status.Warnings
+	if warnings == nil {
+		warnings = []string{}
+	}
+	errors := req.Status.Errors
+	if errors == nil {
+		errors = []string{}
+	}
+
 	integrityData := map[string]interface{}{
 		"server_id":          server.ID.String(),
 		"server_name":        server.Hostname,
 		"agent_version":      req.AgentVersion,
 		"agent_binary_hash":  req.AgentBinaryHash,
 		"healthy":            req.Status.Healthy,
-		"warnings":           req.Status.Warnings,
-		"errors":             req.Status.Errors,
+		"warnings":           warnings,
+		"errors":             errors,
 		"program_count":      len(req.Programs),
 		"map_count":          len(req.Maps),
 		"timestamp":          time.Now(),
