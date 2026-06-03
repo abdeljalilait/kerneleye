@@ -60,7 +60,7 @@ func (r *XDPRemediator) captureMapSnapshots() {
 
 		// Compute content hash for High/VeryHigh maps
 		if cls.TrustLevel >= TrustLevelHigh {
-			snap.ContentHash, snap.EntryCount = r.hashMapContents(entry.m)
+			snap.ContentHash, snap.EntryCount = hashMapContents(entry.m)
 		}
 
 	r.mapSnapshots[entry.name] = snap
@@ -76,7 +76,7 @@ func (r *XDPRemediator) captureMapSnapshots() {
 }
 
 // hashMapContents computes a deterministic SHA-256 hash of all entries in a map.
-func (r *XDPRemediator) hashMapContents(m *ebpf.Map) (hash string, count int) {
+func hashMapContents(m *ebpf.Map) (hash string, count int) {
 	h := sha256.New()
 	iter := m.Iterate()
 	var key, val []byte
@@ -119,10 +119,10 @@ func (r *XDPRemediator) GetMapSnapshots() map[string]*MapStateSnapshot {
 	return r.mapSnapshots
 }
 
-// verifyMapSnapshot compares the current state of a pinned map against its load-time snapshot.
+// VerifyMapSnapshot compares the current state of a pinned map against its load-time snapshot.
 // Returns warnings if the map ID, frozen status, or content hash has changed unexpectedly.
-func (r *XDPRemediator) verifyMapSnapshot(name string, snap *MapStateSnapshot) (warnings []string) {
-	pinnedPath := filepath.Join(r.pinPath, name)
+func VerifyMapSnapshot(name string, snap *MapStateSnapshot) (warnings []string) {
+	pinnedPath := snap.PinnedPath
 
 	// Open pinned map read-only for verification
 	m, err := ebpf.LoadPinnedMap(pinnedPath, &ebpf.LoadPinOptions{ReadOnly: true})
@@ -157,7 +157,7 @@ func (r *XDPRemediator) verifyMapSnapshot(name string, snap *MapStateSnapshot) (
 
 	// For High/VeryHigh maps, verify content hash
 	if snap.TrustLevel >= TrustLevelHigh && snap.ContentHash != "" {
-		currentHash, _ := r.hashMapContents(m)
+		currentHash, _ := hashMapContents(m)
 		if currentHash != snap.ContentHash {
 			warnings = append(warnings,
 				fmt.Sprintf("map %s: content hash changed — integrity violation suspected: unexpected writer detected", name))
@@ -168,7 +168,7 @@ func (r *XDPRemediator) verifyMapSnapshot(name string, snap *MapStateSnapshot) (
 }
 
 // auditMapWrite logs a write operation to a high-trust map.
-func auditMapWrite(r *XDPRemediator, mapName, action, key, source string, signatureValid bool) {
+func auditMapWrite(mapName, action, key, source string, signatureValid bool) {
 	entry := WriteAuditEntry{
 		MapName:        mapName,
 		Action:         action,

@@ -39,8 +39,13 @@ func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.D
 		logger.Warnf("Failed to freeze xdp_rate_config (kernel may not support BPF_MAP_FREEZE): %v", err)
 	} else {
 		logger.Infof("🔒 Frozen xdp_rate_config — rate limit config is now immutable")
+		if r.mapSnapshots != nil {
+			if snap, ok := r.mapSnapshots["xdp_rate_config"]; ok {
+				snap.Frozen = true
+			}
+		}
 	}
-	auditMapWrite(r, "xdp_rate_config", "update", "rate_config", "local_setup", true)
+	auditMapWrite("xdp_rate_config", "update", "rate_config", "local_setup", true)
 
 	// Clear existing state (holding mutex prevents races with Block/Unblock)
 	if r.objs.XdpRateLimit != nil {

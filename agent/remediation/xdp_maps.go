@@ -123,6 +123,10 @@ func (r *XDPRemediator) readBlockedPackets() {
 			ipStr = ip.String()
 		}
 
+		// Log the event with kernel timestamp
+		logger.Debugf("🛡️ XDP blocked packet: src=%s port=%d proto=%d reason=%d ts=%d ns",
+			ipStr, event.DestPort, event.Protocol, event.Reason, event.Timestamp)
+
 		// Call the callback if set
 		if r.OnBlockedPacket != nil {
 			r.OnBlockedPacket(ipStr, event.DestPort, event.Protocol, event.Reason)

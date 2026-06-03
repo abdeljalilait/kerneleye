@@ -30,41 +30,12 @@ func verifyMapIntegrity() []string {
 			continue
 		}
 
-		w := verifySnapshot(snap.Name, snap)
+		w := remediation.VerifyMapSnapshot(snap.Name, snap)
 		for _, w := range w {
 			Logger.Warnf("[Integrity] %s", w)
 		}
 		warnings = append(warnings, w...)
 	}
-	return warnings
-}
-
-// verifySnapshot checks a single map against its load-time snapshot.
-func verifySnapshot(name string, snap *remediation.MapStateSnapshot) []string {
-	var warnings []string
-	pinnedPath := snap.PinnedPath
-
-	_ = pinnedPath // Keep for future pinned path verification
-
-	// Check that the map is still accessible
-	if _, err := os.Stat(pinnedPath); err != nil {
-		if snap.TrustLevel >= remediation.TrustLevelHigh {
-			warnings = append(warnings,
-				fmt.Sprintf("map %s: pinned file %s not accessible: %v", name, pinnedPath, err))
-		}
-		return warnings
-	}
-
-	// For VeryHigh maps, verify frozen state
-	if snap.Frozen {
-		// Map snapshots captured at load time already know frozen state.
-		// Periodic checks can't re-verify without opening the map, which
-		// requires the agent to hold references. The XDP remediator's own
-		// verifyMapSnapshot() does the real verification with loaded maps.
-		Logger.Debugf("[Integrity] Map %s frozen=%v trust=%s entries=%d",
-			snap.Name, snap.Frozen, snap.TrustLevel, snap.EntryCount)
-	}
-
 	return warnings
 }
 

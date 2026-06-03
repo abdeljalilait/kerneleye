@@ -44,12 +44,12 @@ func (r *XDPRemediator) Block(ip net.IP, duration time.Duration) error {
 		if err := blockIPv4(r.objs.XdpBlocklist, ip, expiresNs); err != nil {
 			return fmt.Errorf("block IPv4: %w", err)
 		}
-		auditMapWrite(r, "xdp_blocklist", "insert", ip.String(), "block_command", false)
+		auditMapWrite("xdp_blocklist", "insert", ip.String(), "block_command", true)
 	} else {
 		if err := blockIPv6(r.objs.XdpBlocklistV6, ip, expiresNs); err != nil {
 			return fmt.Errorf("block IPv6: %w", err)
 		}
-		auditMapWrite(r, "xdp_blocklist_v6", "insert", ip.String(), "block_command", false)
+		auditMapWrite("xdp_blocklist_v6", "insert", ip.String(), "block_command", true)
 	}
 
 	// Notify callback if set
@@ -119,12 +119,12 @@ func (r *XDPRemediator) Unblock(ip net.IP, blockType BlockType) error {
 		if err := unblockIPv4(r.objs.XdpBlocklist, ip); err != nil {
 			return err
 		}
-		auditMapWrite(r, "xdp_blocklist", "delete", ip.String(), "block_command", false)
+		auditMapWrite("xdp_blocklist", "delete", ip.String(), "block_command", true)
 	} else {
 		if err := unblockIPv6(r.objs.XdpBlocklistV6, ip); err != nil {
 			return err
 		}
-		auditMapWrite(r, "xdp_blocklist_v6", "delete", ip.String(), "block_command", false)
+		auditMapWrite("xdp_blocklist_v6", "delete", ip.String(), "block_command", true)
 	}
 	logger.Infof("✅ XDP unblocked %s", ip)
 	return nil
@@ -148,7 +148,7 @@ func (r *XDPRemediator) UnblockCIDR(cidr string) error {
 	if err := r.objs.XdpCidrBlocklist.Delete(key); err != nil && !isNotExist(err) {
 		return err
 	}
-	auditMapWrite(r, "xdp_cidr_blocklist", "delete", cidr, "block_command", false)
+	auditMapWrite("xdp_cidr_blocklist", "delete", cidr, "block_command", true)
 	logger.Infof("✅ XDP unblocked CIDR %s", cidr)
 	return nil
 }
