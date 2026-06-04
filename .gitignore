@@ -18,8 +18,9 @@ agent/agent
 go.work
 vendor/
 
-# Agent binary
+# Binaries
 agent/kerneleye-agent
+backend/kerneleye-api
 
 # Node
 node_modules/

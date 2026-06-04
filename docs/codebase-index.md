@@ -129,7 +129,7 @@ This index maps the first-party code (excluding `node_modules`, `.git`, build ar
 1. Migration numbering (`002_*`, `003_*`) has collisions that can break strict migration tools.
 2. Multiple server onboarding paths exist: `HandleGenerateAPIKey`, `HandleCreateServerWithConfig`, gRPC `Register` fallback.
 3. API key defaults to `default-secret-change-in-production` if `API_KEY_SECRET` env is missing.
-4. `apikey_builder.go` hardcodes `api.kerneleye.net:443` in `getServerHost()` — replace for self-hosted deployments.
+4. Defaults in `apikey_builder.go`, `agent/Makefile`, and `dashboard/.env.production` use `localhost` for out-of-the-box development. Production builds should use `make build-production` with a customized `.env.build` file.
 
 ## Quick Navigation
 

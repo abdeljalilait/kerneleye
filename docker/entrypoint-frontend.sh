@@ -8,12 +8,12 @@ set -e
 # ==========================================
 
 # Backend API configuration
-export BACKEND_HOST="${BACKEND_HOST:-api.kerneleye.net}"
-export BACKEND_PORT="${BACKEND_PORT:-443}"
+export BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+export BACKEND_PORT="${BACKEND_PORT:-8080}"
 
 # Domain configuration - strip https:// or http:// if present
-LANDING_DOMAIN_RAW="${LANDING_DOMAIN:-kerneleye.net}"
-DASHBOARD_DOMAIN_RAW="${DASHBOARD_DOMAIN:-app.kerneleye.net}"
+LANDING_DOMAIN_RAW="${LANDING_DOMAIN:-localhost}"
+DASHBOARD_DOMAIN_RAW="${DASHBOARD_DOMAIN:-localhost:3000}"
 
 # Remove protocol prefixes if present
 export LANDING_DOMAIN=$(echo "$LANDING_DOMAIN_RAW" | sed 's|https://||g' | sed 's|http://||g')

@@ -10,11 +10,16 @@ BACKEND_DIR = backend
 AGENT_DIR = agent
 
 # Docker Registry
-REGISTRY = registry.hakiware.com
-NAMESPACE = kerneleye
+# Override via: make docker-build REGISTRY=registry.example.com
+REGISTRY ?= localhost
+NAMESPACE ?= kerneleye
 BACKEND_IMAGE = $(REGISTRY)/$(NAMESPACE)/backend
 FRONTEND_IMAGE = $(REGISTRY)/$(NAMESPACE)/frontend
 TAG ?= latest
+
+# Production build configuration (optional)
+# Create .env.build from .env.build.example and customize for your deployment.
+BUILD_ENV_FILE = .env.build
 
 # Read build-time env vars from dashboard/.env.production (single source of truth)
 VITE_API_URL ?= $(shell grep -E '^VITE_API_URL=' dashboard/.env.production | cut -d= -f2-)
@@ -112,6 +117,27 @@ gen-certs:
 # All generation tasks
 .PHONY: generate
 generate: gen-proto gen-sql gen-ebpf
+
+# Production build — reads .env.build for domain overrides
+.PHONY: build-production
+build-production:
+	@if [ ! -f $(BUILD_ENV_FILE) ]; then \
+		echo "Error: $(BUILD_ENV_FILE) not found."; \
+		echo "  cp .env.build.example .env.build"; \
+		echo "  # Edit .env.build with your production domains"; \
+		exit 1; \
+	fi
+	@echo "Loading production configuration from $(BUILD_ENV_FILE)..."
+	@set -a; . ./$(BUILD_ENV_FILE); set +a; \
+	if echo "$$KERNELEYE_SERVER" | grep -q "example.com"; then \
+		echo "Error: KERNELEYE_SERVER in $(BUILD_ENV_FILE) still contains placeholder 'example.com'."; \
+		echo "  Please customize all domains in $(BUILD_ENV_FILE) before building for production."; \
+		exit 1; \
+	fi; \
+	echo "Production domains validated. Building..."; \
+	$(MAKE) build-agent GRPC_URL="$$KERNELEYE_GRPC_HOST"; \
+	$(MAKE) build-backend; \
+	echo "Production build complete!"
 
 # All build tasks
 .PHONY: build
@@ -298,11 +324,15 @@ help:
 	@echo "  make compose-restart          Restart services"
 	@echo "  make compose-logs             View logs"
 	@echo ""
+	@echo "Production Build:"
+	@echo "  make build-production   Build agent + backend with .env.build domains"
+	@echo ""
 	@echo "Variables:"
 	@echo "  TAG=<tag>               Set image tag (default: latest)"
-	@echo "  REGISTRY=<url>          Set registry (default: registry.hakiware.com)"
+	@echo "  REGISTRY=<url>          Set registry (default: localhost)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make docker-build TAG=v1.0.0"
-	@echo "  make docker-deploy TAG=prod"
+	@echo "  make build-production                 # Build for production (.env.build required)"
+	@echo "  make docker-build TAG=v1.0.0          # Build Docker images"
+	@echo "  make docker-deploy TAG=prod REGISTRY=registry.example.com"
 	@echo "  make docker-buildx TAG=latest"

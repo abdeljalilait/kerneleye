@@ -257,7 +257,7 @@ func (cb *CommandBuilder) EnvironmentVariables() map[string]string {
 func getServerHost() string {
 	server := strings.TrimSpace(os.Getenv("KERNELEYE_SERVER"))
 	if server == "" {
-		return "api.kerneleye.net:9091"
+		return "127.0.0.1:9091"
 	}
 
 	// Accept either host:port or full URL in env.
@@ -267,7 +267,7 @@ func getServerHost() string {
 	if strings.HasPrefix(server, "http://") || strings.HasPrefix(server, "https://") {
 		parsed, err := url.Parse(server)
 		if err != nil || parsed.Hostname() == "" {
-			return "api.kerneleye.net:9091"
+			return "127.0.0.1:9091"
 		}
 		if parsed.Port() != "" {
 			return fmt.Sprintf("%s:%s", parsed.Hostname(), parsed.Port())
@@ -303,7 +303,7 @@ func getGRPCURL(serverHost string) string {
 func getInstallScriptURL() string {
 	installDomain := os.Getenv("INSTALL_DOMAIN")
 	if installDomain == "" {
-		installDomain = "app.kerneleye.net"
+		installDomain = "localhost:3000"
 	}
 	return fmt.Sprintf("https://%s/install.sh", installDomain)
 }

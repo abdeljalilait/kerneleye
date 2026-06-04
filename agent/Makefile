@@ -78,7 +78,8 @@ install: check-root build-release
 	@setcap cap_bpf,cap_perfmon,cap_net_admin,cap_net_raw,cap_sys_resource+ip $(DESTDIR)$(BINDIR)/$(BINARY_NAME) 2>/dev/null || true
 	@if [ ! -f $(DESTDIR)$(CONFIGDIR)/agent.env ]; then \
 		echo "KERNELEYE_API_KEY=your-api-key-here" > $(DESTDIR)$(CONFIGDIR)/agent.env; \
-		echo "KERNELEYE_SERVER=api.kerneleye.net:443" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
+		echo "KERNELEYE_SERVER=127.0.0.1:9091" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
+		echo "# Set KERNELEYE_SERVER to your backend host:port" >> $(DESTDIR)$(CONFIGDIR)/agent.env; \
 		chmod 0600 $(DESTDIR)$(CONFIGDIR)/agent.env; \
 	fi
 	@echo "Installed $(DESTDIR)$(BINDIR)/$(BINARY_NAME)"
