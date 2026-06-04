@@ -171,10 +171,11 @@ docker-build-backend:
 .PHONY: docker-build-frontend
 docker-build-frontend:
 	@echo "Building frontend Docker image..."
+	@set -a; if [ -f $(BUILD_ENV_FILE) ]; then . ./$(BUILD_ENV_FILE); fi; set +a; \
 	docker build -f Dockerfile.frontend \
-		--build-arg VITE_API_URL=$(VITE_API_URL) \
-		--build-arg VITE_INSTALL_DOMAIN=$(VITE_INSTALL_DOMAIN) \
-		--build-arg VITE_GRPC_HOST=$(VITE_GRPC_HOST) \
+		--build-arg VITE_API_URL="$${VITE_API_URL:-$(VITE_API_URL)}" \
+		--build-arg VITE_INSTALL_DOMAIN="$${VITE_INSTALL_DOMAIN:-$(VITE_INSTALL_DOMAIN)}" \
+		--build-arg VITE_GRPC_HOST="$${VITE_GRPC_HOST:-$(VITE_GRPC_HOST)}" \
 		--build-arg VERSION=$(shell cat $(AGENT_DIR)/VERSION 2>/dev/null || echo "0.0.0") \
 		--build-arg GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
 		--build-arg BUILD_DATE=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ") \
@@ -261,12 +262,13 @@ docker-buildx-frontend:
 		exit 1; \
 	fi
 	@echo "Building multi-arch frontend image..."
+	@set -a; if [ -f $(BUILD_ENV_FILE) ]; then . ./$(BUILD_ENV_FILE); fi; set +a; \
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		-f Dockerfile.frontend \
-		--build-arg VITE_API_URL=$(VITE_API_URL) \
-		--build-arg VITE_INSTALL_DOMAIN=$(VITE_INSTALL_DOMAIN) \
-		--build-arg VITE_GRPC_HOST=$(VITE_GRPC_HOST) \
+		--build-arg VITE_API_URL="$${VITE_API_URL:-$(VITE_API_URL)}" \
+		--build-arg VITE_INSTALL_DOMAIN="$${VITE_INSTALL_DOMAIN:-$(VITE_INSTALL_DOMAIN)}" \
+		--build-arg VITE_GRPC_HOST="$${VITE_GRPC_HOST:-$(VITE_GRPC_HOST)}" \
 		-t $(FRONTEND_IMAGE):$(TAG) \
 		--push .
 
