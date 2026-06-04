@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -241,6 +243,45 @@ func SetupBandwidthTracking(res *EBPFResources) {
 	byteCounterMap = res.Objects.IpByteCounters
 	icmpCounterMap = res.Objects.IcmpCounters
 	ipPortBytesMap = res.Objects.IpPortBytes
+}
+
+const probeMapPinPath = "/sys/fs/bpf/kerneleye/probe"
+
+// pinProbeMaps pins all loaded traffic-probe maps to /sys/fs/bpf/kerneleye/probe
+// so they can be verified by the periodic integrity checker.
+func pinProbeMaps(objects *bpfObjects) error {
+	if err := os.MkdirAll(probeMapPinPath, 0755); err != nil {
+		return fmt.Errorf("create probe pin path: %w", err)
+	}
+
+	maps := []struct {
+		m    *ebpf.Map
+		name string
+	}{
+		{objects.DebugCounters, "debug_counters"},
+		{objects.Events, "events"},
+		{objects.GlobalRateLimiter, "global_rate_limiter"},
+		{objects.IcmpCounters, "icmp_counters"},
+		{objects.IpByteCounters, "ip_byte_counters"},
+		{objects.IpByteCountersV6, "ip_byte_counters_v6"},
+		{objects.IpPortBytes, "ip_port_bytes"},
+		{objects.RateLimiter, "rate_limiter"},
+		{objects.TcpSynTracker, "tcp_syn_tracker"},
+		{objects.TcpSynTrackerV6, "tcp_syn_tracker_v6"},
+	}
+
+	for _, entry := range maps {
+		if entry.m == nil {
+			continue
+		}
+		path := filepath.Join(probeMapPinPath, entry.name)
+		// Remove stale pin from a previous unclean run
+		_ = os.Remove(path)
+		if err := entry.m.Pin(path); err != nil {
+			return fmt.Errorf("pin map %s: %w", entry.name, err)
+		}
+	}
+	return nil
 }
 
 // rateLimitState matches the C struct in traffic_probe.c

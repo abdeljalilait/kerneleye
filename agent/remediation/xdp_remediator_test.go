@@ -5,6 +5,7 @@ import (
 	"net"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func TestValidateIP(t *testing.T) {
@@ -223,5 +224,75 @@ func TestIsNotExist(t *testing.T) {
 		if got := isNotExist(tt.err); got != tt.want {
 			t.Errorf("isNotExist(%v) = %v, want %v", tt.err, got, tt.want)
 		}
+	}
+}
+
+// ============================================================================
+// XDP Struct Layout Tests
+// Verify Go struct sizes and field offsets match the C structs in
+// xdp_firewall.c so bpf2go-generated code reads/writes the correct bytes.
+// ============================================================================
+
+func TestBlockEntry_Size(t *testing.T) {
+	// C: struct block_entry { __u64 expires_ns; }  → 8 bytes
+	var s blockEntry
+	if unsafe.Sizeof(s) != 8 {
+		t.Fatalf("blockEntry size %d, want 8", unsafe.Sizeof(s))
+	}
+}
+
+func TestXdpStatsEntry_Size(t *testing.T) {
+	// C: struct xdp_stats { __u64 packets; __u64 bytes; }  → 16 bytes
+	var s xdpStatsEntry
+	if unsafe.Sizeof(s) != 16 {
+		t.Fatalf("xdpStatsEntry size %d, want 16", unsafe.Sizeof(s))
+	}
+}
+
+func TestRateLimitConfig_SizeAndOffsets(t *testing.T) {
+	// C: struct rate_limit_config { __u64 max_pps; __u64 max_bps; __u64 block_time_ns; }  → 24 bytes
+	var s rateLimitConfig
+	if unsafe.Sizeof(s) != 24 {
+		t.Fatalf("rateLimitConfig size %d, want 24", unsafe.Sizeof(s))
+	}
+	if unsafe.Offsetof(s.MaxPPS) != 0 {
+		t.Fatalf("MaxPPS offset %d, want 0", unsafe.Offsetof(s.MaxPPS))
+	}
+	if unsafe.Offsetof(s.MaxBPS) != 8 {
+		t.Fatalf("MaxBPS offset %d, want 8", unsafe.Offsetof(s.MaxBPS))
+	}
+	if unsafe.Offsetof(s.BlockTimeNs) != 16 {
+		t.Fatalf("BlockTimeNs offset %d, want 16", unsafe.Offsetof(s.BlockTimeNs))
+	}
+}
+
+func TestRateLimitState_SizeAndOffsets(t *testing.T) {
+	// C: struct rate_limit_state { __u64 window_start; __u64 packet_count; __u64 byte_count; }  → 24 bytes
+	var s rateLimitState
+	if unsafe.Sizeof(s) != 24 {
+		t.Fatalf("rateLimitState size %d, want 24", unsafe.Sizeof(s))
+	}
+	if unsafe.Offsetof(s.WindowStart) != 0 {
+		t.Fatalf("WindowStart offset %d, want 0", unsafe.Offsetof(s.WindowStart))
+	}
+	if unsafe.Offsetof(s.PacketCount) != 8 {
+		t.Fatalf("PacketCount offset %d, want 8", unsafe.Offsetof(s.PacketCount))
+	}
+	if unsafe.Offsetof(s.ByteCount) != 16 {
+		t.Fatalf("ByteCount offset %d, want 16", unsafe.Offsetof(s.ByteCount))
+	}
+}
+
+func TestLpmKeyV4_SizeAndOffsets(t *testing.T) {
+	// C: struct lpm_key_v4 { __u32 prefix_len; __u32 addr; }  → 8 bytes
+	var s lpmKeyV4
+	if unsafe.Sizeof(s) != 8 {
+		t.Fatalf("lpmKeyV4 size %d, want 8", unsafe.Sizeof(s))
+	}
+	if unsafe.Offsetof(s.PrefixLen) != 0 {
+		t.Fatalf("PrefixLen offset %d, want 0", unsafe.Offsetof(s.PrefixLen))
+	}
+	if unsafe.Offsetof(s.Addr) != 4 {
+		t.Fatalf("Addr offset %d, want 4", unsafe.Offsetof(s.Addr))
 	}
 }

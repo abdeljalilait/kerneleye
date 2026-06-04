@@ -174,9 +174,13 @@ func ClassifyMaps() []MapClassification {
 		{Name: "events", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
 		{Name: "rate_limiter", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
 		{Name: "global_rate_limiter", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
-		{Name: "syn_tracker", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "tcp_syn_tracker", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
+		{Name: "tcp_syn_tracker_v6", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
 		{Name: "debug_counters", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
-		{Name: "ip_stats", TrustLevel: TrustLevelMedium, Frozen: false, AuditWrites: false},
+		{Name: "ip_byte_counters", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "ip_byte_counters_v6", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "icmp_counters", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
+		{Name: "ip_port_bytes", TrustLevel: TrustLevelLow, Frozen: false, AuditWrites: false},
 
 		// XDP firewall maps
 		{Name: "xdp_blocklist", TrustLevel: TrustLevelHigh, Frozen: false, AuditWrites: true},

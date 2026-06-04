@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/cilium/ebpf"
 	pb "github.com/kerneleye/proto/kerneleye/v1"
 	"github.com/kerneleye/agent/remediation"
 	"google.golang.org/grpc"
@@ -49,6 +51,60 @@ func RegisterMapSnapshots(snapshots map[string]*remediation.MapStateSnapshot) {
 		mapStateSnapshots[name] = snap
 	}
 	Logger.Infof("[Integrity] Registered %d map snapshots for integrity verification", len(snapshots))
+}
+
+// captureProbeMapSnapshots records load-time identity for traffic-probe maps.
+// These maps are dynamic telemetry maps, so we only capture ID and pinned-path
+// (no content hash) — they change legitimately during normal operation.
+func captureProbeMapSnapshots(objects *bpfObjects) map[string]*remediation.MapStateSnapshot {
+	pinPath := probeMapPinPath
+	snapshots := make(map[string]*remediation.MapStateSnapshot)
+
+	maps := []struct {
+		m    *ebpf.Map
+		name string
+	}{
+		{objects.DebugCounters, "debug_counters"},
+		{objects.Events, "events"},
+		{objects.GlobalRateLimiter, "global_rate_limiter"},
+		{objects.IcmpCounters, "icmp_counters"},
+		{objects.IpByteCounters, "ip_byte_counters"},
+		{objects.IpByteCountersV6, "ip_byte_counters_v6"},
+		{objects.IpPortBytes, "ip_port_bytes"},
+		{objects.RateLimiter, "rate_limiter"},
+		{objects.TcpSynTracker, "tcp_syn_tracker"},
+		{objects.TcpSynTrackerV6, "tcp_syn_tracker_v6"},
+	}
+
+	for _, entry := range maps {
+		if entry.m == nil {
+			continue
+		}
+		info, err := entry.m.Info()
+		if err != nil {
+			Logger.Warnf("[Integrity] Failed to get map info for %s: %v", entry.name, err)
+			continue
+		}
+
+		cls, _ := remediation.MapClassificationByName(entry.name)
+		mapID, hasID := info.ID()
+		if !hasID {
+			mapID = 0
+		}
+		snap := &remediation.MapStateSnapshot{
+			Name:       entry.name,
+			MapID:      mapID,
+			PinnedPath: filepath.Join(pinPath, entry.name),
+			Frozen:     info.Frozen(),
+			TrustLevel: cls.TrustLevel,
+			CapturedAt: time.Now(),
+		}
+		snapshots[entry.name] = snap
+		Logger.Debugf("[Integrity] Probe map snapshot: %s id=%d frozen=%v trust=%s",
+			snap.Name, snap.MapID, snap.Frozen, snap.TrustLevel)
+	}
+
+	return snapshots
 }
 
 // computeAgentBinaryHash returns the SHA-256 hash of the agent's own binary.

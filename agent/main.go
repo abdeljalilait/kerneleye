@@ -145,6 +145,13 @@ func main() {
 		Logger.Fatal("\nAgent cannot run without eBPF support.")
 	}
 	defer ebpfRes.Close()
+
+	// Pin traffic-probe maps and register their snapshots for integrity verification
+	if err := pinProbeMaps(ebpfRes.Objects); err != nil {
+		Logger.Warnf("⚠️  Failed to pin probe maps: %v", err)
+	} else {
+		RegisterMapSnapshots(captureProbeMapSnapshots(ebpfRes.Objects))
+	}
 	SetupBandwidthTracking(ebpfRes)
 	printBanner(cfg)
 	rd, err := ringbuf.NewReader(ebpfRes.Objects.Events)
