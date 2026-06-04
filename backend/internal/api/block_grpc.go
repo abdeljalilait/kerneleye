@@ -467,12 +467,14 @@ func signHubCommand(hub *Hub, agentID, action, ip, reason, blockType string, dur
 
 		var blockTypeCode int32
 		switch blockType {
+		case "blocklist":
+			blockTypeCode = 1 // BLOCK_TYPE_BLOCKLIST
 		case "ratelimit":
-			blockTypeCode = 1
+			blockTypeCode = 2 // BLOCK_TYPE_RATE_LIMIT
 		case "cidr":
-			blockTypeCode = 2
+			blockTypeCode = 3 // BLOCK_TYPE_CIDR
 		default:
-			blockTypeCode = 0
+			blockTypeCode = 0 // BLOCK_TYPE_UNSPECIFIED
 		}
 
 		payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, "", blockTypeCode, issuedAt.UnixNano())

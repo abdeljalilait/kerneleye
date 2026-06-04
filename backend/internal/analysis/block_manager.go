@@ -535,15 +535,17 @@ func (bm *BlockManager) signCommand(cmd map[string]interface{}) map[string]inter
 		actionCode = 2
 	}
 
-	// Map block_type string to int32 for signing
+	// Map block_type string to int32 for signing (must match proto BlockListEntry_BlockType enum)
 	var blockTypeCode int32
 	switch blockType {
+	case "blocklist":
+		blockTypeCode = 1 // BLOCK_TYPE_BLOCKLIST
 	case "ratelimit":
-		blockTypeCode = 1
+		blockTypeCode = 2 // BLOCK_TYPE_RATE_LIMIT
 	case "cidr":
-		blockTypeCode = 2
+		blockTypeCode = 3 // BLOCK_TYPE_CIDR
 	default:
-		blockTypeCode = 0 // blocklist
+		blockTypeCode = 0 // BLOCK_TYPE_UNSPECIFIED
 	}
 
 	payload := cmdsigning.BuildCanonicalPayload(actionCode, ip, duration, reason, blockID, blockTypeCode, actedAt)
