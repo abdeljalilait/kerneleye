@@ -244,6 +244,8 @@ func (h *BlockHandler) StreamBlockCommands(req *kerneleyev1.StreamBlockRequest, 
 			action := kerneleyev1.BlockCommand_BLOCK
 			if cmd["action"] == "unblock" {
 				action = kerneleyev1.BlockCommand_UNBLOCK
+			} else if cmd["action"] == "ratelimit" {
+				action = kerneleyev1.BlockCommand_RATE_LIMIT
 			}
 
 			// Read block_type from the command map (set by block_manager based on EnforcementDecision).

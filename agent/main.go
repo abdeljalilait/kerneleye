@@ -312,11 +312,14 @@ func main() {
 				if parsedIP == nil {
 					return fmt.Errorf("invalid IP: %s", ip)
 				}
-				if err := remediator.RateLimit(parsedIP, duration); err != nil {
-					return fmt.Errorf("rate-limit failed: %w", err)
-				}
-				return nil
-			})
+			if err := remediator.RateLimit(parsedIP, duration); err != nil {
+				return fmt.Errorf("rate-limit failed: %w", err)
+			}
+			if autoBlocker != nil {
+				autoBlocker.MarkBackendRateLimit(ip)
+			}
+			return nil
+		})
 
 			// Start receiving block commands from backend
 			if err := blockCmdClient.Start(blockCtx); err != nil {

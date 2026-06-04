@@ -77,6 +77,10 @@ type AutoBlocker struct {
 	// Safelist parsed from config
 	safelist []*net.IPNet
 
+	// Backend rate-limit decisions: IPs the backend wants rate-limited instead of blocked
+	backendRateLimitIPs map[string]time.Time
+	backendRateLimitMu  sync.RWMutex
+
 	// Callback for reporting to backend
 	onBlock func(ip string, duration time.Duration, score int, reasons []string)
 }
@@ -84,11 +88,12 @@ type AutoBlocker struct {
 // NewAutoBlocker creates a new auto-blocker
 func NewAutoBlocker(config AutoBlockerConfig, scorer *scoring.ThreatScorer, remediator *IPSetRemediator) (*AutoBlocker, error) {
 	ab := &AutoBlocker{
-		config:     config,
-		scorer:     scorer,
-		remediator: remediator,
-		history:    make(map[string]*BlockEvent),
-		lastMinute: time.Now(),
+		config:              config,
+		scorer:              scorer,
+		remediator:          remediator,
+		history:             make(map[string]*BlockEvent),
+		backendRateLimitIPs: make(map[string]time.Time),
+		lastMinute:          time.Now(),
 	}
 
 	// Parse safelist CIDRs
@@ -106,6 +111,23 @@ func NewAutoBlocker(config AutoBlockerConfig, scorer *scoring.ThreatScorer, reme
 // SetBlockCallback sets the callback for block events
 func (ab *AutoBlocker) SetBlockCallback(cb func(ip string, duration time.Duration, score int, reasons []string)) {
 	ab.onBlock = cb
+}
+
+// MarkBackendRateLimit records that the backend wants this IP rate-limited instead of blocked.
+// The auto-blocker will call RateLimit() instead of Block() for this IP.
+func (ab *AutoBlocker) MarkBackendRateLimit(ip string) {
+	ab.backendRateLimitMu.Lock()
+	ab.backendRateLimitIPs[ip] = time.Now()
+	ab.backendRateLimitMu.Unlock()
+	logger.Infof("🔄 Auto-blocker: %s marked for rate-limit (backend decision)", ip)
+}
+
+// shouldRateLimit checks if the backend previously requested rate-limiting for this IP.
+func (ab *AutoBlocker) shouldRateLimit(ip string) bool {
+	ab.backendRateLimitMu.RLock()
+	_, ok := ab.backendRateLimitIPs[ip]
+	ab.backendRateLimitMu.RUnlock()
+	return ok
 }
 
 // ProcessScore evaluates a threat score and blocks if necessary
@@ -155,6 +177,17 @@ func (ab *AutoBlocker) ProcessScore(ip string, score scoring.ThreatScore) error 
 
 	// Calculate block duration with escalation
 	duration := ab.calculateDuration(ip, score)
+
+	// Respect backend rate-limit decisions: if the backend previously sent a
+	// RATE_LIMIT command for this IP, auto-blocker should rate-limit instead.
+	if ab.shouldRateLimit(ip) {
+		if err := ab.remediator.RateLimit(parsedIP, duration); err != nil {
+			return fmt.Errorf("rate-limit failed: %w", err)
+		}
+		logger.Infof("⏱️  Auto-rate-limited %s for %v (score: %d, reasons: %v) — backend rate-limit policy",
+			ip, duration, score.Score, score.Reasons)
+		return nil
+	}
 
 	// Execute block
 	if err := ab.remediator.Block(parsedIP, duration); err != nil {

@@ -560,8 +560,13 @@ func (bm *BlockManager) sendBlockCommand(agentID, ip string, duration time.Durat
 		return
 	}
 
+	action := "block"
+	if blockType == "ratelimit" {
+		action = "ratelimit"
+	}
+
 	cmd := bm.signCommand(map[string]interface{}{
-		"action":     "block",
+		"action":     action,
 		"ip":         ip,
 		"duration":   int64(duration.Seconds()),
 		"reason":     reason,
