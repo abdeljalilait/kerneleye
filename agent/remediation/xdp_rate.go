@@ -42,6 +42,8 @@ func (r *XDPRemediator) SetRateLimit(maxPPS, maxBPS uint64, blockDuration time.D
 		if r.mapSnapshots != nil {
 			if snap, ok := r.mapSnapshots["xdp_rate_config"]; ok {
 				snap.Frozen = true
+				// Re-compute content hash now that the config is written and frozen
+				snap.ContentHash, snap.EntryCount = hashMapContents(r.objs.XdpRateConfig)
 			}
 		}
 	}

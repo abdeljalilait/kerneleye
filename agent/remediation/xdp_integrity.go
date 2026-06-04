@@ -157,8 +157,10 @@ func VerifyMapSnapshot(name string, snap *MapStateSnapshot) (warnings []string) 
 			fmt.Sprintf("map %s: classified as frozen but BPF_MAP_FREEZE not applied", name))
 	}
 
-	// For High/VeryHigh maps, verify content hash
-	if snap.TrustLevel >= TrustLevelHigh && snap.ContentHash != "" {
+	// For frozen maps, verify content hash (immutable maps should never change).
+	// Skip for non-frozen dynamic maps (e.g., blocklists) — legitimate Block/Unblock
+	// operations naturally change their contents, so hash comparison is meaningless.
+	if snap.Frozen && snap.ContentHash != "" {
 		currentHash, _ := hashMapContents(m)
 		if currentHash != snap.ContentHash {
 			warnings = append(warnings,
