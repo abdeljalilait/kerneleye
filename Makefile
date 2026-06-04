@@ -193,12 +193,22 @@ docker-build: docker-build-backend docker-build-frontend
 # Push backend Docker image
 .PHONY: docker-push-backend
 docker-push-backend:
+	@if [ "$(REGISTRY)" = "localhost" ]; then \
+		echo "Error: REGISTRY is still 'localhost'. Set a real registry before pushing:"; \
+		echo "  make docker-push REGISTRY=registry.hakiware.com"; \
+		exit 1; \
+	fi
 	@echo "Pushing backend image to $(REGISTRY)..."
 	docker push $(BACKEND_IMAGE):$(TAG)
 
 # Push frontend Docker image
 .PHONY: docker-push-frontend
 docker-push-frontend:
+	@if [ "$(REGISTRY)" = "localhost" ]; then \
+		echo "Error: REGISTRY is still 'localhost'. Set a real registry before pushing:"; \
+		echo "  make docker-push REGISTRY=registry.hakiware.com"; \
+		exit 1; \
+	fi
 	@echo "Pushing frontend image to $(REGISTRY)..."
 	docker push $(FRONTEND_IMAGE):$(TAG)
 
@@ -230,6 +240,11 @@ docker-deploy: docker-build docker-push
 # Build and push multi-arch backend image
 .PHONY: docker-buildx-backend
 docker-buildx-backend:
+	@if [ "$(REGISTRY)" = "localhost" ]; then \
+		echo "Error: REGISTRY is still 'localhost'. Set a real registry before pushing:"; \
+		echo "  make docker-buildx REGISTRY=registry.hakiware.com"; \
+		exit 1; \
+	fi
 	@echo "Building multi-arch backend image..."
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
@@ -240,6 +255,11 @@ docker-buildx-backend:
 # Build and push multi-arch frontend image
 .PHONY: docker-buildx-frontend
 docker-buildx-frontend:
+	@if [ "$(REGISTRY)" = "localhost" ]; then \
+		echo "Error: REGISTRY is still 'localhost'. Set a real registry before pushing:"; \
+		echo "  make docker-buildx REGISTRY=registry.hakiware.com"; \
+		exit 1; \
+	fi
 	@echo "Building multi-arch frontend image..."
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
