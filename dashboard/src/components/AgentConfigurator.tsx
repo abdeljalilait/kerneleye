@@ -470,7 +470,7 @@ export function AgentConfigurator({ onClose }: AgentConfiguratorProps = {}) {
                 <ul style={{ fontSize: 14, color: '#096dd9', margin: '4px 0 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <li>• Linux server with kernel 5.8+</li>
                   <li>• Root privileges (required for eBPF)</li>
-                  <li>• Outbound HTTPS access to kerneleye.net</li>
+                  <li>• Outbound HTTPS access to {import.meta.env.VITE_APP_DOMAIN || 'example.com'}</li>
                 </ul>
               </div>
             </div>

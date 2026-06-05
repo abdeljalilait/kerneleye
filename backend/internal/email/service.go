@@ -51,7 +51,7 @@ func NewService() *Service {
 
 	fromEmail := os.Getenv("EMAIL_FROM")
 	if fromEmail == "" {
-		fromEmail = "noreply@kerneleye.net"
+		fromEmail = "noreply@example.com"
 	}
 	fromName := os.Getenv("EMAIL_FROM_NAME")
 	if fromName == "" {
@@ -131,7 +131,12 @@ func (s *Service) sendEmail(toEmail, toName, subject, htmlContent, category stri
 func (s *Service) SendWelcomeEmail(toEmail, toName string) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
-		dashboardURL = "https://app.kerneleye.net"
+		dashboardURL = "https://app.example.com"
+	}
+
+	supportEmail := os.Getenv("SUPPORT_EMAIL")
+	if supportEmail == "" {
+		supportEmail = "support@example.com"
 	}
 
 	subject := "Welcome to KernelEye - Your Dashboard Access"
@@ -176,7 +181,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName string) error {
             <li>Start monitoring in real-time</li>
         </ol>
         
-        <p>Need help? Reply to this email or contact us at support@kerneleye.net</p>
+        <p>Need help? Reply to this email or contact us at %s</p>
         
         <p>Best regards,<br>The KernelEye Team</p>
     </div>
@@ -186,7 +191,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName string) error {
     </div>
 </body>
 </html>
-`, toName, dashboardURL, dashboardURL, dashboardURL)
+`, toName, dashboardURL, dashboardURL, dashboardURL, supportEmail)
 
 	return s.sendEmail(toEmail, toName, subject, htmlContent, "welcome")
 }
@@ -195,7 +200,7 @@ func (s *Service) SendWelcomeEmail(toEmail, toName string) error {
 func (s *Service) SendPasswordResetEmail(toEmail, toName, resetToken string) error {
 	dashboardURL := os.Getenv("DASHBOARD_URL")
 	if dashboardURL == "" {
-		dashboardURL = "https://app.kerneleye.net"
+		dashboardURL = "https://app.example.com"
 	}
 
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", dashboardURL, resetToken)

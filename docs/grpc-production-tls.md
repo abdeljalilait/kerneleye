@@ -33,14 +33,14 @@ Set private keys to `0600` and keep them readable only by the service user.
 ## Option 1: Let's Encrypt Server Certificate
 
 Use this path when the gRPC endpoint has a public DNS name, for example
-`grpc.kerneleye.net`.
+`grpc.example.com`.
 
 Generate or renew the certificate with your ACME client. Example with Certbot:
 
 ```bash
 sudo certbot certonly \
   --standalone \
-  -d grpc.kerneleye.net
+  -d grpc.example.com
 ```
 
 Use an automated challenge method for production renewal. Certbot can renew
@@ -59,15 +59,15 @@ repeat the same manual command before the expiry date.
 Certbot writes the certificate under:
 
 ```text
-/etc/letsencrypt/live/grpc.kerneleye.net/fullchain.pem
-/etc/letsencrypt/live/grpc.kerneleye.net/privkey.pem
+/etc/letsencrypt/live/grpc.example.com/fullchain.pem
+/etc/letsencrypt/live/grpc.example.com/privkey.pem
 ```
 
 Configure the backend:
 
 ```bash
-export GRPC_TLS_CERT_FILE=/etc/letsencrypt/live/grpc.kerneleye.net/fullchain.pem
-export GRPC_TLS_KEY_FILE=/etc/letsencrypt/live/grpc.kerneleye.net/privkey.pem
+export GRPC_TLS_CERT_FILE=/etc/letsencrypt/live/grpc.example.com/fullchain.pem
+export GRPC_TLS_KEY_FILE=/etc/letsencrypt/live/grpc.example.com/privkey.pem
 ```
 
 Agents can usually verify Let's Encrypt certificates with the system trust
@@ -78,7 +78,7 @@ Run the agent:
 
 ```bash
 sudo kerneleye-agent \
-  --server grpcs://grpc.kerneleye.net:9091
+  --server grpcs://grpc.example.com:9091
 ```
 
 For Docker Compose, mount the certificate directory and set:
@@ -182,8 +182,8 @@ Check the backend certificate:
 
 ```bash
 openssl s_client \
-  -connect grpc.kerneleye.net:9091 \
-  -servername grpc.kerneleye.net \
+  -connect grpc.example.com:9091 \
+  -servername grpc.example.com \
   -showcerts
 ```
 

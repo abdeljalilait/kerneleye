@@ -70,7 +70,7 @@ services:
       - "traefik.docker.network=dokploy-network"
     
       # HTTP API
-      - "traefik.http.routers.kernelapi.rule=Host(`api.kerneleye.net`)"
+      - "traefik.http.routers.kernelapi.rule=Host(`api.example.com`)"
       - "traefik.http.routers.kernelapi.entrypoints=websecure"
       - "traefik.http.routers.kernelapi.tls=true"
       - "traefik.http.routers.kernelapi.tls.certresolver=letsencrypt"
@@ -80,12 +80,12 @@ services:
 
       # gRPC: direct TLS on port 9091 (bypasses Traefik entirely).
       # Port 9091 is published above. Backend terminates TLS using certs from ./certs/.
-      # Agents connect to: grpc.kerneleye.net:9091 (TLS)
+      # Agents connect to: grpc.example.com:9091 (TLS)
       # To use Traefik TCP passthrough instead, comment the ports: block above
       # and uncomment the Traefik TCP router below.
       #
       # # Traefik TCP passthrough for gRPC (optional alternative to direct TLS):
-      # - "traefik.tcp.routers.kernelgrpc.rule=HostSNI(`grpc.kerneleye.net`)"
+      # - "traefik.tcp.routers.kernelgrpc.rule=HostSNI(`grpc.example.com`)"
       # - "traefik.tcp.routers.kernelgrpc.entrypoints=websecure"
       # - "traefik.tcp.routers.kernelgrpc.tls.passthrough=true"
       # - "traefik.tcp.routers.kernelgrpc.service=kernelgrpc"

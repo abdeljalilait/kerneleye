@@ -308,7 +308,7 @@ The frontend Docker image builds the landing page, dashboard, and a downloadable
 
 ## Contact
 
-- Website: https://kerneleye.net
+- Website: https://example.com
 - Email: abdeljalil.aitetaleb@gmail.com
 
 ## License

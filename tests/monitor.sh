@@ -84,7 +84,7 @@ show_hints() {
 	echo "5. Look for toast notifications in top-right"
 	echo "6. Check header badge for alert count"
 	echo ""
-	echo "Dashboard URL: https://dashboard.kerneleye.net"
+	echo "Dashboard URL: https://dashboard.example.com"
 	echo ""
 }
 

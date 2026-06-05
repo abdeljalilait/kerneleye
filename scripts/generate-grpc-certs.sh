@@ -6,7 +6,7 @@
 #   ./scripts/generate-grpc-certs.sh <grpc-domain>
 #
 # Example:
-#   ./scripts/generate-grpc-certs.sh grpc.kerneleye.net
+#   ./scripts/generate-grpc-certs.sh grpc.example.com
 #
 # Output:
 #   certs/ca.crt         — CA certificate (share with agents for verification)
@@ -19,7 +19,7 @@
 
 set -e
 
-GRPC_DOMAIN="${1:-grpc.kerneleye.net}"
+GRPC_DOMAIN="${1:-grpc.example.com}"
 CERTS_DIR="certs"
 CA_KEY="${CERTS_DIR}/ca.key"
 CA_CRT="${CERTS_DIR}/ca.crt"

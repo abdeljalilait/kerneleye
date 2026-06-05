@@ -85,33 +85,33 @@ func TestGRPCTransportModeMessage(t *testing.T) {
 		{
 			name: "plaintext",
 			cfg:  &TLSTransportConfig{Insecure: true},
-			want: "⚠️  gRPC transport: plaintext (--insecure), target=grpc.kerneleye.net:9091",
+			want: "⚠️  gRPC transport: plaintext (--insecure), target=grpc.example.com:9091",
 		},
 		{
 			name: "tls system ca",
 			cfg:  &TLSTransportConfig{},
-			want: "🔐 gRPC transport: TLS 1.3 enabled, target=grpc.kerneleye.net:9091, CA=system",
+			want: "🔐 gRPC transport: TLS 1.3 enabled, target=grpc.example.com:9091, CA=system",
 		},
 		{
 			name: "tls custom ca",
 			cfg:  &TLSTransportConfig{CAFile: "/etc/kerneleye/ca.crt"},
-			want: "🔐 gRPC transport: TLS 1.3 enabled, target=grpc.kerneleye.net:9091, CA=/etc/kerneleye/ca.crt",
+			want: "🔐 gRPC transport: TLS 1.3 enabled, target=grpc.example.com:9091, CA=/etc/kerneleye/ca.crt",
 		},
 		{
 			name: "mtls",
 			cfg:  &TLSTransportConfig{CertFile: "/etc/kerneleye/agent.crt", KeyFile: "/etc/kerneleye/agent.key"},
-			want: "🔐 gRPC transport: mTLS enabled, target=grpc.kerneleye.net:9091, client_cert=/etc/kerneleye/agent.crt",
+			want: "🔐 gRPC transport: mTLS enabled, target=grpc.example.com:9091, client_cert=/etc/kerneleye/agent.crt",
 		},
 		{
 			name: "nil config",
 			cfg:  nil,
-			want: "🔐 gRPC transport: TLS 1.3 enabled, target=grpc.kerneleye.net:9091, CA=system",
+			want: "🔐 gRPC transport: TLS 1.3 enabled, target=grpc.example.com:9091, CA=system",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := grpcTransportModeMessage(tt.cfg, "grpc.kerneleye.net:9091")
+			got := grpcTransportModeMessage(tt.cfg, "grpc.example.com:9091")
 			if got != tt.want {
 				t.Fatalf("grpcTransportModeMessage() = %q, want %q", got, tt.want)
 			}

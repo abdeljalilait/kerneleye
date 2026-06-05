@@ -109,7 +109,7 @@ uninstall-service:
 gen-certs:
 	@echo "Generating gRPC TLS certificates..."
 	@if [ -z "$(GRPC_DOMAIN)" ]; then \
-		echo "Usage: make gen-certs GRPC_DOMAIN=grpc.kerneleye.net"; \
+		echo "Usage: make gen-certs GRPC_DOMAIN=grpc.example.com"; \
 		exit 1; \
 	fi
 	./scripts/generate-grpc-certs.sh $(GRPC_DOMAIN)

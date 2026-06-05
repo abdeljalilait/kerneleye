@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -284,6 +285,11 @@ func (m *MonthlyReportManager) sendReportEmail(
 
 	monthName := month.Format("January 2006")
 
+	dashboardURL := os.Getenv("DASHBOARD_URL")
+	if dashboardURL == "" {
+		dashboardURL = "https://app.example.com"
+	}
+
 	// Calculate percentages
 	blockedPercent := float64(0)
 	if report.TotalConnections > 0 {
@@ -400,7 +406,7 @@ func (m *MonthlyReportManager) sendReportEmail(
         </p>
 
         <center>
-            <a href="https://app.kerneleye.net/dashboard" style="display: inline-block; background: #6366f1; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0;">View Full Dashboard</a>
+            <a href="%s/dashboard" style="display: inline-block; background: #6366f1; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0;">View Full Dashboard</a>
         </center>
     </div>
     <div class="footer">
@@ -414,7 +420,7 @@ func (m *MonthlyReportManager) sendReportEmail(
 		formatNumber(report.BlockedConnections),
 		formatNumber(report.ThreatConnections),
 		blockedPercent,
-		portsHTML, blockedIPsHTML)
+		portsHTML, blockedIPsHTML, dashboardURL)
 
 	return m.emailService.SendMonthlyReport(toEmail, toName, subject, htmlContent)
 }
