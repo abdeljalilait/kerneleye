@@ -277,6 +277,16 @@ kerneleye/
 | Protocols | Protobuf, gRPC |
 | Deployment | Docker, Docker Compose, nginx, Traefik labels |
 
+## Tested On
+
+The KernelEye agent has been tested on the following configurations. This table is updated as new environments are validated.
+
+| OS                   | Kernel          | CPU                    | RAM   | Arch   | Notes           |
+|----------------------|-----------------|------------------------|-------|--------|-----------------|
+| Ubuntu 26.04 LTS     | 7.0.0-15-generic| AMD EPYC-Genoa (2 vCPU)| 3.7 GB| x86_64 | —               |
+
+> We use [ebpf-go](https://ebpf-go.dev/guides/getting-started/) for the eBPF userspace integration.
+
 ## Build and Generation
 
 Common Make targets:
