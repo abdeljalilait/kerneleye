@@ -293,4 +293,4 @@ sudo bpftool prog list
 
 ## License
 
-Proprietary - All Rights Reserved
+Apache-2.0. See [LICENSE](../LICENSE) in the repository root.

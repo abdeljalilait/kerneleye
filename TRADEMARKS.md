@@ -1,6 +1,6 @@
 # KernelEye Trademark and Brand Notice
 
-The KernelEye source code is licensed under the GNU Affero General Public License v3.0 only (`AGPL-3.0-only`), as described in `LICENSE`.
+The KernelEye source code is licensed under the Apache License, Version 2.0 (`Apache-2.0`), as described in `LICENSE`.
 
 The KernelEye name, logos, icons, visual identity, and other brand assets are trademarks or service marks of Abdeljalil Aitetaleb. The open-source software license does not grant permission to use these marks in a way that suggests endorsement, sponsorship, official status, or confusing association with the KernelEye project.
 

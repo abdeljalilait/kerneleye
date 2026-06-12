@@ -313,8 +313,8 @@ The frontend Docker image builds the landing page, dashboard, and a downloadable
 
 ## License
 
-KernelEye is open source under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-only`). See [LICENSE](LICENSE).
+KernelEye is open source under the **Apache License, Version 2.0** (`Apache-2.0`). See [LICENSE](LICENSE).
 
-Copyright (C) 2026 Abdeljalil Aitetaleb.
+Copyright 2026 Abdeljalil Aitetaleb.
 
-The KernelEye name, logos, and visual identity are not licensed under the AGPL. See [TRADEMARKS.md](TRADEMARKS.md) for brand-use terms.
+The KernelEye name, logos, and visual identity are not licensed under the Apache License. See [TRADEMARKS.md](TRADEMARKS.md) for brand-use terms.
